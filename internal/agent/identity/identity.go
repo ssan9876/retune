@@ -15,10 +15,14 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // ErrNotEnrolled is returned by Load when no identity exists.
 var ErrNotEnrolled = errors.New("agent is not enrolled")
+
+// legacyKeyFile is the separate sealed-key file written before M2.
+const legacyKeyFile = "key.bin"
 
 // Identity is everything the agent needs to talk to its server.
 type Identity struct {
@@ -39,10 +43,30 @@ func (id *Identity) TLSCertificate() (tls.Certificate, error) {
 	return tls.Certificate{Certificate: [][]byte{b.Bytes}, PrivateKey: id.Key}, nil
 }
 
+// CertNotAfter is when the current client certificate expires.
+func (id *Identity) CertNotAfter() (time.Time, error) {
+	b, _ := pem.Decode([]byte(id.CertPEM))
+	if b == nil || b.Type != "CERTIFICATE" {
+		return time.Time{}, errors.New("identity certificate is not PEM CERTIFICATE")
+	}
+	cert, err := x509.ParseCertificate(b.Bytes)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("parse identity certificate: %w", err)
+	}
+	return cert.NotAfter, nil
+}
+
 // Store persists an Identity as identity.json plus a sealed key.bin.
 type Store struct {
 	Dir  string
 	Keys KeyProvider
+}
+
+// fileFormat is identity.json on disk: the identity plus its sealed key, so a
+// renewal replaces key and certificate in one atomic write.
+type fileFormat struct {
+	Identity
+	SealedKey []byte `json:"sealed_key"`
 }
 
 func (s Store) Save(id *Identity) error {
@@ -57,14 +81,18 @@ func (s Store) Save(id *Identity) error {
 	if err != nil {
 		return err
 	}
-	meta, err := json.MarshalIndent(id, "", "  ")
+	meta, err := json.MarshalIndent(fileFormat{Identity: *id, SealedKey: sealed}, "", "  ")
 	if err != nil {
 		return err
 	}
-	if err := writeAtomic(filepath.Join(s.Dir, "key.bin"), sealed); err != nil {
+	if err := writeAtomic(filepath.Join(s.Dir, "identity.json"), meta); err != nil {
 		return err
 	}
-	return writeAtomic(filepath.Join(s.Dir, "identity.json"), meta)
+	// Clean up the pre-M2 layout.
+	if err := os.Remove(filepath.Join(s.Dir, legacyKeyFile)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 func (s Store) Load() (*Identity, error) {
@@ -75,22 +103,35 @@ func (s Store) Load() (*Identity, error) {
 	if err != nil {
 		return nil, err
 	}
-	var id Identity
-	if err := json.Unmarshal(meta, &id); err != nil {
+	var f fileFormat
+	if err := json.Unmarshal(meta, &f); err != nil {
 		return nil, fmt.Errorf("parse identity.json: %w", err)
 	}
-	sealed, err := os.ReadFile(filepath.Join(s.Dir, "key.bin"))
-	if err != nil {
-		return nil, err
+	sealed := f.SealedKey
+	if len(sealed) == 0 {
+		if sealed, err = os.ReadFile(filepath.Join(s.Dir, legacyKeyFile)); err != nil {
+			return nil, fmt.Errorf("read device key: %w", err)
+		}
 	}
 	der, err := s.Keys.Unprotect(sealed)
 	if err != nil {
 		return nil, err
 	}
+	id := f.Identity
 	if id.Key, err = x509.ParseECPrivateKey(der); err != nil {
 		return nil, fmt.Errorf("parse device key: %w", err)
 	}
 	return &id, nil
+}
+
+// Delete removes the stored identity, for unenrollment.
+func (s Store) Delete() error {
+	for _, name := range []string{"identity.json", legacyKeyFile} {
+		if err := os.Remove(filepath.Join(s.Dir, name)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
 }
 
 // NewKeyAndCSR generates the device keypair and a CSR for enrollment.

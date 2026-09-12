@@ -79,24 +79,65 @@ func (c *Client) Checkin(ctx context.Context, req protocol.CheckinRequest) (prot
 }
 
 func (c *Client) post(ctx context.Context, path string, in, out any) error {
-	body, err := json.Marshal(in)
+	return c.do(ctx, http.MethodPost, path, in, out)
+}
+
+// PutInventory uploads a full inventory document and returns the hash the
+// server stored.
+func (c *Client) PutInventory(ctx context.Context, inv protocol.Inventory) (protocol.InventoryResponse, error) {
+	var resp protocol.InventoryResponse
+	err := c.do(ctx, http.MethodPut, "/api/agent/v1/inventory", inv, &resp)
+	return resp, err
+}
+
+// StartCommand reports that execution has begun.
+func (c *Client) StartCommand(ctx context.Context, id string) error {
+	return c.do(ctx, http.MethodPost, "/api/agent/v1/commands/"+url.PathEscape(id)+"/start", nil, nil)
+}
+
+// SubmitResult reports a finished command.
+func (c *Client) SubmitResult(ctx context.Context, id string, r protocol.CommandResult) error {
+	return c.do(ctx, http.MethodPost, "/api/agent/v1/commands/"+url.PathEscape(id)+"/result", r, nil)
+}
+
+// Renew exchanges a CSR for a fresh client certificate.
+func (c *Client) Renew(ctx context.Context, req protocol.RenewRequest) (protocol.RenewResponse, error) {
+	var resp protocol.RenewResponse
+	err := c.do(ctx, http.MethodPost, "/api/agent/v1/renew", req, &resp)
+	return resp, err
+}
+
+// do sends a JSON request and decodes a JSON response. in may be nil for an
+// empty body; out may be nil when no response body is expected.
+func (c *Client) do(ctx context.Context, method, path string, in, out any) error {
+	var body io.Reader
+	if in != nil {
+		b, err := json.Marshal(in)
+		if err != nil {
+			return err
+		}
+		body = bytes.NewReader(b)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.base+path, body)
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+path, bytes.NewReader(body))
-	if err != nil {
-		return err
+	if in != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
-	req.Header.Set("Content-Type", "application/json")
 	res, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("POST %s: %w", path, err)
+		return fmt.Errorf("%s %s: %w", method, path, err)
 	}
 	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
+	if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusNoContent {
 		var e protocol.Error
 		_ = json.NewDecoder(io.LimitReader(res.Body, 64<<10)).Decode(&e)
 		return &HTTPError{Status: res.StatusCode, Code: e.Code, Message: e.Message}
+	}
+	if out == nil || res.StatusCode == http.StatusNoContent {
+		_, _ = io.Copy(io.Discard, res.Body)
+		return nil
 	}
 	if err := json.NewDecoder(res.Body).Decode(out); err != nil {
 		return fmt.Errorf("decode %s response: %w", path, err)
