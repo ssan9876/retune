@@ -18,8 +18,12 @@ import (
 
 	"retune/internal/agent/checkin"
 	"retune/internal/agent/enrollment"
+	"retune/internal/agent/executor"
 	"retune/internal/agent/facts"
 	"retune/internal/agent/identity"
+	"retune/internal/agent/inventory"
+	"retune/internal/agent/session"
+	"retune/internal/agent/state"
 )
 
 const usage = `usage: retune-agent <command>
@@ -67,31 +71,58 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		id, err := identity.Store{Dir: *dataDir, Keys: identity.DefaultKeys()}.Load()
+		idStore := identity.Store{Dir: *dataDir, Keys: identity.DefaultKeys()}
+		id, err := idStore.Load()
 		if err != nil {
 			return err
 		}
-		c, err := enrollment.Connect(id)
+		st, err := state.Open(filepath.Join(*dataDir, "state.db"))
 		if err != nil {
 			return err
 		}
-		loop := &checkin.Loop{
-			Client: c,
-			Facts:  facts.Checkin,
-			Log:    slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			Rand:   rand.Float64,
+		defer st.Close()
+
+		log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+		sess, err := session.New(session.Config{
+			Identity:  id,
+			IDStore:   idStore,
+			State:     st,
+			Collector: inventory.NewCollector(),
+			Executor: &executor.Executor{
+				Runner:    executor.DefaultRunner(filepath.Join(*dataDir, "scripts")),
+				Restarter: executor.DefaultRestarter(),
+				Now:       time.Now,
+			},
+			Log: log,
+		})
+		if err != nil {
+			return err
 		}
+
+		ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		sess.Start(ctx)
+
+		loop := &checkin.Loop{Client: sess, Facts: facts.Checkin, Log: log, Rand: rand.Float64}
 		if *once {
 			wait, err := loop.RunOnce(ctx)
-			if err != nil {
+			switch {
+			case errors.Is(err, checkin.ErrUnenrolled):
+				fmt.Fprintln(out, "This device was unenrolled; local identity and state removed.")
+				return nil
+			case err != nil:
 				return err
+			}
+			sess.Wait()
+			if err := sess.FlushResults(ctx); err != nil {
+				log.Warn("some results are still queued", "error", err)
 			}
 			fmt.Fprintf(out, "Check-in OK; next in %s\n", wait.Round(time.Second))
 			return nil
 		}
-		ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
-		defer stop()
-		loop.Run(ctx)
+		if errors.Is(loop.Run(ctx), checkin.ErrUnenrolled) {
+			fmt.Fprintln(out, "This device was unenrolled; local identity and state removed.")
+		}
 		return nil
 
 	default:

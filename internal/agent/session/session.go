@@ -1,0 +1,334 @@
+// Package session performs one check-in cycle: renew the certificate when due,
+// flush queued results, check in, upload inventory, and dispatch commands to a
+// background worker.
+package session
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"sync"
+	"time"
+
+	"retune/internal/agent/checkin"
+	"retune/internal/agent/client"
+	"retune/internal/agent/enrollment"
+	"retune/internal/agent/executor"
+	"retune/internal/agent/identity"
+	"retune/internal/agent/inventory"
+	"retune/internal/agent/state"
+	"retune/internal/protocol"
+)
+
+// DefaultRenewBefore is how long before expiry the certificate is renewed.
+const DefaultRenewBefore = 30 * 24 * time.Hour
+
+// ledgerRetention is how long finished commands stay in the local ledger.
+const ledgerRetention = 30 * 24 * time.Hour
+
+// workQueueSize bounds commands waiting to run; anything beyond it is offered
+// again at the next check-in.
+const workQueueSize = 64
+
+// Config wires a Session.
+type Config struct {
+	Identity    *identity.Identity
+	IDStore     identity.Store
+	State       *state.Store
+	Collector   inventory.Collector
+	Executor    *executor.Executor
+	Log         *slog.Logger
+	Now         func() time.Time
+	RenewBefore time.Duration
+}
+
+// Session is the agent's connection to its server plus its local state.
+type Session struct {
+	cfg Config
+
+	mu       sync.Mutex // guards id, client and inflight
+	id       *identity.Identity
+	client   *client.Client
+	inflight map[string]bool
+
+	flushMu sync.Mutex // one result flush at a time
+	work    chan protocol.Command
+	pending sync.WaitGroup
+}
+
+// New builds a Session for an enrolled identity.
+func New(cfg Config) (*Session, error) {
+	if cfg.Identity == nil || cfg.State == nil || cfg.Collector == nil || cfg.Executor == nil {
+		return nil, errors.New("session: Identity, State, Collector and Executor are required")
+	}
+	if cfg.Log == nil {
+		cfg.Log = slog.New(slog.DiscardHandler)
+	}
+	if cfg.Now == nil {
+		cfg.Now = time.Now
+	}
+	if cfg.RenewBefore <= 0 {
+		cfg.RenewBefore = DefaultRenewBefore
+	}
+	c, err := enrollment.Connect(cfg.Identity)
+	if err != nil {
+		return nil, err
+	}
+	s := &Session{
+		cfg: cfg, id: cfg.Identity, client: c,
+		inflight: map[string]bool{},
+		work:     make(chan protocol.Command, workQueueSize),
+	}
+	if cfg.Executor.RefreshInventory == nil {
+		cfg.Executor.RefreshInventory = s.UploadInventory
+	}
+	return s, nil
+}
+
+// Start launches the command worker and prunes the old ledger.
+func (s *Session) Start(ctx context.Context) {
+	if n, err := s.cfg.State.PruneLedger(s.cfg.Now().Add(-ledgerRetention)); err != nil {
+		s.cfg.Log.Warn("pruning the command ledger failed", "error", err)
+	} else if n > 0 {
+		s.cfg.Log.Debug("pruned old command ledger entries", "count", n)
+	}
+	go s.worker(ctx)
+}
+
+// Wait blocks until every queued command has run and its result is stored.
+func (s *Session) Wait() { s.pending.Wait() }
+
+// Checkin performs one full cycle. It satisfies checkin.Checker.
+func (s *Session) Checkin(ctx context.Context, req protocol.CheckinRequest) (protocol.CheckinResponse, error) {
+	if err := s.maybeRenew(ctx); err != nil {
+		s.cfg.Log.Warn("renewing the client certificate failed", "error", err)
+	}
+	if err := s.FlushResults(ctx); err != nil {
+		s.cfg.Log.Warn("sending queued command results failed", "error", err)
+	}
+
+	hash, err := s.cfg.State.InventoryHash()
+	if err != nil {
+		return protocol.CheckinResponse{}, fmt.Errorf("read stored inventory hash: %w", err)
+	}
+	req.InventoryHash = hash
+
+	resp, err := s.currentClient().Checkin(ctx, req)
+	var httpErr *client.HTTPError
+	if errors.As(err, &httpErr) && httpErr.Status == http.StatusGone {
+		s.wipe()
+		return resp, fmt.Errorf("%w: %s", checkin.ErrUnenrolled, httpErr.Message)
+	}
+	if err != nil {
+		return resp, err
+	}
+
+	if resp.InventoryDue {
+		if err := s.UploadInventory(ctx); err != nil {
+			s.cfg.Log.Warn("uploading inventory failed", "error", err)
+		}
+	}
+	for _, cmd := range resp.Commands {
+		s.enqueue(cmd)
+	}
+	return resp, nil
+}
+
+// UploadInventory collects and uploads inventory, then records the hash the
+// server acknowledged.
+func (s *Session) UploadInventory(ctx context.Context) error {
+	inv, err := s.cfg.Collector.Collect(ctx)
+	if err != nil {
+		return fmt.Errorf("collect inventory: %w", err)
+	}
+	resp, err := s.currentClient().PutInventory(ctx, inv)
+	if err != nil {
+		return err
+	}
+	return s.cfg.State.SetInventoryHash(resp.Hash)
+}
+
+// FlushResults sends queued command results, dropping any the server rejects
+// outright and keeping the rest for the next attempt.
+func (s *Session) FlushResults(ctx context.Context) error {
+	s.flushMu.Lock()
+	defer s.flushMu.Unlock()
+
+	pending, err := s.cfg.State.PendingResults()
+	if err != nil {
+		return err
+	}
+	for _, qr := range pending {
+		err := s.currentClient().SubmitResult(ctx, qr.CommandID, qr.Result)
+		var httpErr *client.HTTPError
+		switch {
+		case err == nil:
+		case errors.As(err, &httpErr) && (httpErr.Status == http.StatusNotFound || httpErr.Status == http.StatusBadRequest):
+			s.cfg.Log.Warn("server rejected a command result; dropping it",
+				"command_id", qr.CommandID, "status", httpErr.Status, "message", httpErr.Message)
+		default:
+			return err
+		}
+		if err := s.cfg.State.DeleteResult(qr.CommandID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// enqueue hands a command to the worker unless it is already running or the
+// ledger shows it was handled.
+func (s *Session) enqueue(cmd protocol.Command) {
+	s.mu.Lock()
+	if s.inflight[cmd.ID] {
+		s.mu.Unlock()
+		return
+	}
+	ledger, err := s.cfg.State.LedgerState(cmd.ID)
+	if err != nil {
+		s.mu.Unlock()
+		s.cfg.Log.Warn("reading the command ledger failed", "command_id", cmd.ID, "error", err)
+		return
+	}
+	switch ledger {
+	case state.LedgerCompleted:
+		// Already run; its result is queued or already sent.
+		s.mu.Unlock()
+		return
+	case state.LedgerStarted:
+		// Started before the agent stopped, so it never reported back.
+		s.mu.Unlock()
+		now := s.cfg.Now()
+		s.finish(cmd.ID, protocol.CommandResult{
+			Status: protocol.ResultFailed, ExitCode: -1,
+			Error:     "the agent restarted while this command was running",
+			StartedAt: now, FinishedAt: now,
+		})
+		return
+	}
+	select {
+	case s.work <- cmd:
+		s.inflight[cmd.ID] = true
+		s.pending.Add(1)
+	default:
+		s.cfg.Log.Warn("command queue is full; will retry at the next check-in", "command_id", cmd.ID)
+	}
+	s.mu.Unlock()
+}
+
+func (s *Session) worker(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case cmd := <-s.work:
+			s.run(ctx, cmd)
+		}
+	}
+}
+
+func (s *Session) run(ctx context.Context, cmd protocol.Command) {
+	defer func() {
+		s.mu.Lock()
+		delete(s.inflight, cmd.ID)
+		s.mu.Unlock()
+		s.pending.Done()
+	}()
+	defer func() {
+		if r := recover(); r != nil {
+			s.cfg.Log.Error("command execution panicked", "command_id", cmd.ID, "panic", r)
+			now := s.cfg.Now()
+			s.finish(cmd.ID, protocol.CommandResult{
+				Status: protocol.ResultFailed, ExitCode: -1,
+				Error:     fmt.Sprintf("the agent panicked while running this command: %v", r),
+				StartedAt: now, FinishedAt: now,
+			})
+		}
+	}()
+
+	if _, err := s.cfg.State.MarkStarted(cmd.ID, s.cfg.Now()); err != nil {
+		s.cfg.Log.Error("recording command start failed", "command_id", cmd.ID, "error", err)
+		return
+	}
+	if err := s.currentClient().StartCommand(ctx, cmd.ID); err != nil {
+		s.cfg.Log.Warn("reporting command start failed", "command_id", cmd.ID, "error", err)
+	}
+	result := s.cfg.Executor.Execute(ctx, cmd)
+	s.finish(cmd.ID, result)
+	if err := s.FlushResults(ctx); err != nil {
+		s.cfg.Log.Warn("sending the command result failed; it stays queued", "command_id", cmd.ID, "error", err)
+	}
+}
+
+// finish stores a result before marking the command done, so a crash in between
+// leaves the result to be sent rather than losing it.
+func (s *Session) finish(id string, r protocol.CommandResult) {
+	if err := s.cfg.State.QueueResult(state.QueuedResult{CommandID: id, Result: r}); err != nil {
+		s.cfg.Log.Error("queueing a command result failed", "command_id", id, "error", err)
+		return
+	}
+	if err := s.cfg.State.MarkCompleted(id, s.cfg.Now()); err != nil {
+		s.cfg.Log.Error("recording command completion failed", "command_id", id, "error", err)
+	}
+}
+
+// maybeRenew replaces the client certificate when it is close to expiry.
+func (s *Session) maybeRenew(ctx context.Context) error {
+	s.mu.Lock()
+	id := s.id
+	s.mu.Unlock()
+
+	notAfter, err := id.CertNotAfter()
+	if err != nil {
+		return err
+	}
+	if s.cfg.Now().Add(s.cfg.RenewBefore).Before(notAfter) {
+		return nil
+	}
+	key, csrPEM, err := identity.NewKeyAndCSR(id.DeviceID)
+	if err != nil {
+		return err
+	}
+	resp, err := s.currentClient().Renew(ctx, protocol.RenewRequest{CSRPEM: csrPEM})
+	if err != nil {
+		return err
+	}
+	next := *id
+	next.CertPEM = resp.CertPEM
+	next.Key = key
+	// Save before switching: the server keeps accepting the old certificate
+	// until the new one is used, so a failure here is recoverable.
+	if err := s.cfg.IDStore.Save(&next); err != nil {
+		return fmt.Errorf("save the renewed identity: %w", err)
+	}
+	c, err := enrollment.Connect(&next)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.id, s.client = &next, c
+	s.mu.Unlock()
+	if expires, err := next.CertNotAfter(); err == nil {
+		s.cfg.Log.Info("renewed the client certificate", "not_after", expires)
+	}
+	return nil
+}
+
+// wipe removes the local identity and state after unenrollment.
+func (s *Session) wipe() {
+	if err := s.cfg.IDStore.Delete(); err != nil {
+		s.cfg.Log.Error("deleting the local identity failed", "error", err)
+	}
+	if err := s.cfg.State.Destroy(); err != nil {
+		s.cfg.Log.Error("deleting the local state failed", "error", err)
+	}
+	s.cfg.Log.Warn("this device was unenrolled; local identity and state removed")
+}
+
+func (s *Session) currentClient() *client.Client {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.client
+}
