@@ -3,6 +3,8 @@ package storetest
 
 import (
 	"context"
+	"os"
+	"runtime"
 	"testing"
 
 	"github.com/testcontainers/testcontainers-go"
@@ -17,6 +19,14 @@ func DatabaseURL(t *testing.T) string {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("skipping Postgres test in -short mode")
+	}
+	// On Windows, testcontainers detects Docker by os.Stat-ing the named pipe,
+	// which fails with "All pipe instances are busy" when several test
+	// binaries start at once, and it caches that failure for the process.
+	// Naming the host skips the stat; the Docker client's pipe dialer waits
+	// for a free instance instead of failing.
+	if runtime.GOOS == "windows" && os.Getenv("DOCKER_HOST") == "" {
+		os.Setenv("DOCKER_HOST", "npipe:////./pipe/docker_engine")
 	}
 	ctx := context.Background()
 	ctr, err := postgres.Run(ctx, "postgres:17-alpine",
