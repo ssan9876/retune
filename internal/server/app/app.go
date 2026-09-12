@@ -13,7 +13,10 @@ import (
 	"retune/internal/config"
 	"retune/internal/server/agentapi"
 	"retune/internal/server/ca"
+	"retune/internal/server/commands"
+	"retune/internal/server/devices"
 	"retune/internal/server/enroll"
+	"retune/internal/server/inventory"
 	"retune/internal/server/store"
 )
 
@@ -24,6 +27,9 @@ type App struct {
 	Store     *store.Store
 	CA        *ca.CA
 	Enroll    *enroll.Service
+	Inventory *inventory.Service
+	Commands  *commands.Service
+	Devices   *devices.Service
 	Handler   http.Handler
 	TLSConfig *tls.Config
 }
@@ -49,12 +55,21 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	}
 
 	svc := &enroll.Service{Store: st, CA: authority, Now: time.Now, CertValidity: clientCertValidity}
-	h := &agentapi.Handler{Enroll: svc, Store: st, Now: time.Now, CheckinInterval: cfg.CheckinInterval, Log: log}
+	inv := &inventory.Service{Store: st, Now: time.Now}
+	cmd := &commands.Service{Store: st, Now: time.Now}
+	dev := &devices.Service{Store: st}
+	h := &agentapi.Handler{
+		Enroll: svc, Inventory: inv, Commands: cmd, Store: st,
+		Now: time.Now, CheckinInterval: cfg.CheckinInterval, Log: log,
+	}
 	return &App{
-		Store:   st,
-		CA:      authority,
-		Enroll:  svc,
-		Handler: h.Routes(),
+		Store:     st,
+		CA:        authority,
+		Enroll:    svc,
+		Inventory: inv,
+		Commands:  cmd,
+		Devices:   dev,
+		Handler:   h.Routes(),
 		TLSConfig: &tls.Config{
 			MinVersion:   tls.VersionTLS12,
 			Certificates: []tls.Certificate{serverCert},

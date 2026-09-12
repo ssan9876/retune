@@ -2,22 +2,34 @@ package agentapi
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"retune/internal/protocol"
 )
 
-const maxBody = 1 << 20
+// Request body limits.
+const (
+	maxCheckinBody   = 1 << 20
+	maxInventoryBody = 8 << 20
+	maxResultBody    = 8 << 20
+)
 
-// decode reads a JSON body (max 1 MB). Unknown fields are allowed so newer
-// agents can talk to older servers.
-func decode(w http.ResponseWriter, r *http.Request, v any) bool {
-	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
-	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
-		writeError(w, http.StatusBadRequest, "bad_request", "invalid JSON body")
+// decode reads a JSON body no larger than limit. Unknown fields are allowed so
+// newer agents can talk to older servers.
+func decode(w http.ResponseWriter, r *http.Request, v any, limit int64) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
+	err := json.NewDecoder(r.Body).Decode(v)
+	if err == nil {
+		return true
+	}
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		writeError(w, http.StatusRequestEntityTooLarge, "body_too_large", "request body is too large")
 		return false
 	}
-	return true
+	writeError(w, http.StatusBadRequest, "bad_request", "invalid JSON body")
+	return false
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -25,6 +37,8 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
 }
+
+func writeNoContent(w http.ResponseWriter) { w.WriteHeader(http.StatusNoContent) }
 
 func writeError(w http.ResponseWriter, status int, code, msg string) {
 	writeJSON(w, status, protocol.Error{Code: code, Message: msg})
