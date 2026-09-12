@@ -152,10 +152,15 @@ func TestTokenAuditAndAdminEndpoints(t *testing.T) {
 		t.Fatalf("create token: %d %s", status, body)
 	}
 	var created struct {
-		ID string `json:"id"`
+		ID        string    `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		ExpiresAt time.Time `json:"expires_at"`
 	}
 	if err := json.Unmarshal(body, &created); err != nil {
 		t.Fatal(err)
+	}
+	if created.CreatedAt.IsZero() || created.ExpiresAt.IsZero() {
+		t.Fatalf("token timestamps must be reported: %s", body)
 	}
 	if _, body = c.do(http.MethodGet, "/tokens", nil); !bytes.Contains(body, []byte("office")) || bytes.Contains(body, []byte("rt_")) {
 		t.Fatalf("token list must not contain plaintext tokens: %s", body)

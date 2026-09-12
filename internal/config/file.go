@@ -27,6 +27,41 @@ type fileConfig struct {
 	SessionTTLHours        int    `yaml:"session_ttl_hours"`
 }
 
+// DatabaseURL resolves the database connection string for commands that need
+// only that, such as migrate and the admin commands. The environment wins over
+// the config file.
+func DatabaseURL(getenv func(string) string) (string, error) {
+	value, err := lookupValue(getenv, "DATABASE_URL")
+	if err != nil {
+		return "", err
+	}
+	if value == "" {
+		return "", errors.New("DATABASE_URL is required (set the environment variable or database_url in the config file)")
+	}
+	return value, nil
+}
+
+// DataDir resolves the data directory, defaulting to "data".
+func DataDir(getenv func(string) string) (string, error) {
+	value, err := lookupValue(getenv, "DATA_DIR")
+	if err != nil {
+		return "", err
+	}
+	return or(value, "data"), nil
+}
+
+// lookupValue reads one setting from the environment, then the config file.
+func lookupValue(getenv func(string) string, key string) (string, error) {
+	if v := getenv(key); v != "" {
+		return v, nil
+	}
+	fileValues, err := loadConfigFile(getenv)
+	if err != nil {
+		return "", err
+	}
+	return fileValues[key], nil
+}
+
 // loadConfigFile turns the YAML file, if any, into environment-style values.
 func loadConfigFile(getenv func(string) string) (map[string]string, error) {
 	path := getenv("RETUNE_CONFIG")

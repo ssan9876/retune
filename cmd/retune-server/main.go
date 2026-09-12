@@ -54,9 +54,9 @@ func run(ctx context.Context, args []string, getenv func(string) string, out io.
 	case "serve":
 		return serve(ctx, getenv)
 	case "migrate":
-		url := getenv("DATABASE_URL")
-		if url == "" {
-			return errors.New("DATABASE_URL is required")
+		url, err := config.DatabaseURL(getenv)
+		if err != nil {
+			return err
 		}
 		return store.Migrate(url)
 	case "token":
@@ -76,11 +76,11 @@ func run(ctx context.Context, args []string, getenv func(string) string, out io.
 	}
 }
 
-// openStore connects to the database named by DATABASE_URL.
+// openStore connects to the database named by DATABASE_URL or the config file.
 func openStore(ctx context.Context, getenv func(string) string) (*store.Store, error) {
-	url := getenv("DATABASE_URL")
-	if url == "" {
-		return nil, errors.New("DATABASE_URL is required")
+	url, err := config.DatabaseURL(getenv)
+	if err != nil {
+		return nil, err
 	}
 	return store.Open(ctx, url)
 }
@@ -163,9 +163,9 @@ func caCmd(ctx context.Context, args []string, getenv func(string) string, out i
 	if len(args) != 1 || args[0] != "fingerprint" {
 		return errors.New("usage: retune-server ca fingerprint")
 	}
-	dir := getenv("DATA_DIR")
-	if dir == "" {
-		dir = "data"
+	dir, err := config.DataDir(getenv)
+	if err != nil {
+		return err
 	}
 	authority, err := ca.LoadOrCreate(ctx, ca.FileKeyStore{Dir: filepath.Join(dir, "ca")}, time.Now())
 	if err != nil {

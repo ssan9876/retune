@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"io"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -10,6 +12,40 @@ import (
 	"retune/internal/server/store"
 	"retune/internal/server/store/storetest"
 )
+
+// TestCommandsReadConfigFile checks that commands other than serve also honour
+// the YAML config file, not just environment variables.
+func TestCommandsReadConfigFile(t *testing.T) {
+	ctx := context.Background()
+	url := storetest.DatabaseURL(t)
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "retune-server.yaml")
+	body := "database_url: " + url + "\npublic_url: https://localhost:8443\ndata_dir: " +
+		filepath.ToSlash(filepath.Join(dir, "data")) + "\n"
+	if err := os.WriteFile(cfg, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	e := env(map[string]string{"RETUNE_CONFIG": cfg})
+
+	if err := run(ctx, []string{"migrate"}, e, io.Discard); err != nil {
+		t.Fatalf("migrate from the config file: %v", err)
+	}
+	if out := runOut(t, e, "bootstrap-admin", "--email", "ops@example.com"); !strings.Contains(out, "Password: ") {
+		t.Fatalf("bootstrap-admin = %q", out)
+	}
+	if out := runOut(t, e, "admin", "list"); !strings.Contains(out, "ops@example.com") {
+		t.Fatalf("admin list = %q", out)
+	}
+	if out := runOut(t, e, "device", "list"); !strings.Contains(out, "0 device(s)") {
+		t.Fatalf("device list = %q", out)
+	}
+	if out := runOut(t, e, "ca", "fingerprint"); !strings.HasPrefix(out, "sha256:") {
+		t.Fatalf("ca fingerprint = %q", out)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "data", "ca", "ca.crt")); err != nil {
+		t.Fatalf("the CA must land in the configured data_dir: %v", err)
+	}
+}
 
 func TestAdminCLI(t *testing.T) {
 	ctx := context.Background()

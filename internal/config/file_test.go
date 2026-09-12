@@ -51,6 +51,35 @@ func TestEnvironmentBeatsFile(t *testing.T) {
 	}
 }
 
+func TestDatabaseURLAndDataDir(t *testing.T) {
+	path := writeFile(t, "database_url: postgres://file/retune\ndata_dir: /srv/retune\n")
+	fileOnly := env(map[string]string{"RETUNE_CONFIG": path})
+
+	// Commands that need only these settings must read the file too.
+	got, err := DatabaseURL(fileOnly)
+	if err != nil || got != "postgres://file/retune" {
+		t.Fatalf("DatabaseURL = %q, err = %v", got, err)
+	}
+	if dir, err := DataDir(fileOnly); err != nil || dir != "/srv/retune" {
+		t.Fatalf("DataDir = %q, err = %v", dir, err)
+	}
+
+	withEnv := env(map[string]string{"RETUNE_CONFIG": path, "DATABASE_URL": "postgres://env/retune", "DATA_DIR": "/env/dir"})
+	if got, _ = DatabaseURL(withEnv); got != "postgres://env/retune" {
+		t.Fatalf("the environment must win: %q", got)
+	}
+	if dir, _ := DataDir(withEnv); dir != "/env/dir" {
+		t.Fatalf("the environment must win: %q", dir)
+	}
+
+	if _, err := DatabaseURL(env(nil)); err == nil {
+		t.Fatal("a missing database URL must be an error")
+	}
+	if dir, err := DataDir(env(nil)); err != nil || dir != "data" {
+		t.Fatalf("default DataDir = %q, err = %v", dir, err)
+	}
+}
+
 func TestConfigFileErrors(t *testing.T) {
 	if _, err := LoadServer(env(map[string]string{"RETUNE_CONFIG": "does-not-exist.yaml"})); err == nil {
 		t.Fatal("a named config file that is missing must be an error")

@@ -46,7 +46,10 @@ func (s *Service) CreateToken(ctx context.Context, o TokenOptions) (string, stor
 	if err != nil {
 		return "", store.EnrollmentToken{}, err
 	}
-	tok := store.EnrollmentToken{ID: id, TokenHash: hash, Label: o.Label, MaxUses: o.MaxUses, ExpiresAt: o.ExpiresAt, CreatedBy: o.CreatedBy}
+	tok := store.EnrollmentToken{
+		ID: id, TokenHash: hash, Label: o.Label, MaxUses: o.MaxUses,
+		ExpiresAt: o.ExpiresAt, CreatedBy: o.CreatedBy, CreatedAt: s.Now(),
+	}
 	err = s.Store.InTx(ctx, func(q *store.Queries) error {
 		if err := q.CreateEnrollmentToken(ctx, tok); err != nil {
 			return err

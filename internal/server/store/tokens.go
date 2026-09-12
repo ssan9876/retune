@@ -17,10 +17,13 @@ func scanToken(row pgx.Row) (EnrollmentToken, error) {
 }
 
 func (q *Queries) CreateEnrollmentToken(ctx context.Context, t EnrollmentToken) error {
+	if t.CreatedAt.IsZero() {
+		t.CreatedAt = time.Now().UTC()
+	}
 	_, err := q.db.Exec(ctx, `
-		INSERT INTO enrollment_tokens (id, tenant_id, token_hash, label, expires_at, max_uses, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		t.ID, DefaultTenantID, t.TokenHash, t.Label, t.ExpiresAt, t.MaxUses, t.CreatedBy)
+		INSERT INTO enrollment_tokens (id, tenant_id, token_hash, label, expires_at, max_uses, created_by, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		t.ID, DefaultTenantID, t.TokenHash, t.Label, t.ExpiresAt, t.MaxUses, t.CreatedBy, t.CreatedAt)
 	return err
 }
 
