@@ -4,7 +4,12 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [react()],
-  build: { outDir: "dist", emptyOutDir: true },
+  // The Go binary embeds the build, and go:embed can only reach files inside
+  // its own package directory, so build straight into that package. The
+  // directory is not emptied because it holds a tracked .gitkeep that keeps
+  // go:embed working before the console has ever been built; the prebuild
+  // script clears the old hashed assets instead.
+  build: { outDir: "../internal/server/console/dist", emptyOutDir: false },
   server: {
     proxy: {
       // `npm run dev` talks to a locally running retune-server.

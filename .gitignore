@@ -3,4 +3,5 @@
 /bin/
 *.exe
 /web/node_modules/
-/web/dist/
+/internal/server/console/dist/*
+!/internal/server/console/dist/.gitkeep

@@ -16,6 +16,7 @@ import (
 	"retune/internal/server/auth"
 	"retune/internal/server/ca"
 	"retune/internal/server/commands"
+	"retune/internal/server/console"
 	"retune/internal/server/devices"
 	"retune/internal/server/enroll"
 	"retune/internal/server/inventory"
@@ -76,6 +77,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	root := http.NewServeMux()
 	root.Handle("/api/agent/v1/", agent.Routes())
 	root.Handle("/api/admin/v1/", admin.Routes())
+	root.Handle("/", console.Handler())
 
 	return &App{
 		Store:     st,
