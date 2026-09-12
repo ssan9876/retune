@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"retune/internal/config"
+	"retune/internal/server/adminapi"
 	"retune/internal/server/agentapi"
+	"retune/internal/server/auth"
 	"retune/internal/server/ca"
 	"retune/internal/server/commands"
 	"retune/internal/server/devices"
@@ -30,6 +32,7 @@ type App struct {
 	Inventory *inventory.Service
 	Commands  *commands.Service
 	Devices   *devices.Service
+	Auth      *auth.Service
 	Handler   http.Handler
 	TLSConfig *tls.Config
 }
@@ -58,10 +61,22 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	inv := &inventory.Service{Store: st, Now: time.Now}
 	cmd := &commands.Service{Store: st, Now: time.Now}
 	dev := &devices.Service{Store: st}
-	h := &agentapi.Handler{
+	authSvc := &auth.Service{
+		Store: st, Now: time.Now, SessionTTL: cfg.SessionTTL,
+		Limiter: auth.NewLimiter(10, 15*time.Minute, time.Now), Issuer: "Retune",
+	}
+	agent := &agentapi.Handler{
 		Enroll: svc, Inventory: inv, Commands: cmd, Store: st,
 		Now: time.Now, CheckinInterval: cfg.CheckinInterval, Log: log,
 	}
+	admin := &adminapi.Handler{
+		Auth: authSvc, Store: st, Commands: cmd, Devices: dev, Enroll: svc,
+		Now: time.Now, Log: log,
+	}
+	root := http.NewServeMux()
+	root.Handle("/api/agent/v1/", agent.Routes())
+	root.Handle("/api/admin/v1/", admin.Routes())
+
 	return &App{
 		Store:     st,
 		CA:        authority,
@@ -69,7 +84,8 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		Inventory: inv,
 		Commands:  cmd,
 		Devices:   dev,
-		Handler:   h.Routes(),
+		Auth:      authSvc,
+		Handler:   root,
 		TLSConfig: &tls.Config{
 			MinVersion:   tls.VersionTLS12,
 			Certificates: []tls.Certificate{serverCert},

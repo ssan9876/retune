@@ -31,7 +31,8 @@ func newTestApp(t *testing.T) (*app.App, *httptest.Server) {
 	t.Helper()
 	cfg := config.Server{
 		DatabaseURL: storetest.DatabaseURL(t), PublicURL: "https://127.0.0.1",
-		TLSMode: "self-signed", DataDir: t.TempDir(), CheckinInterval: 5 * time.Minute,
+		TLSMode: "self-signed", DataDir: t.TempDir(),
+		CheckinInterval: 5 * time.Minute, SessionTTL: 12 * time.Hour,
 	}
 	a, err := app.New(context.Background(), cfg, slog.New(slog.DiscardHandler))
 	if err != nil {
