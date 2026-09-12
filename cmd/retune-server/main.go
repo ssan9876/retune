@@ -35,7 +35,9 @@ commands:
   device retire <id>     stop accepting check-ins from a device
   device unenroll <id>   tell the agent to delete its identity and state
   command queue [flags]  queue a command (--device, --type, --script, --script-file, --timeout, --delay, --message, --ttl)
-  command show <id>      show a command and its result`
+  command show <id>      show a command and its result
+  bootstrap-admin        create the first console account (--email, --password, --role)
+  admin <subcommand>     manage console accounts (list, create, password, totp, disable, enable)`
 
 func main() {
 	if err := run(context.Background(), os.Args[1:], os.Getenv, os.Stdout); err != nil {
@@ -65,6 +67,10 @@ func run(ctx context.Context, args []string, getenv func(string) string, out io.
 		return deviceCmd(ctx, args[1:], getenv, out)
 	case "command":
 		return commandCmd(ctx, args[1:], getenv, out)
+	case "bootstrap-admin":
+		return bootstrapAdminCmd(ctx, args[1:], getenv, out)
+	case "admin":
+		return adminCmd(ctx, args[1:], getenv, out)
 	default:
 		return fmt.Errorf("unknown command %q\n%s", args[0], usage)
 	}
