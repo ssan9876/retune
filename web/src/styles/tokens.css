@@ -1,0 +1,70 @@
+:root {
+  /* Surfaces and text. Light is the default; dark mirrors it below. */
+  --paper: #f7f8fa;
+  --surface: #ffffff;
+  --surface-sunken: #eef0f4;
+  --ink: #1b1f24;
+  --ink-muted: #5c6570;
+  --rule: #d8dce2;
+
+  /* One primary, used for actions and focus only. */
+  --primary: #5b5bd6;
+  --primary-ink: #ffffff;
+  --primary-wash: #ecebfb;
+
+  /* Status carries meaning; never use these for decoration. */
+  --status-active: #12876f;
+  --status-stale: #b4690e;
+  --status-retired: #c4403a;
+  --status-neutral: #6b7481;
+
+  /* Type scale */
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 2rem;
+
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", monospace;
+
+  /* Spacing: a 4px base */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+
+  --radius: 6px;
+  --rail-width: 200px;
+  --row-height: 36px;
+  --shadow-raised: 0 1px 2px rgba(27, 31, 36, 0.08), 0 4px 12px rgba(27, 31, 36, 0.06);
+  --transition: 140ms ease;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #14161a;
+    --surface: #1b1e24;
+    --surface-sunken: #101216;
+    --ink: #e6e8eb;
+    --ink-muted: #9aa4b1;
+    --rule: #2a2f36;
+    --primary: #8b8bf0;
+    --primary-ink: #14161a;
+    --primary-wash: #23234a;
+    --status-active: #3fbfa0;
+    --status-stale: #d99a3f;
+    --status-retired: #e0655e;
+    --status-neutral: #8b95a3;
+    --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.35);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition: 0ms;
+  }
+}

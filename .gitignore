@@ -2,3 +2,5 @@
 /agent-data/
 /bin/
 *.exe
+/web/node_modules/
+/web/dist/
