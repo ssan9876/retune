@@ -6,17 +6,18 @@ import (
 	"net"
 	"os"
 
+	"retune/internal/agent/inventory"
 	"retune/internal/protocol"
 )
 
 // AgentVersion is reported on every check-in.
 const AgentVersion = "0.1.0-dev"
 
-// Device returns facts for enrollment. Serial and SMBIOS UUID are filled in
-// by the M2 inventory collector.
+// Device returns the facts sent at enrollment.
 func Device() protocol.DeviceFacts {
 	host, _ := os.Hostname()
-	return protocol.DeviceFacts{Hostname: host, OSVersion: osVersion()}
+	serial, smbios := inventory.HardwareIdentity()
+	return protocol.DeviceFacts{Hostname: host, Serial: serial, SMBIOSUUID: smbios, OSVersion: osVersion()}
 }
 
 // Checkin returns the heartbeat payload.
@@ -24,6 +25,7 @@ func Checkin() protocol.CheckinRequest {
 	return protocol.CheckinRequest{
 		AgentVersion:  AgentVersion,
 		UptimeSeconds: uptimeSeconds(),
+		LoggedInUser:  inventory.LoggedInUser(),
 		IPAddresses:   ipAddresses(),
 	}
 }
