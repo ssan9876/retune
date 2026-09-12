@@ -1,0 +1,38 @@
+.login {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--space-6);
+}
+
+.login__panel {
+  width: min(380px, 100%);
+}
+
+.login__mark {
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-bottom: var(--space-1);
+}
+
+.login__lede {
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+  margin: 0 0 var(--space-6);
+}
+
+.login__setup {
+  margin-top: var(--space-6);
+  padding: var(--space-3);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+  font-size: var(--text-sm);
+}
+
+.login__setup code {
+  display: block;
+  margin-top: var(--space-2);
+  word-break: break-all;
+}
