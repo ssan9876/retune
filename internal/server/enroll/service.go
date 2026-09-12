@@ -63,6 +63,28 @@ func (s *Service) CreateToken(ctx context.Context, o TokenOptions) (string, stor
 	return plain, tok, nil
 }
 
+// RevokeToken stops a token from being used again.
+func (s *Service) RevokeToken(ctx context.Context, id uuid.UUID, actor string) error {
+	now := s.Now()
+	return s.Store.InTx(ctx, func(q *store.Queries) error {
+		tok, err := q.GetEnrollmentToken(ctx, id)
+		if errors.Is(err, store.ErrNotFound) {
+			return fmt.Errorf("%w: %s", ErrTokenNotFound, id)
+		}
+		if err != nil {
+			return err
+		}
+		if err := q.RevokeEnrollmentToken(ctx, id, now); err != nil {
+			return err
+		}
+		return q.InsertAudit(ctx, store.AuditEntry{
+			Actor: actor, Action: "enrollment_token.revoked",
+			TargetKind: "enrollment_token", TargetID: id.String(),
+			Details: map[string]any{"label": tok.Label},
+		})
+	})
+}
+
 // Enroll validates the token, creates the device, and issues its client
 // certificate, all in one transaction.
 func (s *Service) Enroll(ctx context.Context, req protocol.EnrollRequest) (protocol.EnrollResponse, error) {

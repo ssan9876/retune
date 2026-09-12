@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"retune/internal/server/enroll"
+	"retune/internal/server/store"
 )
 
 type createTokenRequest struct {
@@ -38,4 +39,47 @@ func (h *Handler) createToken(w http.ResponseWriter, r *http.Request) {
 		"id": tok.ID.String(), "token": plain, "label": tok.Label,
 		"max_uses": tok.MaxUses, "expires_at": tok.ExpiresAt, "created_at": tok.CreatedAt,
 	})
+}
+
+type tokenJSON struct {
+	ID        string     `json:"id"`
+	Label     string     `json:"label"`
+	MaxUses   *int       `json:"max_uses,omitempty"`
+	UseCount  int        `json:"use_count"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	RevokedAt *time.Time `json:"revoked_at,omitempty"`
+	CreatedBy string     `json:"created_by"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+func (h *Handler) listTokens(w http.ResponseWriter, r *http.Request) {
+	rows, err := h.Store.Q().ListEnrollmentTokens(r.Context())
+	if err != nil {
+		h.internal(w, "list enrollment tokens", err)
+		return
+	}
+	items := make([]tokenJSON, 0, len(rows))
+	for _, t := range rows {
+		items = append(items, tokenJSON{
+			ID: t.ID.String(), Label: t.Label, MaxUses: t.MaxUses, UseCount: t.UseCount,
+			ExpiresAt: t.ExpiresAt, RevokedAt: t.RevokedAt, CreatedBy: t.CreatedBy, CreatedAt: t.CreatedAt,
+		})
+	}
+	writeJSON(w, http.StatusOK, newListResponse(items, len(items), store.Page{Limit: len(items)}))
+}
+
+func (h *Handler) revokeToken(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathUUID(w, r, "no such token")
+	if !ok {
+		return
+	}
+	err := h.Enroll.RevokeToken(r.Context(), id, caller(r).Admin.Email)
+	switch {
+	case err == nil:
+		writeNoContent(w)
+	case errors.Is(err, enroll.ErrTokenNotFound):
+		writeError(w, http.StatusNotFound, "not_found", "no such token")
+	default:
+		h.internal(w, "revoke enrollment token", err, "token_id", id)
+	}
 }
