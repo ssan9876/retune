@@ -44,10 +44,18 @@ func (q *Queries) ListAudit(ctx context.Context, limit int) ([]AuditEntry, error
 		if err := rows.Scan(&a.Actor, &a.Action, &a.TargetKind, &a.TargetID, &raw, &a.At); err != nil {
 			return nil, err
 		}
-		if err := json.Unmarshal(raw, &a.Details); err != nil {
-			return nil, fmt.Errorf("unmarshal audit details: %w", err)
+		if err := unmarshalDetails(raw, &a); err != nil {
+			return nil, err
 		}
 		out = append(out, a)
 	}
 	return out, rows.Err()
+}
+
+// unmarshalDetails decodes an audit entry's JSONB details column.
+func unmarshalDetails(raw []byte, a *AuditEntry) error {
+	if err := json.Unmarshal(raw, &a.Details); err != nil {
+		return fmt.Errorf("unmarshal audit details: %w", err)
+	}
+	return nil
 }
