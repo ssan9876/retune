@@ -61,7 +61,7 @@ App deployment, compliance rules, native MDM protocol, SSO, multi-tenancy UI, ag
 | TLS | `self-signed` or `provided` cert | `provided` or `behind-proxy` (LB terminates TLS; mTLS client cert passed via trusted header or TLS passthrough) |
 | CA key | File on disk (`KeyStore` = file) | `KeyStore` = env/secret manager; KMS implementation later |
 
-Config precedence: environment variables > `retune-server.yaml` > defaults. Key settings: `DATABASE_URL`, `PUBLIC_URL`, `TLS_MODE` (`self-signed` | `provided` | `behind-proxy`), `TLS_CERT_FILE`, `TLS_KEY_FILE`, `CA_KEY_SOURCE`, `AGENT_API_LISTEN`, `ADMIN_API_LISTEN`.
+Config precedence: environment variables > `retune-server.yaml` (or the file named by `RETUNE_CONFIG`) > defaults. Key settings: `DATABASE_URL`, `PUBLIC_URL`, `TLS_MODE` (`self-signed` | `provided` | `behind-proxy`), `TLS_CERT_FILE`, `TLS_KEY_FILE`, `CA_KEY_SOURCE`, `AGENT_API_LISTEN`, `DATA_DIR`, `CHECKIN_INTERVAL_SECONDS`, `SESSION_TTL_HOURS`. The admin API and console share the agent listener, so there is no separate admin listener.
 
 In `behind-proxy` mode the agent API requires TLS passthrough or a trusted proxy header carrying the verified client cert; the server refuses to start in `behind-proxy` without one of these configured.
 

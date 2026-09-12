@@ -19,26 +19,46 @@ type Server struct {
 	TLSKeyFile      string
 	DataDir         string
 	CheckinInterval time.Duration
+	SessionTTL      time.Duration
 }
 
 // LoadServer reads configuration from environment variables via getenv.
 func LoadServer(getenv func(string) string) (Server, error) {
-	c := Server{
-		DatabaseURL:     getenv("DATABASE_URL"),
-		PublicURL:       getenv("PUBLIC_URL"),
-		AgentListen:     or(getenv("AGENT_API_LISTEN"), ":8443"),
-		TLSMode:         or(getenv("TLS_MODE"), "self-signed"),
-		TLSCertFile:     getenv("TLS_CERT_FILE"),
-		TLSKeyFile:      getenv("TLS_KEY_FILE"),
-		DataDir:         or(getenv("DATA_DIR"), "data"),
-		CheckinInterval: 5 * time.Minute,
+	fileValues, err := loadConfigFile(getenv)
+	if err != nil {
+		return Server{}, err
 	}
-	if v := getenv("CHECKIN_INTERVAL_SECONDS"); v != "" {
+	// The environment wins; the file fills in the rest.
+	lookup := func(key string) string {
+		if v := getenv(key); v != "" {
+			return v
+		}
+		return fileValues[key]
+	}
+	c := Server{
+		DatabaseURL:     lookup("DATABASE_URL"),
+		PublicURL:       lookup("PUBLIC_URL"),
+		AgentListen:     or(lookup("AGENT_API_LISTEN"), ":8443"),
+		TLSMode:         or(lookup("TLS_MODE"), "self-signed"),
+		TLSCertFile:     lookup("TLS_CERT_FILE"),
+		TLSKeyFile:      lookup("TLS_KEY_FILE"),
+		DataDir:         or(lookup("DATA_DIR"), "data"),
+		CheckinInterval: 5 * time.Minute,
+		SessionTTL:      12 * time.Hour,
+	}
+	if v := lookup("CHECKIN_INTERVAL_SECONDS"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 30 {
 			return Server{}, errors.New("CHECKIN_INTERVAL_SECONDS must be an integer >= 30")
 		}
 		c.CheckinInterval = time.Duration(n) * time.Second
+	}
+	if v := lookup("SESSION_TTL_HOURS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 168 {
+			return Server{}, errors.New("SESSION_TTL_HOURS must be an integer between 1 and 168")
+		}
+		c.SessionTTL = time.Duration(n) * time.Hour
 	}
 	if c.DatabaseURL == "" {
 		return Server{}, errors.New("DATABASE_URL is required")

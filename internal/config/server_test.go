@@ -56,6 +56,24 @@ func TestLoadServerErrors(t *testing.T) {
 	}
 }
 
+func TestSessionTTL(t *testing.T) {
+	base := map[string]string{"DATABASE_URL": "postgres://x", "PUBLIC_URL": "https://h"}
+	c, err := LoadServer(env(base))
+	if err != nil || c.SessionTTL != 12*time.Hour {
+		t.Fatalf("default SessionTTL = %s, err = %v", c.SessionTTL, err)
+	}
+	base["SESSION_TTL_HOURS"] = "36"
+	if c, err = LoadServer(env(base)); err != nil || c.SessionTTL != 36*time.Hour {
+		t.Fatalf("SessionTTL = %s, err = %v", c.SessionTTL, err)
+	}
+	for _, bad := range []string{"0", "-1", "200", "abc"} {
+		base["SESSION_TTL_HOURS"] = bad
+		if _, err := LoadServer(env(base)); err == nil {
+			t.Errorf("SESSION_TTL_HOURS=%s must be rejected", bad)
+		}
+	}
+}
+
 func TestLoadServerProvidedAndInterval(t *testing.T) {
 	c, err := LoadServer(env(map[string]string{
 		"DATABASE_URL": "postgres://x", "PUBLIC_URL": "https://h",
