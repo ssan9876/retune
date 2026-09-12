@@ -1,0 +1,53 @@
+package store
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// Device statuses.
+const (
+	DeviceActive   = "active"
+	DeviceRetired  = "retired"
+	DeviceReplaced = "replaced"
+)
+
+// EnrollmentToken authorizes device enrollment. Only the hash is stored.
+type EnrollmentToken struct {
+	ID        uuid.UUID
+	TokenHash []byte
+	Label     string
+	ExpiresAt *time.Time
+	MaxUses   *int
+	UseCount  int
+	RevokedAt *time.Time
+	CreatedBy string
+	CreatedAt time.Time
+}
+
+// Device is an enrolled endpoint.
+type Device struct {
+	ID            uuid.UUID
+	Hostname      string
+	Serial        string
+	SMBIOSUUID    string
+	OSVersion     string
+	Status        string
+	CertSerial    string
+	CertExpiresAt time.Time
+	LastSeenAt    *time.Time
+	AgentVersion  string
+	EnrolledAt    time.Time
+	ReplacedBy    *uuid.UUID
+}
+
+// AuditEntry records an administrative or security-relevant action.
+type AuditEntry struct {
+	Actor      string
+	Action     string
+	TargetKind string
+	TargetID   string
+	Details    map[string]any
+	At         time.Time
+}
