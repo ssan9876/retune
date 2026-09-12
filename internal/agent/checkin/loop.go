@@ -20,6 +20,10 @@ const (
 	revokedRetry    = 24 * time.Hour
 )
 
+// ErrUnenrolled means the server has unenrolled this device; the loop stops
+// because the local identity is gone.
+var ErrUnenrolled = errors.New("device was unenrolled")
+
 // Checker is the part of the client the loop needs.
 type Checker interface {
 	Checkin(ctx context.Context, req protocol.CheckinRequest) (protocol.CheckinResponse, error)
@@ -36,15 +40,18 @@ type Loop struct {
 	failures int
 }
 
-// Run checks in until ctx is cancelled.
-func (l *Loop) Run(ctx context.Context) {
+// Run checks in until ctx is cancelled, or until the device is unenrolled.
+func (l *Loop) Run(ctx context.Context) error {
 	for {
-		wait, _ := l.RunOnce(ctx)
+		wait, err := l.RunOnce(ctx)
+		if errors.Is(err, ErrUnenrolled) {
+			return err
+		}
 		t := time.NewTimer(wait)
 		select {
 		case <-ctx.Done():
 			t.Stop()
-			return
+			return nil
 		case <-t.C:
 		}
 	}
@@ -67,6 +74,8 @@ func (l *Loop) RunOnce(ctx context.Context) (wait time.Duration, err error) {
 	resp, err := l.Client.Checkin(ctx, l.Facts())
 	var httpErr *client.HTTPError
 	switch {
+	case errors.Is(err, ErrUnenrolled):
+		return 0, err
 	case err == nil:
 		l.failures = 0
 		if resp.IntervalSeconds > 0 {

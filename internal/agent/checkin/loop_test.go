@@ -3,6 +3,7 @@ package checkin
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"testing"
 	"time"
@@ -99,11 +100,30 @@ func TestRunOnceDefaultInterval(t *testing.T) {
 	}
 }
 
+func TestUnenrolledStopsRun(t *testing.T) {
+	f := &fakeChecker{steps: []step{{err: fmt.Errorf("checking in: %w", ErrUnenrolled)}}}
+	err := newLoop(f).Run(context.Background())
+	if !errors.Is(err, ErrUnenrolled) {
+		t.Fatalf("Run = %v, want ErrUnenrolled", err)
+	}
+	if f.calls != 1 {
+		t.Fatalf("calls = %d, want 1", f.calls)
+	}
+}
+
+func TestRunOnceUnenrolled(t *testing.T) {
+	f := &fakeChecker{steps: []step{{err: ErrUnenrolled}}}
+	wait, err := newLoop(f).RunOnce(context.Background())
+	if !errors.Is(err, ErrUnenrolled) || wait != 0 {
+		t.Fatalf("RunOnce = %s, %v", wait, err)
+	}
+}
+
 func TestRunStopsOnCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	f := &fakeChecker{steps: []step{{resp: protocol.CheckinResponse{IntervalSeconds: 3600}}}}
 	done := make(chan struct{})
-	go func() { newLoop(f).Run(ctx); close(done) }()
+	go func() { _ = newLoop(f).Run(ctx); close(done) }()
 	time.Sleep(50 * time.Millisecond)
 	cancel()
 	select {
