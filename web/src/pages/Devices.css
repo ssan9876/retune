@@ -1,0 +1,29 @@
+.devices__search {
+  width: min(320px, 100%);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.devices__table a {
+  color: var(--ink);
+  text-decoration: none;
+  font-family: var(--font-mono);
+}
+
+.devices__table a:hover {
+  text-decoration: underline;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+}
