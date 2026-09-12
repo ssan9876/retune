@@ -144,7 +144,8 @@ Every admin action is recorded: token created/revoked, command issued, device re
 
 ## 6. Ad-hoc commands
 
-- Types: `run_powershell` (script, timeout, run_as), `restart` (delay, message), `refresh_inventory`, `unenroll`.
+- Types: `run_powershell` (script, timeout), `restart` (delay, message), `refresh_inventory`. Ad-hoc scripts run as SYSTEM; `run_as: logged_in_user` arrives with script deployments (M6), which need the same user-token machinery.
+- Unenroll is a device status (`unenrolled`), not a queued command: the server answers every request from an unenrolled device with `410`, so it takes effect even if command delivery fails. The agent then wipes its identity and state.
 - States: `queued → delivered → running → succeeded | failed | timed_out | expired`.
 - TTL default 7 days; the sweeper expires undelivered commands.
 - Result: `POST /api/agent/v1/commands/{id}/result` with exit code, stdout, stderr (each capped at 1 MB), started/finished timestamps.
