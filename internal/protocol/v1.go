@@ -32,9 +32,12 @@ type CheckinRequest struct {
 	InventoryHash string   `json:"inventory_hash"`
 }
 
-// CheckinResponse tells the agent when to check in next.
+// CheckinResponse tells the agent when to check in next, whether inventory
+// is due, and which commands to run.
 type CheckinResponse struct {
-	IntervalSeconds int `json:"interval_seconds"`
+	IntervalSeconds int       `json:"interval_seconds"`
+	InventoryDue    bool      `json:"inventory_due"`
+	Commands        []Command `json:"commands"`
 }
 
 // Error is the JSON body of every non-2xx response.
