@@ -8,9 +8,10 @@ import (
 
 // Device statuses.
 const (
-	DeviceActive   = "active"
-	DeviceRetired  = "retired"
-	DeviceReplaced = "replaced"
+	DeviceActive     = "active"
+	DeviceRetired    = "retired"
+	DeviceReplaced   = "replaced"
+	DeviceUnenrolled = "unenrolled"
 )
 
 // EnrollmentToken authorizes device enrollment. Only the hash is stored.
@@ -37,9 +38,13 @@ type Device struct {
 	CertSerial    string
 	CertExpiresAt time.Time
 	LastSeenAt    *time.Time
-	AgentVersion  string
-	EnrolledAt    time.Time
-	ReplacedBy    *uuid.UUID
+	AgentVersion   string
+	EnrolledAt     time.Time
+	ReplacedBy     *uuid.UUID
+	PrevCertSerial string
+	OSBuild        string
+	Manufacturer   string
+	Model          string
 }
 
 // AuditEntry records an administrative or security-relevant action.
