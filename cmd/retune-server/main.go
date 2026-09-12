@@ -29,7 +29,13 @@ commands:
   serve                  run the server
   migrate                apply database migrations
   token create [flags]   create an enrollment token (--label, --max-uses, --expires-in)
-  ca fingerprint         print the internal CA fingerprint for agent pinning`
+  ca fingerprint         print the internal CA fingerprint for agent pinning
+  device list            list enrolled devices
+  device show <id>       show one device with its inventory and recent commands
+  device retire <id>     stop accepting check-ins from a device
+  device unenroll <id>   tell the agent to delete its identity and state
+  command queue [flags]  queue a command (--device, --type, --script, --script-file, --timeout, --delay, --message, --ttl)
+  command show <id>      show a command and its result`
 
 func main() {
 	if err := run(context.Background(), os.Args[1:], os.Getenv, os.Stdout); err != nil {
@@ -55,9 +61,22 @@ func run(ctx context.Context, args []string, getenv func(string) string, out io.
 		return tokenCmd(ctx, args[1:], getenv, out)
 	case "ca":
 		return caCmd(ctx, args[1:], getenv, out)
+	case "device":
+		return deviceCmd(ctx, args[1:], getenv, out)
+	case "command":
+		return commandCmd(ctx, args[1:], getenv, out)
 	default:
 		return fmt.Errorf("unknown command %q\n%s", args[0], usage)
 	}
+}
+
+// openStore connects to the database named by DATABASE_URL.
+func openStore(ctx context.Context, getenv func(string) string) (*store.Store, error) {
+	url := getenv("DATABASE_URL")
+	if url == "" {
+		return nil, errors.New("DATABASE_URL is required")
+	}
+	return store.Open(ctx, url)
 }
 
 func serve(ctx context.Context, getenv func(string) string) error {
@@ -111,11 +130,7 @@ func tokenCmd(ctx context.Context, args []string, getenv func(string) string, ou
 	if *maxUses < 0 || *expiresIn < 0 {
 		return errors.New("--max-uses and --expires-in must not be negative")
 	}
-	url := getenv("DATABASE_URL")
-	if url == "" {
-		return errors.New("DATABASE_URL is required")
-	}
-	st, err := store.Open(ctx, url)
+	st, err := openStore(ctx, getenv)
 	if err != nil {
 		return err
 	}
