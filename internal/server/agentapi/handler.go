@@ -540,6 +540,12 @@ func (h *Handler) appResult(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "app_not_found", "unknown app")
 		return
 	}
+	// Gating the write side the same as the read side means a device whose
+	// assignment is revoked between an install starting and its result
+	// arriving gets a 404 and the result is dropped rather than recorded.
+	// That is the correct trade -- an agent must never be able to write
+	// history for something it was never given -- but it does mean a result
+	// can be lost to a race with revocation, not just rejected outright.
 	ctx := r.Context()
 	allowed, err := h.Store.Q().DeviceHasItem(ctx, a.Device.ID, protocol.ItemKindApp, id)
 	if err != nil {

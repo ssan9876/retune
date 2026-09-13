@@ -99,6 +99,19 @@ func TestAgentReadsOnlyAssignedApps(t *testing.T) {
 		t.Fatalf("an unassigned app must not be readable, got %d", status)
 	}
 
+	// The write side needs the same gate: an agent must not be able to forge
+	// history for something it was never given, even though the app itself
+	// genuinely exists.
+	status, _ = send(t, agent, http.MethodPost,
+		srv.URL+"/api/agent/v1/apps/"+app.ID+"/result",
+		protocol.AppResult{
+			Version: 1, Intent: protocol.IntentInstall, Status: protocol.ResultSucceeded,
+			InstalledVersion: "26.03",
+		})
+	if status != http.StatusNotFound {
+		t.Fatalf("a result for an unassigned app must not be accepted, got %d", status)
+	}
+
 	status, body = admin.do(http.MethodPost, "/assignments", map[string]any{
 		"item_kind": "app", "item_id": app.ID,
 		"group_id": "00000000-0000-0000-0000-000000000002", "mode": "include",
