@@ -1,0 +1,93 @@
+package apps
+
+import (
+	"slices"
+	"strings"
+	"testing"
+
+	"retune/internal/protocol"
+)
+
+// The msstore source prompts for an agreement and sends the machine's region
+// upstream, so every invocation pins the winget source.
+func TestEveryCommandPinsTheSource(t *testing.T) {
+	cases := map[string][]string{
+		"detect":    detectArgs("7zip.7zip"),
+		"install":   installArgs(protocol.AppVersionResponse{PackageID: "7zip.7zip", Scope: "machine"}),
+		"uninstall": uninstallArgs("7zip.7zip"),
+	}
+	for name, args := range cases {
+		t.Run(name, func(t *testing.T) {
+			if !slices.Contains(args, "--source") || !slices.Contains(args, "winget") {
+				t.Errorf("%v should pin --source winget", args)
+			}
+			if !slices.Contains(args, "--exact") {
+				t.Errorf("%v should match the id exactly, or a search could install the wrong thing", args)
+			}
+			if !slices.Contains(args, "--disable-interactivity") {
+				t.Errorf("%v runs unattended and must never wait for a person", args)
+			}
+		})
+	}
+}
+
+// An install is silent, machine-wide, and pins the version when one is asked
+// for. Extra arguments the author supplied come last, so they reach the
+// installer rather than winget.
+func TestInstallArgs(t *testing.T) {
+	args := installArgs(protocol.AppVersionResponse{
+		PackageID: "7zip.7zip", PinnedVersion: "26.03", Scope: "machine",
+		InstallArgs: "/NORESTART",
+	})
+	joined := strings.Join(args, " ")
+	for _, want := range []string{
+		"install", "--id 7zip.7zip", "--version 26.03", "--scope machine",
+		"--silent", "--accept-package-agreements",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("%q should contain %q", joined, want)
+		}
+	}
+	if args[len(args)-1] != "/NORESTART" {
+		t.Errorf("author arguments belong last, got %v", args)
+	}
+
+	// With nothing pinned, no --version is passed at all: winget then
+	// installs whatever is current, which is what an unpinned app means.
+	plain := installArgs(protocol.AppVersionResponse{PackageID: "7zip.7zip", Scope: "machine"})
+	if slices.Contains(plain, "--version") {
+		t.Errorf("an unpinned app should not pin a version, got %v", plain)
+	}
+}
+
+// "Not installed" is a specific exit code, not empty output. Treating it as a
+// failure would make every first install look broken.
+func TestClassify(t *testing.T) {
+	cases := map[int]Outcome{
+		0:                  OutcomeSucceeded,
+		NotInstalledExit:   OutcomeNotInstalled,
+		RebootRequiredExit: OutcomeRebootRequired,
+		1:                  OutcomeFailed,
+		-1:                 OutcomeFailed,
+	}
+	for code, want := range cases {
+		if got := classify(code); got != want {
+			t.Errorf("classify(%d) = %v, want %v", code, got, want)
+		}
+	}
+}
+
+// winget prints a table; the installed version is the column after the id.
+func TestInstalledVersion(t *testing.T) {
+	const out = `
+Name                 Id          Version
+-----------------------------------------
+7-Zip                7zip.7zip   26.03
+`
+	if got := installedVersion(out, "7zip.7zip"); got != "26.03" {
+		t.Errorf("installedVersion = %q, want 26.03", got)
+	}
+	if got := installedVersion("No installed package found matching input criteria.", "7zip.7zip"); got != "" {
+		t.Errorf("nothing installed means no version, got %q", got)
+	}
+}
