@@ -11,6 +11,9 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
+  /* Grid items default to min-width: auto, which lets a wide child hold the
+     column open past the viewport. Both columns opt out and scroll instead. */
+  min-width: 0;
 }
 
 .rail__mark {
@@ -54,6 +57,7 @@
 .content {
   padding: var(--space-6) var(--space-8);
   max-width: 1200px;
+  min-width: 0;
 }
 
 .content__head {
@@ -68,16 +72,34 @@
 @media (max-width: 720px) {
   .shell {
     grid-template-columns: 1fr;
+    /* Without an explicit row list both rows stretch to share the viewport
+       height, which turns the rail into a third of the screen. */
+    grid-template-rows: auto 1fr;
   }
 
   .rail {
     border-right: 0;
     border-bottom: 1px solid var(--rule);
+    gap: var(--space-3);
   }
 
+  /* The footer is pinned to the bottom of the side rail; as a header it sits
+     on one line with the sign-out button. */
+  .rail__footer {
+    margin-top: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  /* The rail becomes a row of tabs above the content. They keep their full
+     labels and scroll sideways rather than compressing to fit. */
   .rail nav {
     grid-auto-flow: column;
+    grid-auto-columns: max-content;
     overflow-x: auto;
+    min-width: 0;
   }
 
   .content {

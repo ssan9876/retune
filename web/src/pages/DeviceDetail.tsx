@@ -137,51 +137,55 @@ export default function DeviceDetail() {
       </div>
 
       {tab === "software" ? (
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Version</th>
-              <th>Publisher</th>
-              <th>Scope</th>
-            </tr>
-          </thead>
-          <tbody>
-            {software.map((item) => (
-              <tr key={`${item.name}-${item.version}-${item.scope}`}>
-                <td>{item.name}</td>
-                <td className="mono">{item.version || "—"}</td>
-                <td>{item.publisher || "—"}</td>
-                <td>{item.scope}</td>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Version</th>
+                <th>Publisher</th>
+                <th>Scope</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {software.map((item) => (
+                <tr key={`${item.name}-${item.version}-${item.scope}`}>
+                  <td>{item.name}</td>
+                  <td className="mono">{item.version || "—"}</td>
+                  <td>{item.publisher || "—"}</td>
+                  <td>{item.scope}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Type</th>
-              <th>Status</th>
-              <th>Queued</th>
-              <th>By</th>
-            </tr>
-          </thead>
-          <tbody>
-            {commands.map((command) => (
-              <tr key={command.id}>
-                <td>
-                  <Link to={`/commands?device_id=${device.id}`}>{command.type}</Link>
-                </td>
-                <td>
-                  <StatusDot status={command.status} />
-                </td>
-                <td>{relative(command.created_at)}</td>
-                <td>{command.created_by}</td>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Queued</th>
+                <th>By</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {commands.map((command) => (
+                <tr key={command.id}>
+                  <td>
+                    <Link to={`/commands?device_id=${device.id}`}>{command.type}</Link>
+                  </td>
+                  <td>
+                    <StatusDot status={command.status} />
+                  </td>
+                  <td>{relative(command.created_at)}</td>
+                  <td>{command.created_by}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       <RunScriptDialog

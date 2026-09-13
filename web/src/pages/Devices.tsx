@@ -105,34 +105,36 @@ export default function Devices() {
       ) : null}
 
       {shown.length > 0 ? (
-        <table className="devices__table">
-          <thead>
-            <tr>
-              <th>Hostname</th>
-              <th>Status</th>
-              <th>Operating system</th>
-              <th>Last seen</th>
-              <th>Agent</th>
-            </tr>
-          </thead>
-          <tbody>
-            {shown.map((device) => (
-              <tr key={device.id}>
-                <td>
-                  <Link to={`/devices/${device.id}`}>{device.hostname}</Link>
-                </td>
-                <td>
-                  <StatusDot
-                    status={device.status === "active" && device.stale ? "stale" : device.status}
-                  />
-                </td>
-                <td>{device.os_version || "—"}</td>
-                <td>{relative(device.last_seen_at)}</td>
-                <td className="mono">{device.agent_version || "—"}</td>
+        <div className="table-scroll">
+          <table className="devices__table">
+            <thead>
+              <tr>
+                <th>Hostname</th>
+                <th>Status</th>
+                <th>Operating system</th>
+                <th>Last seen</th>
+                <th>Agent</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {shown.map((device) => (
+                <tr key={device.id}>
+                  <td>
+                    <Link to={`/devices/${device.id}`}>{device.hostname}</Link>
+                  </td>
+                  <td>
+                    <StatusDot
+                      status={device.status === "active" && device.stale ? "stale" : device.status}
+                    />
+                  </td>
+                  <td>{device.os_version || "—"}</td>
+                  <td>{relative(device.last_seen_at)}</td>
+                  <td className="mono">{device.agent_version || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : null}
 
       {total > items.length ? (
