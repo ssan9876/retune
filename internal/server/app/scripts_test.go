@@ -268,3 +268,49 @@ func TestRunAsUserIsReportedPendingAndNotSent(t *testing.T) {
 		t.Errorf("the detail should say why, got %q", resp.Items[0].Detail)
 	}
 }
+
+// The per-device status says which version it refers to, so "succeeded" is
+// never ambiguous after an edit.
+func TestItemStatusCarriesTheVersion(t *testing.T) {
+	a, srv := newTestApp(t)
+	admin := signedIn(t, a, srv, store.RoleAdmin)
+	_, agent := enrollDevice(t, a, srv, "DESKTOP-VERSIONSTATUS")
+
+	status, body := admin.do(http.MethodPost, "/scripts", map[string]string{
+		"name": "Versioned status", "body": "one",
+	})
+	if status != http.StatusCreated {
+		t.Fatalf("create: %d %s", status, body)
+	}
+	script := decodeJSON[scriptResp](t, body)
+	assignScript(t, admin, script.ID, nil)
+
+	if status, body := admin.do(http.MethodPost, "/scripts/"+script.ID, map[string]string{
+		"name": "Versioned status", "body": "two",
+	}); status != http.StatusOK {
+		t.Fatalf("update: %d %s", status, body)
+	}
+
+	status, body = send(t, agent, http.MethodPost,
+		fmt.Sprintf("%s/api/agent/v1/scripts/%s/runs", srv.URL, script.ID),
+		protocol.ScriptRun{
+			Version: 2, Status: protocol.ResultSucceeded, Phase: protocol.PhaseScript,
+		})
+	if status != http.StatusNoContent {
+		t.Fatalf("report: %d %s", status, body)
+	}
+
+	status, body = admin.do(http.MethodGet, "/items/script/"+script.ID+"/status", nil)
+	if status != http.StatusOK {
+		t.Fatalf("status: %d %s", status, body)
+	}
+	resp := decodeJSON[struct {
+		Items []struct {
+			Status  string `json:"status"`
+			Version int    `json:"version"`
+		} `json:"items"`
+	}](t, body)
+	if len(resp.Items) != 1 || resp.Items[0].Version != 2 {
+		t.Fatalf("the status should name version 2, got %+v", resp.Items)
+	}
+}

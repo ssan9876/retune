@@ -427,17 +427,20 @@ func (h *Handler) itemStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type row struct {
-		DeviceID  string    `json:"device_id"`
-		Hostname  string    `json:"hostname"`
-		Status    string    `json:"status"`
-		Detail    string    `json:"detail"`
+		DeviceID string `json:"device_id"`
+		Hostname string `json:"hostname"`
+		Status   string `json:"status"`
+		Detail   string `json:"detail"`
+		// Version says which version of the item the status refers to, so the
+		// console can report "succeeded on version 3".
+		Version   int       `json:"version"`
 		UpdatedAt time.Time `json:"updated_at"`
 	}
 	items := make([]row, 0, len(rows))
 	for _, s := range rows {
 		items = append(items, row{
 			DeviceID: s.DeviceID.String(), Hostname: s.Hostname,
-			Status: s.Status, Detail: s.Detail, UpdatedAt: s.UpdatedAt,
+			Status: s.Status, Detail: s.Detail, Version: s.Version, UpdatedAt: s.UpdatedAt,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
