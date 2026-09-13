@@ -26,3 +26,7 @@ func uninstallService() error {
 
 // secureDataDir is a no-op: the directory is already created with 0700.
 func secureDataDir(string) error { return nil }
+
+// There is no Event Log to register with away from Windows.
+func registerEventLogSource() error { return nil }
+func removeEventLogSource() error   { return nil }

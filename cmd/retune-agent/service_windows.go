@@ -155,10 +155,28 @@ func installService(exePath string) error {
 		return fmt.Errorf("set recovery actions: %w", err)
 	}
 
-	err = eventlog.InstallAsEventCreate(serviceName, eventlog.Error|eventlog.Warning|eventlog.Info)
-	if err != nil && !strings.Contains(err.Error(), "already exists") {
+	if err := registerEventLogSource(); err != nil {
 		s.Delete()
+		return err
+	}
+	return nil
+}
+
+// registerEventLogSource makes the Event Log render the agent's messages
+// properly. Without it Windows invents a bare source and every entry is
+// wrapped in "the description for Event ID 1 cannot be found".
+func registerEventLogSource() error {
+	err := eventlog.InstallAsEventCreate(serviceName, eventlog.Error|eventlog.Warning|eventlog.Info)
+	if err != nil && !strings.Contains(err.Error(), "already exists") {
 		return fmt.Errorf("register the event log source: %w", err)
+	}
+	return nil
+}
+
+// removeEventLogSource deregisters the source, tolerating its absence.
+func removeEventLogSource() error {
+	if err := eventlog.Remove(serviceName); err != nil && !strings.Contains(err.Error(), "not exist") {
+		return err
 	}
 	return nil
 }
@@ -184,10 +202,8 @@ func uninstallService() error {
 	if err := s.Delete(); err != nil {
 		return adminError(err)
 	}
-	if err := eventlog.Remove(serviceName); err != nil && !strings.Contains(err.Error(), "not exist") {
-		// The service is gone, which is what was asked for.
-		return nil
-	}
+	// The service is gone either way, which is what was asked for.
+	_ = removeEventLogSource()
 	return nil
 }
 

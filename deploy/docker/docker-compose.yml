@@ -24,6 +24,7 @@ services:
       # The address agents will use to reach this server.
       PUBLIC_URL: ${PUBLIC_URL:-https://localhost:8443}
       DATA_DIR: /var/lib/retune
+      SWEEP_INTERVAL_SECONDS: ${SWEEP_INTERVAL_SECONDS:-300}
     ports:
       - "8443:8443"
     volumes:

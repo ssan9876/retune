@@ -63,21 +63,37 @@
     <!-- Writing the settings file through the agent itself keeps one copy of
          the logic: the same code that reads agent.yaml writes it, and it also
          restricts the data directory to SYSTEM and Administrators. -->
+    <!-- The command line carries the enrollment token, so the property that
+         holds it is hidden: without this the token appears in verbose installer
+         logs three times over, in the property change, the scheduled action's
+         data, and the final property dump. SilentExec rather than QuietExec for
+         the same reason: QuietExec logs the command line it runs.
+
+         One occurrence survives. Windows Installer logs a deferred action's
+         CustomActionData in its "Executing op: CustomActionSchedule" line and
+         does not honour MsiHiddenProperties there, so a log taken with /l*v
+         contains the token. Nothing in the package can suppress it. It only
+         matters when an administrator asks for verbose logging (msiexec writes
+         no log by default), and the token is spent seconds later, but prefer
+         single-use tokens and delete such logs. -->
+    <Property Id="ConfigureAgent" Hidden="yes" />
     <CustomAction Id="SetConfigureCommand"
                   Property="ConfigureAgent"
                   Value="&quot;[INSTALLFOLDER]retune-agent.exe&quot; configure --server &quot;[SERVER_URL]&quot; --token &quot;[ENROLL_TOKEN]&quot; --pin &quot;[SERVER_CERT_FINGERPRINT]&quot;" />
     <CustomAction Id="ConfigureAgent"
                   BinaryRef="Wix4UtilCA_X64"
-                  DllEntry="WixQuietExec64"
+                  DllEntry="WixSilentExec64"
                   Execute="deferred"
                   Impersonate="no"
                   Return="check" />
 
-    <!-- Remove the identity, state and settings on uninstall. A reinstall
-         needs a fresh token in any case, because the old one is spent. -->
+    <!-- Remove the identity, state, settings and Event Log source on
+         uninstall. A reinstall needs a fresh token in any case, because the
+         old one is spent. This runs the agent, so it must happen while the
+         executable is still on disk. -->
     <CustomAction Id="SetRemoveDataCommand"
                   Property="RemoveAgentData"
-                  Value="&quot;[System64Folder]cmd.exe&quot; /c rd /s /q &quot;[CommonAppDataFolder]Retune&quot;" />
+                  Value="&quot;[INSTALLFOLDER]retune-agent.exe&quot; cleanup --data-dir &quot;[CommonAppDataFolder]Retune&quot;" />
     <CustomAction Id="RemoveAgentData"
                   BinaryRef="Wix4UtilCA_X64"
                   DllEntry="WixQuietExec64"
@@ -95,7 +111,9 @@
 
       <Custom Action="SetRemoveDataCommand" Before="RemoveAgentData"
               Condition="REMOVE=&quot;ALL&quot;" />
-      <Custom Action="RemoveAgentData" After="RemoveFiles"
+      <!-- Before RemoveFiles: the action runs retune-agent.exe, which
+           RemoveFiles is about to delete. -->
+      <Custom Action="RemoveAgentData" Before="RemoveFiles"
               Condition="REMOVE=&quot;ALL&quot;" />
     </InstallExecuteSequence>
   </Package>

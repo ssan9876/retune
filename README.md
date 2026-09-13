@@ -139,6 +139,12 @@ msiexec /i retune-agent.msi SERVER_URL=https://mdm.example.com ENROLL_TOKEN=<TOK
 The installer writes the settings and the service enrolls on its first start,
 retrying until the server is reachable, so an install does not fail because the
 network was not ready. The token is removed from disk once it has been spent.
+
+One caveat: if you install with verbose logging (`/l*v`), the enrollment token
+appears in that log. Windows Installer records a deferred action's data
+verbatim and ignores the package's request to hide it, so this cannot be fixed
+from the installer. `msiexec` writes no log unless asked, and the token is
+spent within seconds, but prefer `--max-uses 1` tokens and delete verbose logs.
 Build the MSI with `pwsh deploy/msi/build.ps1` (or `make msi`), which needs the
 WiX 5 CLI: `dotnet tool install --global wix`.
 

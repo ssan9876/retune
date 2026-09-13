@@ -108,8 +108,27 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 		if err := secureDataDir(*dataDir); err != nil {
 			return err
 		}
+		// The MSI installs the service itself, so this is the only place on
+		// that path where the Event Log source gets registered.
+		if err := registerEventLogSource(); err != nil {
+			return err
+		}
 		fmt.Fprintf(out, "Wrote %s; the service will enroll on its next start.\n",
 			filepath.Join(*dataDir, agentcfg.FileName))
+		return nil
+
+	case "cleanup":
+		// Run by the installer on uninstall, before the executable is removed.
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if err := removeEventLogSource(); err != nil {
+			return err
+		}
+		if err := os.RemoveAll(*dataDir); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "Removed %s and the Event Log source.\n", *dataDir)
 		return nil
 
 	case "install":
