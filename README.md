@@ -23,6 +23,8 @@ Go agent runs on each machine.
 - **Configuration profiles.** A versioned statement of how a machine should be
   — registry values, services, local group members and files — that the agent
   keeps true, with conflict detection and optional revert.
+- **Application deployment.** winget packages assigned to groups, installed by
+  the agent and removed on request, with per-device history.
 - **Packaging.** A container image and Compose stack for the server, and an MSI
   that installs the agent as a Windows service which enrolls itself.
 
@@ -271,6 +273,37 @@ this way is limited to 8 KiB.
 
 Every run is kept, so you can see whether a script is flapping rather than only
 its latest state. Deleting a script removes its assignments and keeps its runs.
+
+## Applications
+
+Apps live under **Apps**. An app is a winget package — a package ID, and
+optionally an exact version. Every change to what gets installed creates a new
+immutable version; renaming or re-describing an app does not.
+
+Assign one to a group and choose what to do:
+
+| Option | Default | Meaning |
+|---|---|---|
+| What to do | install | `install`, or `uninstall` to remove it |
+| Timeout | 900 seconds | per winget invocation, 60 to 14400 |
+
+**Removal is deliberate.** A device that drops out of a group keeps the
+software. To take something away, assign the app with uninstall intent — so a
+dynamic group whose rule stops matching never quietly wipes software off
+machines.
+
+Retune installs what is missing and then leaves it alone: it does not upgrade
+an app when a newer release appears upstream. Moving a fleet to a new version
+means pinning one, which is a deliberate act with a version number attached.
+It does re-check about once an hour, and puts back anything that has been
+uninstalled, because an app assigned to a group should be on the machines in
+that group.
+
+Installs run as the system account, machine-wide. There is no per-user scope:
+the agent is LocalSystem, so a user-scope install would land in the system
+account's profile rather than anyone's.
+
+A machine with no App Installer reports that plainly and installs nothing.
 
 ## Configuration profiles
 
