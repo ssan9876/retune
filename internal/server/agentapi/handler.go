@@ -65,6 +65,8 @@ func (h *Handler) Routes() http.Handler {
 	mux.Handle("POST /api/agent/v1/scripts/{id}/runs", h.requireDevice(h.scriptRun))
 	mux.Handle("GET /api/agent/v1/profiles/{id}/versions/{version}", h.requireDevice(h.profileVersion))
 	mux.Handle("POST /api/agent/v1/profiles/{id}/status", h.requireDevice(h.profileStatus))
+	mux.Handle("GET /api/agent/v1/apps/{id}/versions/{version}", h.requireDevice(h.appVersion))
+	mux.Handle("POST /api/agent/v1/apps/{id}/result", h.requireDevice(h.appResult))
 	mux.Handle("GET /api/agent/v1/bitlocker", h.requireDevice(h.bitlockerStatus))
 	mux.Handle("POST /api/agent/v1/bitlocker", h.requireDevice(h.escrowBitLocker))
 	return mux
@@ -240,6 +242,13 @@ func (h *Handler) itemVersion(ctx context.Context, it store.Item) (int, bool) {
 			return 0, false
 		}
 		return pr.CurrentVersion, true
+	case protocol.ItemKindApp:
+		app, err := h.Apps.Get(ctx, it.ID)
+		if err != nil {
+			h.Log.Warn("assigned app is missing", "app_id", it.ID, "error", err)
+			return 0, false
+		}
+		return app.CurrentVersion, true
 	}
 	return 0, false
 }
@@ -476,6 +485,86 @@ func (h *Handler) bitlockerStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, protocol.BitLockerHasResponse{Escrowed: has})
+}
+
+// appVersion hands a device the definition of an assigned app. As with
+// scripts and profiles, a device may only read what it has been given, so an
+// unassigned app is a 404 -- the same answer as one that does not exist.
+func (h *Handler) appVersion(w http.ResponseWriter, r *http.Request) {
+	a := auth(r)
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "app_not_found", "unknown app")
+		return
+	}
+	version, err := strconv.Atoi(r.PathValue("version"))
+	if err != nil || version < 1 {
+		writeError(w, http.StatusNotFound, "app_not_found", "unknown app version")
+		return
+	}
+	ctx := r.Context()
+	allowed, err := h.Store.Q().DeviceHasItem(ctx, a.Device.ID, protocol.ItemKindApp, id)
+	if err != nil {
+		h.Log.Error("check app assignment", "device_id", a.Device.ID, "app_id", id, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+		return
+	}
+	if !allowed {
+		writeError(w, http.StatusNotFound, "app_not_found", "unknown app")
+		return
+	}
+	v, err := h.Apps.Version(ctx, id, version)
+	if errors.Is(err, apps.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "app_not_found", "unknown app version")
+		return
+	}
+	if err != nil {
+		h.Log.Error("read app version", "app_id", id, "version", version, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+		return
+	}
+	writeJSON(w, http.StatusOK, protocol.AppVersionResponse{
+		Version: v.Version, PackageID: v.PackageID, PinnedVersion: v.PinnedVersion,
+		Scope: v.Scope, InstallArgs: v.InstallArgs, Hash: v.Hash,
+	})
+}
+
+// appResult records one install or uninstall reported by a device. Unlike
+// scriptRun, this endpoint too must gate on assignment: an app is not offered
+// by ID alone anywhere else in the agent API, but the same 404-for-both-cases
+// rule applies to writes as to reads.
+func (h *Handler) appResult(w http.ResponseWriter, r *http.Request) {
+	a := auth(r)
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "app_not_found", "unknown app")
+		return
+	}
+	ctx := r.Context()
+	allowed, err := h.Store.Q().DeviceHasItem(ctx, a.Device.ID, protocol.ItemKindApp, id)
+	if err != nil {
+		h.Log.Error("check app assignment", "device_id", a.Device.ID, "app_id", id, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+		return
+	}
+	if !allowed {
+		writeError(w, http.StatusNotFound, "app_not_found", "unknown app")
+		return
+	}
+	var res protocol.AppResult
+	if !decode(w, r, &res, maxResultBody) {
+		return
+	}
+	err = h.Apps.RecordInstall(ctx, a.Device.ID, id, res)
+	switch {
+	case err == nil:
+		writeNoContent(w)
+	case errors.Is(err, apps.ErrBadRequest):
+		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
+	default:
+		h.Log.Error("record app install", "device_id", a.Device.ID, "app_id", id, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+	}
 }
 
 // escrowBitLocker stores a recovery password. The key is never logged, here or
