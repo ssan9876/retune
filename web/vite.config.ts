@@ -13,7 +13,12 @@ export default defineConfig({
   server: {
     proxy: {
       // `npm run dev` talks to a locally running retune-server.
-      "/api": { target: "https://localhost:8443", changeOrigin: true, secure: false },
+      "/api": {
+        // RETUNE_DEV_PROXY points at a locally running retune-server.
+        target: process.env.RETUNE_DEV_PROXY ?? "https://localhost:8443",
+        changeOrigin: true,
+        secure: false, // the server uses its own self-signed certificate
+      },
     },
   },
   test: {
