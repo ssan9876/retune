@@ -147,3 +147,41 @@ export interface ScriptRun {
   started_at: string;
   finished_at: string;
 }
+
+export interface Setting {
+  kind: string;
+  hive?: string;
+  key?: string;
+  name?: string;
+  type?: string;
+  data?: string;
+  startup?: string;
+  state?: string;
+  group?: string;
+  members?: string[];
+  mode?: string;
+  path?: string;
+  content_base64?: string;
+  ensure?: string;
+}
+
+export interface Profile {
+  id: string;
+  name: string;
+  description: string;
+  current_version: number;
+  settings?: Setting[];
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+}
+
+export interface SettingStatus {
+  device_id: string;
+  hostname: string;
+  identity: string;
+  version: number;
+  status: string;
+  detail: string;
+  updated_at: string;
+}

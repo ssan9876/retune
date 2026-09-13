@@ -1,0 +1,578 @@
+import { useEffect, useState } from "react";
+
+import { api } from "../api/client";
+import type { Group, Profile, Setting, SettingStatus } from "../api/types";
+import { StatusDot } from "../components/StatusDot";
+import { Button, Dialog, EmptyState, ErrorNote, Field, Spinner } from "../components/ui";
+import { useList } from "../hooks/useList";
+import { useSession } from "../session/SessionContext";
+import { relative } from "./Devices";
+import "./Profiles.css";
+
+const ITEM_KIND = "profile";
+
+const KINDS = [
+  { value: "registry", label: "Registry value" },
+  { value: "service", label: "Service" },
+  { value: "local_group_members", label: "Local group members" },
+  { value: "file", label: "File" },
+];
+
+function blankSetting(kind: string): Setting {
+  switch (kind) {
+    case "service":
+      return { kind, name: "", startup: "automatic", state: "running" };
+    case "local_group_members":
+      return { kind, group: "", members: [], mode: "additive" };
+    case "file":
+      return { kind, path: "", content_base64: "", ensure: "present" };
+    default:
+      return { kind: "registry", hive: "HKLM", key: "", name: "", type: "REG_SZ", data: "" };
+  }
+}
+
+/** describe summarises a setting for the list, in the words of what it does. */
+function describe(s: Setting): string {
+  switch (s.kind) {
+    case "registry":
+      return s.ensure === "absent"
+        ? `Remove ${s.hive}\\${s.key}\\${s.name}`
+        : `${s.hive}\\${s.key}\\${s.name} = ${s.data} (${s.type})`;
+    case "service":
+      return [
+        s.name,
+        s.startup ? `starts ${s.startup}` : "",
+        s.state ? `should be ${s.state}` : "",
+      ]
+        .filter(Boolean)
+        .join(", ");
+    case "local_group_members":
+      return `${s.group}: ${s.mode === "exact" ? "exactly" : "at least"} ${(s.members ?? []).join(", ") || "nobody"}`;
+    case "file":
+      return s.ensure === "absent" ? `Remove ${s.path}` : `Write ${s.path}`;
+    default:
+      return s.kind;
+  }
+}
+
+/** SettingFields renders the fields the chosen kind needs, and nothing else. */
+function SettingFields({
+  setting,
+  onChange,
+}: {
+  setting: Setting;
+  onChange: (next: Setting) => void;
+}) {
+  const set = (patch: Partial<Setting>) => onChange({ ...setting, ...patch });
+
+  if (setting.kind === "registry") {
+    return (
+      <>
+        <Field label="Key" hint="Under HKEY_LOCAL_MACHINE. The signed-in user's hive is not supported yet.">
+          <input value={setting.key ?? ""} onChange={(e) => set({ key: e.target.value })} />
+        </Field>
+        <Field label="Value name">
+          <input value={setting.name ?? ""} onChange={(e) => set({ name: e.target.value })} />
+        </Field>
+        <Field label="Should it exist?">
+          <select value={setting.ensure || "present"} onChange={(e) => set({ ensure: e.target.value })}>
+            <option value="present">Set this value</option>
+            <option value="absent">Remove this value</option>
+          </select>
+        </Field>
+        {setting.ensure !== "absent" ? (
+          <>
+            <Field label="Type">
+              <select value={setting.type ?? "REG_SZ"} onChange={(e) => set({ type: e.target.value })}>
+                {["REG_SZ", "REG_EXPAND_SZ", "REG_DWORD", "REG_QWORD", "REG_MULTI_SZ"].map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field
+              label="Data"
+              hint={setting.type === "REG_MULTI_SZ" ? "One string per line." : undefined}
+            >
+              <input value={setting.data ?? ""} onChange={(e) => set({ data: e.target.value })} />
+            </Field>
+          </>
+        ) : null}
+      </>
+    );
+  }
+
+  if (setting.kind === "service") {
+    return (
+      <>
+        <Field label="Service name">
+          <input value={setting.name ?? ""} onChange={(e) => set({ name: e.target.value })} />
+        </Field>
+        <Field label="Startup type">
+          <select value={setting.startup ?? ""} onChange={(e) => set({ startup: e.target.value })}>
+            <option value="">Leave alone</option>
+            <option value="automatic">Automatic</option>
+            <option value="manual">Manual</option>
+            <option value="disabled">Disabled</option>
+          </select>
+        </Field>
+        <Field label="It should be">
+          <select value={setting.state ?? ""} onChange={(e) => set({ state: e.target.value })}>
+            <option value="">Leave alone</option>
+            <option value="running">Running</option>
+            <option value="stopped">Stopped</option>
+          </select>
+        </Field>
+      </>
+    );
+  }
+
+  if (setting.kind === "local_group_members") {
+    return (
+      <>
+        <Field label="Group">
+          <input value={setting.group ?? ""} onChange={(e) => set({ group: e.target.value })} />
+        </Field>
+        <Field label="Members" hint="One per line.">
+          <textarea
+            className="mono"
+            rows={3}
+            value={(setting.members ?? []).join("\n")}
+            onChange={(e) =>
+              set({ members: e.target.value.split("\n").map((m) => m.trim()).filter(Boolean) })
+            }
+          />
+        </Field>
+        <Field
+          label="Mode"
+          hint={
+            setting.mode === "exact"
+              ? "Anyone else is removed, except the built-in Administrator, which is never removed."
+              : "Adds these members and leaves everyone else alone."
+          }
+        >
+          <select value={setting.mode ?? "additive"} onChange={(e) => set({ mode: e.target.value })}>
+            <option value="additive">At least these members</option>
+            <option value="exact">Exactly these members</option>
+          </select>
+        </Field>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Field label="Path">
+        <input value={setting.path ?? ""} onChange={(e) => set({ path: e.target.value })} />
+      </Field>
+      <Field label="Should it exist?">
+        <select value={setting.ensure || "present"} onChange={(e) => set({ ensure: e.target.value })}>
+          <option value="present">Write this file</option>
+          <option value="absent">Remove this file</option>
+        </select>
+      </Field>
+      {setting.ensure !== "absent" ? (
+        <Field label="Contents">
+          <textarea
+            className="mono"
+            rows={4}
+            value={decodeContent(setting.content_base64 ?? "")}
+            onChange={(e) => set({ content_base64: encodeContent(e.target.value) })}
+          />
+        </Field>
+      ) : null}
+    </>
+  );
+}
+
+function encodeContent(text: string): string {
+  return btoa(String.fromCharCode(...new TextEncoder().encode(text)));
+}
+
+function decodeContent(encoded: string): string {
+  try {
+    return new TextDecoder().decode(Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0)));
+  } catch {
+    return "";
+  }
+}
+
+function ProfileEditor({
+  profile,
+  open,
+  onClose,
+  onSaved,
+}: {
+  profile: Profile | null;
+  open: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [settings, setSettings] = useState<Setting[]>([]);
+  const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setName(profile?.name ?? "");
+    setDescription(profile?.description ?? "");
+    setSettings(profile?.settings ?? []);
+    setError(null);
+  }, [open, profile]);
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      const payload = { name, description, settings };
+      if (profile) {
+        await api.post(`/profiles/${profile.id}`, payload);
+      } else {
+        await api.post("/profiles", payload);
+      }
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function update(index: number, next: Setting) {
+    setSettings(settings.map((s, i) => (i === index ? next : s)));
+  }
+
+  return (
+    <Dialog title={profile ? `Edit ${profile.name}` : "New profile"} open={open} onClose={onClose}>
+      <Field label="Name">
+        <input value={name} onChange={(e) => setName(e.target.value)} />
+      </Field>
+      <Field label="Description">
+        <input value={description} onChange={(e) => setDescription(e.target.value)} />
+      </Field>
+
+      {settings.map((setting, index) => (
+        <fieldset key={index} className="setting">
+          <legend>
+            <select
+              value={setting.kind}
+              onChange={(e) => update(index, blankSetting(e.target.value))}
+              aria-label={`Setting ${index + 1} kind`}
+            >
+              {KINDS.map((k) => (
+                <option key={k.value} value={k.value}>
+                  {k.label}
+                </option>
+              ))}
+            </select>
+            <Button
+              variant="quiet"
+              onClick={() => setSettings(settings.filter((_, i) => i !== index))}
+            >
+              Remove
+            </Button>
+          </legend>
+          <SettingFields setting={setting} onChange={(next) => update(index, next)} />
+        </fieldset>
+      ))}
+
+      <div className="actions">
+        <Button variant="quiet" onClick={() => setSettings([...settings, blankSetting("registry")])}>
+          Add a setting
+        </Button>
+      </div>
+
+      <ErrorNote error={error} />
+      <div className="actions">
+        <Button onClick={() => void save()} disabled={busy || name.trim() === "" || settings.length === 0}>
+          {profile ? "Save new version" : "Create profile"}
+        </Button>
+        <Button variant="quiet" onClick={onClose}>
+          Cancel
+        </Button>
+      </div>
+    </Dialog>
+  );
+}
+
+function AssignDialog({
+  profile,
+  open,
+  onClose,
+  onAssigned,
+}: {
+  profile: Profile | null;
+  open: boolean;
+  onClose: () => void;
+  onAssigned: () => void;
+}) {
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [groupID, setGroupID] = useState("");
+  const [mode, setMode] = useState("include");
+  const [revert, setRevert] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    api
+      .get<{ items: Group[] }>("/groups")
+      .then((resp) => {
+        setGroups(resp.items);
+        setGroupID((current) => current || (resp.items[0]?.id ?? ""));
+      })
+      .catch((err: unknown) => setError(err));
+  }, [open]);
+
+  async function assign() {
+    if (!profile) return;
+    setError(null);
+    try {
+      await api.post("/assignments", {
+        item_kind: ITEM_KIND,
+        item_id: profile.id,
+        group_id: groupID,
+        mode,
+        options: mode === "include" ? { revert_on_removal: revert } : undefined,
+      });
+      onAssigned();
+      onClose();
+    } catch (err) {
+      setError(err);
+    }
+  }
+
+  return (
+    <Dialog title={`Assign ${profile?.name ?? ""}`} open={open} onClose={onClose}>
+      <Field label="Group">
+        <select value={groupID} onChange={(e) => setGroupID(e.target.value)}>
+          {groups.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Mode" hint="An exclude always wins, whichever group it comes from.">
+        <select value={mode} onChange={(e) => setMode(e.target.value)}>
+          <option value="include">Include</option>
+          <option value="exclude">Exclude</option>
+        </select>
+      </Field>
+      {mode === "include" ? (
+        <Field
+          label="When it stops applying"
+          hint="Restores what was there before this profile first changed it."
+        >
+          <select value={revert ? "revert" : "leave"} onChange={(e) => setRevert(e.target.value === "revert")}>
+            <option value="leave">Leave the settings as they are</option>
+            <option value="revert">Put the previous values back</option>
+          </select>
+        </Field>
+      ) : null}
+      <ErrorNote error={error} />
+      <div className="actions">
+        <Button onClick={() => void assign()} disabled={groupID === ""}>
+          Assign to group
+        </Button>
+        <Button variant="quiet" onClick={onClose}>
+          Cancel
+        </Button>
+      </div>
+    </Dialog>
+  );
+}
+
+/** ProfileDetail answers the question an administrator actually has: which
+ * setting is failing, and where. */
+function ProfileDetail({ profile }: { profile: Profile }) {
+  const [rollup, setRollup] = useState<Record<string, number>>({});
+  const { items, loading, error } = useList<SettingStatus>(`/profiles/${profile.id}/settings`);
+
+  useEffect(() => {
+    api
+      .get<{ rollup: Record<string, number> }>(`/profiles/${profile.id}/settings`)
+      .then((resp) => setRollup(resp.rollup))
+      .catch(() => setRollup({}));
+  }, [profile.id]);
+
+  const counts = Object.entries(rollup);
+  return (
+    <section className="profile__detail">
+      <h2>{profile.name}</h2>
+      {counts.length > 0 ? (
+        <p className="profile__rollup">
+          {counts.map(([status, count]) => (
+            <span key={status}>
+              <StatusDot status={status} /> {count}
+            </span>
+          ))}
+        </p>
+      ) : (
+        <p className="profile__none">No device has reported on this profile yet.</p>
+      )}
+
+      <ErrorNote error={error} />
+      {loading ? <Spinner /> : null}
+      {items.length > 0 ? (
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Device</th>
+                <th>Setting</th>
+                <th>Status</th>
+                <th>Detail</th>
+                <th>When</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((row) => (
+                <tr key={row.device_id + row.identity}>
+                  <td>{row.hostname}</td>
+                  <td className="mono">{row.identity}</td>
+                  <td>
+                    <StatusDot status={row.status} />
+                  </td>
+                  <td>{row.detail}</td>
+                  <td>{relative(row.updated_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+export default function Profiles() {
+  const { canWrite } = useSession();
+  const { items, total, loading, error, offset, setOffset, reload } = useList<Profile>("/profiles");
+  const [editing, setEditing] = useState<Profile | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [assigning, setAssigning] = useState<Profile | null>(null);
+  const [selected, setSelected] = useState<Profile | null>(null);
+  const [actionError, setActionError] = useState<unknown>(null);
+
+  async function openEditor(profile: Profile | null) {
+    setActionError(null);
+    if (profile) {
+      try {
+        // The listing omits the settings; the editor needs them.
+        setEditing(await api.get<Profile>(`/profiles/${profile.id}`));
+      } catch (err) {
+        setActionError(err);
+        return;
+      }
+    } else {
+      setEditing(null);
+    }
+    setEditorOpen(true);
+  }
+
+  async function remove(profile: Profile) {
+    if (!window.confirm(`Delete ${profile.name}? Its assignments go with it.`)) return;
+    try {
+      await api.del(`/profiles/${profile.id}`);
+      if (selected?.id === profile.id) setSelected(null);
+      reload();
+    } catch (err) {
+      setActionError(err);
+    }
+  }
+
+  return (
+    <>
+      <div className="content__head">
+        <h1>Profiles</h1>
+        {canWrite ? <Button onClick={() => void openEditor(null)}>New profile</Button> : null}
+      </div>
+
+      <ErrorNote error={error} />
+      <ErrorNote error={actionError} />
+      {loading ? <Spinner /> : null}
+
+      {!loading && items.length === 0 ? (
+        <EmptyState title="No profiles yet.">
+          <p>A profile states how a machine should be, and the agent keeps it that way.</p>
+        </EmptyState>
+      ) : null}
+
+      {items.length > 0 ? (
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th className="numeric">Version</th>
+                <th>Updated</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((profile) => (
+                <tr key={profile.id}>
+                  <td>
+                    <button className="linklike" onClick={() => setSelected(profile)}>
+                      {profile.name}
+                    </button>
+                    {profile.description ? (
+                      <div className="profile__description">{profile.description}</div>
+                    ) : null}
+                  </td>
+                  <td className="numeric">{profile.current_version}</td>
+                  <td>{relative(profile.updated_at)}</td>
+                  <td className="profile__actions">
+                    {canWrite ? (
+                      <>
+                        <Button variant="quiet" onClick={() => void openEditor(profile)}>
+                          Edit
+                        </Button>
+                        <Button variant="quiet" onClick={() => setAssigning(profile)}>
+                          Assign
+                        </Button>
+                        <Button variant="quiet" onClick={() => void remove(profile)}>
+                          Delete
+                        </Button>
+                      </>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+
+      {selected ? <ProfileDetail profile={selected} /> : null}
+
+      {total > items.length ? (
+        <div className="pager">
+          <Button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 50))}>
+            Previous
+          </Button>
+          <span>
+            {offset + 1}–{offset + items.length} of {total}
+          </span>
+          <Button disabled={offset + items.length >= total} onClick={() => setOffset(offset + 50)}>
+            Next
+          </Button>
+        </div>
+      ) : null}
+
+      <ProfileEditor profile={editing} open={editorOpen} onClose={() => setEditorOpen(false)} onSaved={reload} />
+      <AssignDialog
+        profile={assigning}
+        open={assigning !== null}
+        onClose={() => setAssigning(null)}
+        onAssigned={reload}
+      />
+    </>
+  );
+}
+
+export { describe as describeSetting };

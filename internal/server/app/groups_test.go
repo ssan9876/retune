@@ -192,12 +192,12 @@ func TestEffectiveItemsReachCheckin(t *testing.T) {
 		t.Fatalf("nothing is assigned yet, got %v", items)
 	}
 
-	// A kind with no real items behind it, because this test is about the
-	// include and exclude rule rather than any particular kind. A script item
-	// would be dropped at check-in unless the script actually existed.
+	// A kind that is deliberately not, and will never be, a real item kind:
+	// this test is about the include and exclude rule itself. A script or
+	// profile item would be dropped at check-in unless it really existed.
 	item := "01a09983-0000-7000-8000-0000000000aa"
 	status, body := admin.do(http.MethodPost, "/assignments", map[string]string{
-		"item_kind": "profile", "item_id": item,
+		"item_kind": "widget", "item_id": item,
 		"group_id": store.BuiltinGroupID.String(), "mode": "include",
 	})
 	if status != http.StatusCreated {
@@ -205,7 +205,7 @@ func TestEffectiveItemsReachCheckin(t *testing.T) {
 	}
 
 	items := checkinItems()
-	if len(items) != 1 || items[0].ID != item || items[0].Kind != "profile" {
+	if len(items) != 1 || items[0].ID != item || items[0].Kind != "widget" {
 		t.Fatalf("the assigned item should reach the device, got %v", items)
 	}
 
@@ -224,7 +224,7 @@ func TestEffectiveItemsReachCheckin(t *testing.T) {
 		t.Fatalf("add member: %d %s", status, body)
 	}
 	if status, body := admin.do(http.MethodPost, "/assignments", map[string]string{
-		"item_kind": "profile", "item_id": item,
+		"item_kind": "widget", "item_id": item,
 		"group_id": held.ID, "mode": "exclude",
 	}); status != http.StatusCreated {
 		t.Fatalf("exclude: %d %s", status, body)
