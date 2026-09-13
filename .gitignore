@@ -6,3 +6,4 @@
 /internal/server/console/dist/*
 !/internal/server/console/dist/.gitkeep
 /scratch-agent/
+/deploy/docker/certs/

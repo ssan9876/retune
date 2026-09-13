@@ -117,6 +117,12 @@ The server refuses to start in this mode without both settings, because it
 would otherwise serve the agent API unauthenticated. The proxy needs the CA
 certificate to validate client certificates: `retune-server ca cert > ca.crt`.
 
+A working example is in `deploy/docker/docker-compose.proxy.yml` with
+`nginx.conf` beside it. It expects three files in `deploy/docker/certs`: the CA
+from `retune-server ca cert` as `retune-ca.crt`, and the certificate agents
+will see as `proxy.crt` and `proxy.key`. Agents pin the proxy's certificate,
+not the internal CA, because the proxy is what they are talking to.
+
 ```nginx
 server {
     listen 443 ssl;
