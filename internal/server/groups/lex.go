@@ -104,7 +104,7 @@ func lex(rule string) ([]token, error) {
 	return out, nil
 }
 
-// lexString reads a single-quoted literal, in which '' is a literal quote.
+// lexString reads a single-quoted literal, in which ” is a literal quote.
 func lexString(rule string, start int) (string, int, error) {
 	var b strings.Builder
 	i := start + 1

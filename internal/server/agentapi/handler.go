@@ -17,6 +17,7 @@ import (
 	"retune/internal/server/commands"
 	"retune/internal/server/enroll"
 	"retune/internal/server/inventory"
+	"retune/internal/server/profiles"
 	"retune/internal/server/scripts"
 	"retune/internal/server/store"
 )
@@ -27,6 +28,7 @@ type Handler struct {
 	Inventory       *inventory.Service
 	Commands        *commands.Service
 	Scripts         *scripts.Service
+	Profiles        *profiles.Service
 	Store           *store.Store
 	Now             func() time.Time
 	CheckinInterval time.Duration
@@ -56,6 +58,8 @@ func (h *Handler) Routes() http.Handler {
 	mux.Handle("POST /api/agent/v1/commands/{id}/result", h.requireDevice(h.commandResult))
 	mux.Handle("GET /api/agent/v1/scripts/{id}/versions/{version}", h.requireDevice(h.scriptVersion))
 	mux.Handle("POST /api/agent/v1/scripts/{id}/runs", h.requireDevice(h.scriptRun))
+	mux.Handle("GET /api/agent/v1/profiles/{id}/versions/{version}", h.requireDevice(h.profileVersion))
+	mux.Handle("POST /api/agent/v1/profiles/{id}/status", h.requireDevice(h.profileStatus))
 	return mux
 }
 
@@ -175,6 +179,15 @@ func (h *Handler) checkin(w http.ResponseWriter, r *http.Request) {
 	items := make([]protocol.Item, 0, len(assigned))
 	for _, it := range assigned {
 		item := protocol.Item{Kind: it.Kind, ID: it.ID.String(), Options: it.Options}
+		if it.Kind == protocol.ItemKindProfile {
+			pr, err := h.Profiles.Get(ctx, it.ID)
+			if err != nil {
+				// A profile that has gone missing is simply not offered.
+				h.Log.Warn("assigned profile is missing", "profile_id", it.ID, "error", err)
+				continue
+			}
+			item.Version = pr.CurrentVersion
+		}
 		if it.Kind == protocol.ItemKindScript {
 			// The agent needs the version to know whether its cached copy is
 			// current; it fetches the body separately, once per version.
@@ -357,6 +370,70 @@ func (h *Handler) scriptRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
 	default:
 		h.Log.Error("record script run", "device_id", a.Device.ID, "script_id", id, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+	}
+}
+
+// profileVersion hands a device the settings of an assigned profile. As with
+// scripts, a device may only read what it has been given.
+func (h *Handler) profileVersion(w http.ResponseWriter, r *http.Request) {
+	a := auth(r)
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "profile_not_found", "unknown profile")
+		return
+	}
+	version, err := strconv.Atoi(r.PathValue("version"))
+	if err != nil || version < 1 {
+		writeError(w, http.StatusNotFound, "profile_not_found", "unknown profile version")
+		return
+	}
+	ctx := r.Context()
+	allowed, err := h.Store.Q().DeviceHasItem(ctx, a.Device.ID, protocol.ItemKindProfile, id)
+	if err != nil {
+		h.Log.Error("check profile assignment", "device_id", a.Device.ID, "profile_id", id, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+		return
+	}
+	if !allowed {
+		writeError(w, http.StatusNotFound, "profile_not_found", "unknown profile")
+		return
+	}
+	v, settings, err := h.Profiles.Version(ctx, id, version)
+	if errors.Is(err, profiles.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "profile_not_found", "unknown profile version")
+		return
+	}
+	if err != nil {
+		h.Log.Error("read profile version", "profile_id", id, "version", version, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+		return
+	}
+	writeJSON(w, http.StatusOK, protocol.ProfileVersionResponse{
+		Version: v.Version, Settings: settings, Hash: v.Hash,
+	})
+}
+
+// profileStatus records what a device found for every setting of a profile.
+func (h *Handler) profileStatus(w http.ResponseWriter, r *http.Request) {
+	a := auth(r)
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "profile_not_found", "unknown profile")
+		return
+	}
+	var report protocol.ProfileStatus
+	if !decode(w, r, &report, maxResultBody) {
+		return
+	}
+	err = h.Profiles.RecordStatus(r.Context(), a.Device.ID, id, report)
+	switch {
+	case err == nil:
+		writeNoContent(w)
+	case errors.Is(err, profiles.ErrBadRequest):
+		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
+	default:
+		h.Log.Error("record profile status", "device_id", a.Device.ID, "profile_id", id, "error", err)
 		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
 	}
 }

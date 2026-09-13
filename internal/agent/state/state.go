@@ -13,6 +13,7 @@ import (
 
 	bolt "go.etcd.io/bbolt"
 
+	"retune/internal/agent/policy"
 	"retune/internal/protocol"
 )
 
@@ -23,12 +24,14 @@ const (
 )
 
 var (
-	bucketResults = []byte("results")
-	bucketLedger  = []byte("ledger")
-	bucketMeta    = []byte("meta")
-	bucketItems   = []byte("items")
-	bucketScripts = []byte("scripts")
-	keyInventory  = []byte("inventory_hash")
+	bucketResults  = []byte("results")
+	bucketLedger   = []byte("ledger")
+	bucketMeta     = []byte("meta")
+	bucketItems    = []byte("items")
+	bucketScripts  = []byte("scripts")
+	bucketPrior    = []byte("policy_prior")
+	bucketProfiles = []byte("policy_profiles")
+	keyInventory   = []byte("inventory_hash")
 )
 
 // Store is the agent's bbolt database.
@@ -58,7 +61,8 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("open agent state %s: %w", path, err)
 	}
 	err = db.Update(func(tx *bolt.Tx) error {
-		for _, b := range [][]byte{bucketResults, bucketLedger, bucketMeta, bucketItems, bucketScripts} {
+		for _, b := range [][]byte{bucketResults, bucketLedger, bucketMeta, bucketItems, bucketScripts,
+			bucketPrior, bucketProfiles} {
 			if _, err := tx.CreateBucketIfNotExists(b); err != nil {
 				return err
 			}
@@ -264,6 +268,104 @@ func (s *Store) CacheScript(id string, v protocol.ScriptVersionResponse) error {
 		b := tx.Bucket(bucketScripts)
 		prefix := []byte(id + "@")
 		keep := scriptKey(id, v.Version)
+		c := b.Cursor()
+		for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
+			if string(k) != keep {
+				if err := c.Delete(); err != nil {
+					return err
+				}
+			}
+		}
+		return putJSON(b, keep, v)
+	})
+}
+
+// PriorState returns what was recorded before Retune first changed a setting.
+func (s *Store) PriorState(identity string) ([]byte, bool, error) {
+	var out []byte
+	found := false
+	err := s.db.View(func(tx *bolt.Tx) error {
+		raw := tx.Bucket(bucketPrior).Get([]byte(identity))
+		if raw == nil {
+			return nil
+		}
+		found = true
+		out = append([]byte(nil), raw...)
+		return nil
+	})
+	return out, found, err
+}
+
+// SetPriorState records what was there before a setting was first applied.
+func (s *Store) SetPriorState(identity string, raw []byte) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bucketPrior).Put([]byte(identity), raw)
+	})
+}
+
+// DeletePriorState forgets a recorded previous state, after a revert.
+func (s *Store) DeletePriorState(identity string) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bucketPrior).Delete([]byte(identity))
+	})
+}
+
+// ProfileRecords returns what is remembered about every applied profile.
+func (s *Store) ProfileRecords() (map[string]policy.Record, error) {
+	out := map[string]policy.Record{}
+	err := s.db.View(func(tx *bolt.Tx) error {
+		return tx.Bucket(bucketProfiles).ForEach(func(k, v []byte) error {
+			var rec policy.Record
+			if err := json.Unmarshal(v, &rec); err != nil {
+				// A record that cannot be read is no use; skip it rather than
+				// failing every reconcile from now on.
+				return nil
+			}
+			out[string(k)] = rec
+			return nil
+		})
+	})
+	return out, err
+}
+
+// SetProfileRecord remembers what a profile is responsible for.
+func (s *Store) SetProfileRecord(profileID string, rec policy.Record) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		return putJSON(tx.Bucket(bucketProfiles), profileID, rec)
+	})
+}
+
+// DeleteProfileRecord forgets a profile that no longer applies.
+func (s *Store) DeleteProfileRecord(profileID string) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bucketProfiles).Delete([]byte(profileID))
+	})
+}
+
+// CachedProfile returns a stored profile version, reporting whether it was held.
+func (s *Store) CachedProfile(id string, version int) (protocol.ProfileVersionResponse, bool, error) {
+	var out protocol.ProfileVersionResponse
+	found := false
+	err := s.db.View(func(tx *bolt.Tx) error {
+		raw := tx.Bucket(bucketScripts).Get([]byte("profile:" + scriptKey(id, version)))
+		if raw == nil {
+			return nil
+		}
+		found = true
+		return json.Unmarshal(raw, &out)
+	})
+	if err != nil {
+		return protocol.ProfileVersionResponse{}, false, err
+	}
+	return out, found, nil
+}
+
+// CacheProfile stores a fetched profile version and drops older ones.
+func (s *Store) CacheProfile(id string, v protocol.ProfileVersionResponse) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketScripts)
+		prefix := []byte("profile:" + id + "@")
+		keep := "profile:" + scriptKey(id, v.Version)
 		c := b.Cursor()
 		for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
 			if string(k) != keep {

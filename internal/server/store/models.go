@@ -29,15 +29,15 @@ type EnrollmentToken struct {
 
 // Device is an enrolled endpoint.
 type Device struct {
-	ID            uuid.UUID
-	Hostname      string
-	Serial        string
-	SMBIOSUUID    string
-	OSVersion     string
-	Status        string
-	CertSerial    string
-	CertExpiresAt time.Time
-	LastSeenAt    *time.Time
+	ID             uuid.UUID
+	Hostname       string
+	Serial         string
+	SMBIOSUUID     string
+	OSVersion      string
+	Status         string
+	CertSerial     string
+	CertExpiresAt  time.Time
+	LastSeenAt     *time.Time
 	AgentVersion   string
 	EnrolledAt     time.Time
 	ReplacedBy     *uuid.UUID
