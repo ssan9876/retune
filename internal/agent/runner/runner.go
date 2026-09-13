@@ -19,6 +19,7 @@ import (
 	"retune/internal/agent/facts"
 	"retune/internal/agent/identity"
 	"retune/internal/agent/inventory"
+	"retune/internal/agent/policy"
 	"retune/internal/agent/scripts"
 	"retune/internal/agent/session"
 	"retune/internal/agent/state"
@@ -71,6 +72,12 @@ func Run(ctx context.Context, opts Options) error {
 		},
 		Scripts: &scripts.Scheduler{
 			State: st, Runner: scriptRunner, Log: opts.Log, Now: time.Now,
+		},
+		Policy: &policy.Syncer{
+			Reconciler: &policy.Reconciler{
+				Handlers: policy.DefaultHandlers(), State: st, Log: opts.Log,
+			},
+			Cache: st, Log: opts.Log,
 		},
 		Log: opts.Log,
 	})

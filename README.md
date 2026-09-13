@@ -20,6 +20,9 @@ Go agent runs on each machine.
   rule over inventory; items assigned to groups with include and exclude.
 - **Script deployments.** A versioned PowerShell library assigned to groups,
   scheduled by the agent, with optional detect-and-remediate pairs.
+- **Configuration profiles.** A versioned statement of how a machine should be
+  — registry values, services, local group members and files — that the agent
+  keeps true, with conflict detection and optional revert.
 - **Packaging.** A container image and Compose stack for the server, and an MSI
   that installs the agent as a Windows service which enrolls itself.
 
@@ -256,6 +259,42 @@ work. It needs Win32 token work that has not been done.
 
 Every run is kept, so you can see whether a script is flapping rather than only
 its latest state. Deleting a script removes its assignments and keeps its runs.
+
+## Configuration profiles
+
+A script deployment does something. A **profile** states how a machine should
+*be*, and the agent keeps it that way: on every check-in it tests each setting,
+fixes what has drifted, and reports what it found. Profiles are versioned like
+scripts and assigned to groups the same way.
+
+| Kind | What it manages |
+|---|---|
+| `registry` | one value under `HKLM`, set to a value or removed |
+| `service` | a service's startup type and whether it is running |
+| `local_group_members` | who is in a local group, `additive` or `exact` |
+| `file` | a file's contents, or its absence (up to 1 MB) |
+
+Each setting is applied as: test, then set only if needed, then **test again**.
+That second test is what separates fixing something from merely running
+something, and it decides what is reported: `compliant`, `remediated`, `error`
+or `conflict`.
+
+**Conflicts.** Every setting has an identity — `service:spooler`,
+`registry:HKLM\SOFTWARE\X!Value`. If two assigned profiles set the same
+identity to different values, the agent applies **neither** and reports
+`conflict` to both, naming the other profile. Picking a winner silently would
+make a machine's state depend on assignment order. Two profiles asking for
+exactly the same thing is not a conflict.
+
+**Removal.** When a profile stops applying to a device, the agent stops
+enforcing it. If the assignment was set to put previous values back, it restores
+what was there before the profile first changed each setting — not what Retune
+last wrote — and leaves alone anything another profile still wants.
+
+Two things are refused rather than half-supported: `HKCU` registry values, which
+need the signed-in user's hive, are rejected when the profile is saved; and an
+`exact` group setting never removes the built-in Administrator account, whatever
+the profile says.
 
 ## Command-line reference
 

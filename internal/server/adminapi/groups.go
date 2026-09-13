@@ -321,15 +321,32 @@ func (h *Handler) createAssignment(w http.ResponseWriter, r *http.Request) {
 	// against nonsense. An exclude assignment carries none: it only takes
 	// something away.
 	var options []byte
-	if req.Mode == store.ModeInclude && req.ItemKind == protocol.ItemKindScript {
-		opts, err := protocol.ParseDeploymentOptions(req.Options)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "bad_options", err.Error())
-			return
-		}
-		if options, err = opts.Marshal(); err != nil {
-			h.internal(w, "encode options", err)
-			return
+	if req.Mode == store.ModeInclude {
+		switch req.ItemKind {
+		case protocol.ItemKindScript:
+			opts, err := protocol.ParseDeploymentOptions(req.Options)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "bad_options", err.Error())
+				return
+			}
+			if options, err = opts.Marshal(); err != nil {
+				h.internal(w, "encode options", err)
+				return
+			}
+		case protocol.ItemKindProfile:
+			var opts protocol.ProfileOptions
+			if len(req.Options) > 0 {
+				if err := json.Unmarshal(req.Options, &opts); err != nil {
+					writeError(w, http.StatusBadRequest, "bad_options", "profile options must be an object")
+					return
+				}
+			}
+			encoded, err := json.Marshal(opts)
+			if err != nil {
+				h.internal(w, "encode options", err)
+				return
+			}
+			options = encoded
 		}
 	}
 

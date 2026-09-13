@@ -1,0 +1,43 @@
+.profile__description {
+  color: var(--ink-muted);
+  font-size: var(--text-xs);
+  margin-top: 2px;
+}
+
+.profile__actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.profile__detail {
+  margin-top: var(--space-6);
+  border-top: 1px solid var(--rule);
+  padding-top: var(--space-4);
+}
+
+.profile__rollup {
+  display: flex;
+  gap: var(--space-4);
+  font-size: var(--text-sm);
+}
+
+.profile__none {
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+}
+
+/* Each setting is its own bordered block, so a long profile stays readable. */
+.setting {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  margin: var(--space-3) 0;
+}
+
+.setting legend {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+}

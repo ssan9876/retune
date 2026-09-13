@@ -18,6 +18,7 @@ import (
 	"retune/internal/agent/executor"
 	"retune/internal/agent/identity"
 	"retune/internal/agent/inventory"
+	"retune/internal/agent/policy"
 	"retune/internal/agent/scripts"
 	"retune/internal/agent/state"
 	"retune/internal/protocol"
@@ -41,7 +42,10 @@ type Config struct {
 	Collector inventory.Collector
 	Executor  *executor.Executor
 	// Scripts, when set, applies the deployments assigned to this device.
-	Scripts     *scripts.Scheduler
+	Scripts *scripts.Scheduler
+	// Policy, when set, reconciles the configuration profiles assigned to this
+	// device.
+	Policy      *policy.Syncer
 	Log         *slog.Logger
 	Now         func() time.Time
 	RenewBefore time.Duration
@@ -89,6 +93,14 @@ func New(cfg Config) (*Session, error) {
 	}
 	if cfg.Scripts != nil && cfg.Scripts.Client == nil {
 		cfg.Scripts.Client = scriptClient{s}
+	}
+	if cfg.Policy != nil {
+		if cfg.Policy.Fetcher == nil {
+			cfg.Policy.Fetcher = policyClient{s}
+		}
+		if cfg.Policy.Reconciler != nil && cfg.Policy.Reconciler.Client == nil {
+			cfg.Policy.Reconciler.Client = policyClient{s}
+		}
 	}
 	return s, nil
 }
@@ -150,6 +162,18 @@ func (s *Session) Checkin(ctx context.Context, req protocol.CheckinRequest) (pro
 			defer s.pending.Done()
 			if err := s.cfg.Scripts.Sync(ctx, items); err != nil {
 				s.cfg.Log.Warn("applying assigned scripts failed", "error", err)
+			}
+		}()
+	}
+	// Profiles reconcile even with no items, because that is exactly when a
+	// profile that has just been unassigned needs to be undone.
+	if s.cfg.Policy != nil {
+		items := resp.Items
+		s.pending.Add(1)
+		go func() {
+			defer s.pending.Done()
+			if err := s.cfg.Policy.Sync(ctx, items); err != nil {
+				s.cfg.Log.Warn("reconciling configuration profiles failed", "error", err)
 			}
 		}()
 	}
@@ -364,4 +388,16 @@ func (c scriptClient) FetchScript(ctx context.Context, id string, version int) (
 
 func (c scriptClient) ReportScriptRun(ctx context.Context, id string, run protocol.ScriptRun) error {
 	return c.s.currentClient().ReportScriptRun(ctx, id, run)
+}
+
+// policyClient routes the policy engine's calls through the session's current
+// client, so a certificate renewal is picked up automatically.
+type policyClient struct{ s *Session }
+
+func (c policyClient) FetchProfile(ctx context.Context, id string, version int) (protocol.ProfileVersionResponse, error) {
+	return c.s.currentClient().FetchProfile(ctx, id, version)
+}
+
+func (c policyClient) ReportProfileStatus(ctx context.Context, id string, status protocol.ProfileStatus) error {
+	return c.s.currentClient().ReportProfileStatus(ctx, id, status)
 }

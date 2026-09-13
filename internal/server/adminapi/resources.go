@@ -45,6 +45,14 @@ func (h *Handler) mountResources(mux *http.ServeMux, base string) {
 	mux.Handle("GET "+base+"/scripts/{id}/versions", h.read(h.listScriptVersions))
 	mux.Handle("GET "+base+"/scripts/{id}/runs", h.read(h.listScriptRuns))
 
+	mux.Handle("GET "+base+"/profiles", h.read(h.listProfiles))
+	mux.Handle("POST "+base+"/profiles", h.write(h.createProfile))
+	mux.Handle("GET "+base+"/profiles/{id}", h.read(h.getProfile))
+	mux.Handle("POST "+base+"/profiles/{id}", h.write(h.updateProfile))
+	mux.Handle("DELETE "+base+"/profiles/{id}", h.write(h.deleteProfile))
+	mux.Handle("GET "+base+"/profiles/{id}/versions", h.read(h.listProfileVersions))
+	mux.Handle("GET "+base+"/profiles/{id}/settings", h.read(h.profileSettingStatus))
+
 	mux.Handle("GET "+base+"/assignments", h.read(h.listAssignments))
 	mux.Handle("POST "+base+"/assignments", h.write(h.createAssignment))
 	mux.Handle("DELETE "+base+"/assignments/{id}", h.write(h.deleteAssignment))

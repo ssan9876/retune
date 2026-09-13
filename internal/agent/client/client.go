@@ -197,3 +197,16 @@ func (c *Client) FetchScript(ctx context.Context, id string, version int) (proto
 func (c *Client) ReportScriptRun(ctx context.Context, id string, run protocol.ScriptRun) error {
 	return c.do(ctx, http.MethodPost, "/api/agent/v1/scripts/"+url.PathEscape(id)+"/runs", run, nil)
 }
+
+// FetchProfile downloads one version of an assigned configuration profile.
+func (c *Client) FetchProfile(ctx context.Context, id string, version int) (protocol.ProfileVersionResponse, error) {
+	var resp protocol.ProfileVersionResponse
+	path := "/api/agent/v1/profiles/" + url.PathEscape(id) + "/versions/" + strconv.Itoa(version)
+	err := c.do(ctx, http.MethodGet, path, nil, &resp)
+	return resp, err
+}
+
+// ReportProfileStatus tells the server what every setting of a profile did.
+func (c *Client) ReportProfileStatus(ctx context.Context, id string, status protocol.ProfileStatus) error {
+	return c.do(ctx, http.MethodPost, "/api/agent/v1/profiles/"+url.PathEscape(id)+"/status", status, nil)
+}

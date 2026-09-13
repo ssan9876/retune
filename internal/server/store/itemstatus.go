@@ -20,11 +20,11 @@ const (
 type ItemStatus struct {
 	DeviceID uuid.UUID
 	// Hostname is filled in by the listing queries, not by SetItemStatus.
-	Hostname  string
-	ItemKind  string
-	ItemID    uuid.UUID
-	Status string
-	Detail string
+	Hostname string
+	ItemKind string
+	ItemID   uuid.UUID
+	Status   string
+	Detail   string
 	// Version is the item version this status refers to, so the console can
 	// say "succeeded on version 3" rather than just "succeeded".
 	Version   int
