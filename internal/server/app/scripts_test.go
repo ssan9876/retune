@@ -1,10 +1,14 @@
 package app_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
 
 	"retune/internal/protocol"
 	"retune/internal/server/store"
@@ -345,5 +349,32 @@ func TestItemStatusCarriesTheVersion(t *testing.T) {
 	}](t, body)
 	if len(resp.Items) != 1 || resp.Items[0].Version != 2 {
 		t.Fatalf("the status should name version 2, got %+v", resp.Items)
+	}
+}
+
+// An item of a kind this server does not implement is never handed to an
+// agent. There is no endpoint to fetch its content from and no version to
+// fetch, so sending it could only confuse.
+func TestCheckinDropsAnUnknownItemKind(t *testing.T) {
+	a, srv := newTestApp(t)
+	_, agent := enrollDevice(t, a, srv, "DESKTOP-UNKNOWNKIND")
+
+	// Written straight to the store, because the admin API now refuses it.
+	err := a.Store.Q().CreateAssignment(context.Background(), store.Assignment{
+		ID: uuid.Must(uuid.NewV7()), ItemKind: "widget", ItemID: uuid.Must(uuid.NewV7()),
+		GroupID: uuid.MustParse("00000000-0000-0000-0000-000000000002"),
+		Mode:    store.ModeInclude, CreatedAt: time.Now(), CreatedBy: "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	status, body := send(t, agent, http.MethodPost, srv.URL+"/api/agent/v1/checkin",
+		protocol.CheckinRequest{AgentVersion: "1.0.0"})
+	if status != http.StatusOK {
+		t.Fatalf("checkin: %d %s", status, body)
+	}
+	if items := decodeJSON[protocol.CheckinResponse](t, body).Items; len(items) != 0 {
+		t.Fatalf("a kind nothing implements must not be sent, got %+v", items)
 	}
 }

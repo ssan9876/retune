@@ -183,41 +183,29 @@ func (h *Handler) checkin(w http.ResponseWriter, r *http.Request) {
 	}
 	items := make([]protocol.Item, 0, len(assigned))
 	for _, it := range assigned {
-		item := protocol.Item{Kind: it.Kind, ID: it.ID.String(), Options: it.Options}
-		if it.Kind == protocol.ItemKindProfile {
-			pr, err := h.Profiles.Get(ctx, it.ID)
-			if err != nil {
-				// A profile that has gone missing is simply not offered.
-				h.Log.Warn("assigned profile is missing", "profile_id", it.ID, "error", err)
-				continue
-			}
-			item.Version = pr.CurrentVersion
+		version, exists := h.itemVersion(ctx, it)
+		if !exists {
+			continue
 		}
-		if it.Kind == protocol.ItemKindScript {
-			// The agent needs the version to know whether its cached copy is
-			// current; it fetches the body separately, once per version.
-			sc, err := h.Store.Q().GetScript(ctx, it.ID)
-			if err != nil {
-				// A script that has gone missing is simply not offered.
-				h.Log.Warn("assigned script is missing", "script_id", it.ID, "error", err)
-				continue
-			}
-			item.Version = sc.CurrentVersion
+		items = append(items, protocol.Item{
+			Kind: it.Kind, ID: it.ID.String(), Version: version, Options: it.Options,
+		})
 
-			// A deployment that needs a signed-in user cannot run on a machine
-			// where nobody is. The check-in says who is signed in, so the
-			// server records that as pending; the agent still receives it, and
-			// reports a real result as soon as somebody signs in.
-			if opts, err := protocol.ParseDeploymentOptions(it.Options); err == nil {
-				if opts.NeedsUserSession() && strings.TrimSpace(req.LoggedInUser) == "" {
-					if err := h.Scripts.SetItemPending(ctx, a.Device.ID, it.ID, sc.CurrentVersion,
-						"waiting for somebody to sign in"); err != nil {
-						h.Log.Warn("record pending deployment", "script_id", it.ID, "error", err)
-					}
-				}
-			}
+		// A deployment that needs a signed-in user cannot run on a machine
+		// where nobody is. The check-in says who is signed in, so the server
+		// records that as pending; the agent still receives it, and reports a
+		// real result as soon as somebody signs in.
+		if it.Kind != protocol.ItemKindScript || strings.TrimSpace(req.LoggedInUser) != "" {
+			continue
 		}
-		items = append(items, item)
+		opts, err := protocol.ParseDeploymentOptions(it.Options)
+		if err != nil || !opts.NeedsUserSession() {
+			continue
+		}
+		if err := h.Scripts.SetItemPending(ctx, a.Device.ID, it.ID, version,
+			"waiting for somebody to sign in"); err != nil {
+			h.Log.Warn("record pending deployment", "script_id", it.ID, "error", err)
+		}
 	}
 
 	writeJSON(w, http.StatusOK, protocol.CheckinResponse{
@@ -226,6 +214,32 @@ func (h *Handler) checkin(w http.ResponseWriter, r *http.Request) {
 		Commands:        cmds,
 		Items:           items,
 	})
+}
+
+// itemVersion reports the current version of an assigned item, and whether it
+// still exists. A kind with no case here is one this server does not
+// implement, and is never offered to an agent.
+func (h *Handler) itemVersion(ctx context.Context, it store.Item) (int, bool) {
+	switch it.Kind {
+	case protocol.ItemKindScript:
+		// The agent needs the version to know whether its cached copy is
+		// current; it fetches the body separately, once per version.
+		sc, err := h.Store.Q().GetScript(ctx, it.ID)
+		if err != nil {
+			// A script that has gone missing is simply not offered.
+			h.Log.Warn("assigned script is missing", "script_id", it.ID, "error", err)
+			return 0, false
+		}
+		return sc.CurrentVersion, true
+	case protocol.ItemKindProfile:
+		pr, err := h.Profiles.Get(ctx, it.ID)
+		if err != nil {
+			h.Log.Warn("assigned profile is missing", "profile_id", it.ID, "error", err)
+			return 0, false
+		}
+		return pr.CurrentVersion, true
+	}
+	return 0, false
 }
 
 func (h *Handler) renew(w http.ResponseWriter, r *http.Request) {
