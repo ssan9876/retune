@@ -48,6 +48,10 @@ jobs:
       - name: Build the binaries
         run: go build -o bin/ ./cmd/...
 
+      # Builds the console and the binary the same way a deployment does.
+      - name: Build the server image
+        run: docker build -f deploy/docker/Dockerfile -t retune-server:ci .
+
   # Windows covers the agent code that only exists there: DPAPI, the WMI and
   # registry inventory collector, and running PowerShell. Docker on Windows
   # runners cannot start Linux containers, so -short skips the Postgres tests
@@ -71,3 +75,18 @@ jobs:
 
       - name: Build the binaries
         run: go build -o bin/ ./cmd/...
+
+      - name: Install WiX
+        run: dotnet tool install --global wix --version 5.0.2
+
+      - name: Add the WiX Util extension
+        run: wix extension add --global WixToolset.Util.wixext/5.0.2
+
+      # The MSI is unsigned, so this needs no secrets.
+      - name: Build the agent MSI
+        run: pwsh deploy/msi/build.ps1 -Version 0.1.${{ github.run_number }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: retune-agent-msi
+          path: bin/retune-agent.msi
