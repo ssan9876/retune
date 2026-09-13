@@ -9,6 +9,9 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -128,5 +131,47 @@ func TestIssueServerCert(t *testing.T) {
 		if _, err := leaf.Verify(opts); err != nil {
 			t.Fatalf("verify for %s: %v", host, err)
 		}
+	}
+}
+
+func TestEnvKeyStoreRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	authority, err := LoadOrCreate(ctx, FileKeyStore{Dir: dir}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	certPEM, err := os.ReadFile(filepath.Join(dir, "ca.crt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyPEM, err := os.ReadFile(filepath.Join(dir, "ca.key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := LoadOrCreate(ctx, EnvKeyStore{CertPEM: string(certPEM), KeyPEM: string(keyPEM)}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.Cert().Equal(authority.Cert()) {
+		t.Fatal("EnvKeyStore loaded a different CA")
+	}
+}
+
+func TestEnvKeyStoreRefusesToCreate(t *testing.T) {
+	_, err := LoadOrCreate(context.Background(), EnvKeyStore{}, time.Now())
+	if err == nil {
+		t.Fatal("want an error when CA_CERT_PEM and CA_KEY_PEM are unset")
+	}
+	if !strings.Contains(err.Error(), "CA_CERT_PEM") {
+		t.Fatalf("error should name the missing setting, got %v", err)
+	}
+}
+
+func TestLoadDoesNotCreate(t *testing.T) {
+	_, err := Load(context.Background(), FileKeyStore{Dir: t.TempDir()})
+	if !errors.Is(err, ErrNotExist) {
+		t.Fatalf("want ErrNotExist, got %v", err)
 	}
 }

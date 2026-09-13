@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -47,7 +48,11 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	if err != nil {
 		return nil, err
 	}
-	authority, err := ca.LoadOrCreate(ctx, ca.FileKeyStore{Dir: filepath.Join(cfg.DataDir, "ca")}, time.Now())
+	var keys ca.KeyStore = ca.FileKeyStore{Dir: filepath.Join(cfg.DataDir, "ca")}
+	if cfg.CAKeySource == "env" {
+		keys = ca.EnvKeyStore{CertPEM: os.Getenv("CA_CERT_PEM"), KeyPEM: os.Getenv("CA_KEY_PEM")}
+	}
+	authority, err := ca.LoadOrCreate(ctx, keys, time.Now())
 	if err != nil {
 		st.Close()
 		return nil, err

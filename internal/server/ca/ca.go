@@ -52,6 +52,16 @@ func LoadOrCreate(ctx context.Context, ks KeyStore, now time.Time) (*CA, error) 
 	return parse(certPEM, keyPEM)
 }
 
+// Load returns the existing CA without creating one, for commands that only
+// want to read it. It returns ErrNotExist when none has been created yet.
+func Load(ctx context.Context, ks KeyStore) (*CA, error) {
+	certPEM, keyPEM, err := ks.Load(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return parse(certPEM, keyPEM)
+}
+
 func create(now time.Time) (*CA, []byte, []byte, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {

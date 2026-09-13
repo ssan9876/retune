@@ -3,10 +3,15 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/pem"
 	"io"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"retune/internal/pki"
+	"retune/internal/server/ca"
 	"retune/internal/server/store/storetest"
 )
 
@@ -23,8 +28,21 @@ func TestRun(t *testing.T) {
 		}
 	})
 
-	t.Run("ca fingerprint is stable", func(t *testing.T) {
+	t.Run("ca commands need an existing CA", func(t *testing.T) {
 		e := env(map[string]string{"DATA_DIR": t.TempDir()})
+		err := run(ctx, []string{"ca", "fingerprint"}, e, io.Discard)
+		if err == nil || !strings.Contains(err.Error(), "no certificate authority") {
+			t.Fatalf("want a missing-CA error, got %v", err)
+		}
+	})
+
+	t.Run("ca fingerprint is stable and ca cert matches it", func(t *testing.T) {
+		dir := t.TempDir()
+		e := env(map[string]string{"DATA_DIR": dir})
+		// The server creates the CA; the ca commands only read it.
+		if _, err := ca.LoadOrCreate(ctx, ca.FileKeyStore{Dir: filepath.Join(dir, "ca")}, time.Now()); err != nil {
+			t.Fatal(err)
+		}
 		var a, b bytes.Buffer
 		if err := run(ctx, []string{"ca", "fingerprint"}, e, &a); err != nil {
 			t.Fatal(err)
@@ -34,6 +52,18 @@ func TestRun(t *testing.T) {
 		}
 		if !strings.HasPrefix(a.String(), "sha256:") || a.String() != b.String() {
 			t.Fatalf("fingerprints %q vs %q", a.String(), b.String())
+		}
+
+		var certOut bytes.Buffer
+		if err := run(ctx, []string{"ca", "cert"}, e, &certOut); err != nil {
+			t.Fatal(err)
+		}
+		block, _ := pem.Decode(certOut.Bytes())
+		if block == nil || block.Type != "CERTIFICATE" {
+			t.Fatalf("ca cert did not print a PEM certificate: %q", certOut.String())
+		}
+		if got := pki.Fingerprint(block.Bytes); got != strings.TrimSpace(a.String()) {
+			t.Fatalf("ca cert fingerprint %q != ca fingerprint %q", got, a.String())
 		}
 	})
 
