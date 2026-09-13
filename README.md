@@ -345,7 +345,7 @@ retune-server admin list | create | password | totp | disable | enable
 retune-agent enroll --server URL --token T [--pin sha256:...] [--data-dir D]
 retune-agent run [--data-dir D] [--once]
 retune-agent configure --server URL --token T [--pin sha256:...]   (Windows)
-retune-agent install | uninstall                                   (Windows)
+retune-agent install [--data-dir D] | uninstall                    (Windows)
 ```
 
 ## Tests
