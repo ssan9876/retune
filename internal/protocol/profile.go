@@ -18,6 +18,42 @@ const (
 	KindService  = "service"
 	KindGroup    = "local_group_members"
 	KindFile     = "file"
+
+	KindFirewallProfile = "firewall_profile"
+	KindFirewallRule    = "firewall_rule"
+	KindWindowsUpdate   = "windows_update"
+	KindBitLocker       = "bitlocker"
+)
+
+// Firewall profiles, directions and actions.
+const (
+	FirewallDomain  = "domain"
+	FirewallPrivate = "private"
+	FirewallPublic  = "public"
+
+	FirewallOn  = "on"
+	FirewallOff = "off"
+
+	DirectionInbound  = "inbound"
+	DirectionOutbound = "outbound"
+
+	ActionAllow = "allow"
+	ActionBlock = "block"
+
+	ProtocolTCP = "tcp"
+	ProtocolUDP = "udp"
+	ProtocolAny = "any"
+)
+
+// FirewallGroup is the group every rule Retune creates belongs to, which is how
+// they are recognised later. A rule outside it was made by something else and
+// is never removed.
+const FirewallGroup = "Retune"
+
+// BitLocker encryption methods.
+const (
+	XtsAes128 = "XtsAes128"
+	XtsAes256 = "XtsAes256"
 )
 
 // Registry value types.
@@ -93,8 +129,34 @@ type Setting struct {
 	Path          string `json:"path,omitempty"`
 	ContentBase64 string `json:"content_base64,omitempty"`
 
-	// Ensure says whether the thing should exist, for registry and file.
+	// Ensure says whether the thing should exist, for registry, file and
+	// firewall rules.
 	Ensure string `json:"ensure,omitempty"`
+
+	// Profile and State belong to firewall profile settings. State is shared
+	// with service settings, which use running/stopped rather than on/off.
+	Profile string `json:"profile,omitempty"`
+
+	// Direction, Action, Protocol, LocalPort and Program belong to firewall
+	// rules. The rule's display name is Name.
+	Direction string `json:"direction,omitempty"`
+	Action    string `json:"action,omitempty"`
+	Protocol  string `json:"protocol,omitempty"`
+	LocalPort string `json:"local_port,omitempty"`
+	Program   string `json:"program,omitempty"`
+
+	// The Windows Update policy. Pointers so that "not set" is distinct from
+	// zero, which is a meaningful deferral and a meaningful hour.
+	QualityDeferralDays *int  `json:"quality_deferral_days,omitempty"`
+	FeatureDeferralDays *int  `json:"feature_deferral_days,omitempty"`
+	ActiveHoursStart    *int  `json:"active_hours_start,omitempty"`
+	ActiveHoursEnd      *int  `json:"active_hours_end,omitempty"`
+	AutoRestart         *bool `json:"auto_restart,omitempty"`
+
+	// BitLocker.
+	RequireEncryption bool   `json:"require_encryption,omitempty"`
+	Method            string `json:"method,omitempty"`
+	EscrowRecoveryKey bool   `json:"escrow_recovery_key,omitempty"`
 }
 
 // Identity is the key two profiles must agree on to be setting the same thing.
@@ -111,6 +173,16 @@ func (s Setting) Identity() string {
 		return "local_group_members:" + strings.ToLower(s.Group)
 	case KindFile:
 		return "file:" + strings.ToLower(NormalizePath(s.Path))
+	case KindFirewallProfile:
+		return "firewall_profile:" + strings.ToLower(s.Profile)
+	case KindFirewallRule:
+		return "firewall_rule:" + strings.ToLower(strings.TrimSpace(s.Name))
+	case KindWindowsUpdate:
+		// One machine has one update policy, so two profiles configuring it
+		// differently is exactly the conflict the engine detects.
+		return "windows_update:policy"
+	case KindBitLocker:
+		return "bitlocker:os"
 	}
 	return s.Kind + ":"
 }
@@ -154,6 +226,14 @@ func (s Setting) Validate() error {
 		return s.validateGroup()
 	case KindFile:
 		return s.validateFile()
+	case KindFirewallProfile:
+		return s.validateFirewallProfile()
+	case KindFirewallRule:
+		return s.validateFirewallRule()
+	case KindWindowsUpdate:
+		return s.validateWindowsUpdate()
+	case KindBitLocker:
+		return s.validateBitLocker()
 	case "":
 		return fmt.Errorf("%w: every setting needs a kind", ErrBadSetting)
 	}
@@ -314,4 +394,120 @@ type ProfileOptions struct {
 	// RevertOnRemoval restores what was there before, when the profile stops
 	// applying to a device.
 	RevertOnRemoval bool `json:"revert_on_removal"`
+}
+
+func (s Setting) validateFirewallProfile() error {
+	switch s.Profile {
+	case FirewallDomain, FirewallPrivate, FirewallPublic:
+	default:
+		return fmt.Errorf("%w: profile must be domain, private or public, not %q", ErrBadSetting, s.Profile)
+	}
+	switch s.State {
+	case FirewallOn, FirewallOff:
+	default:
+		return fmt.Errorf("%w: a firewall profile must be on or off, not %q", ErrBadSetting, s.State)
+	}
+	return nil
+}
+
+func (s Setting) validateFirewallRule() error {
+	if strings.TrimSpace(s.Name) == "" {
+		return fmt.Errorf("%w: a firewall rule needs a name", ErrBadSetting)
+	}
+	if s.Ensure == EnsureAbsent {
+		return nil
+	}
+	if s.Ensure != "" && s.Ensure != EnsurePresent {
+		return fmt.Errorf("%w: ensure must be %q or %q", ErrBadSetting, EnsurePresent, EnsureAbsent)
+	}
+	switch s.Direction {
+	case DirectionInbound, DirectionOutbound:
+	default:
+		return fmt.Errorf("%w: direction must be inbound or outbound, not %q", ErrBadSetting, s.Direction)
+	}
+	switch s.Action {
+	case ActionAllow, ActionBlock:
+	default:
+		return fmt.Errorf("%w: action must be allow or block, not %q", ErrBadSetting, s.Action)
+	}
+	switch s.Protocol {
+	case ProtocolTCP, ProtocolUDP, ProtocolAny, "":
+	default:
+		return fmt.Errorf("%w: protocol must be tcp, udp or any, not %q", ErrBadSetting, s.Protocol)
+	}
+	if s.LocalPort != "" && s.Protocol == ProtocolAny {
+		return fmt.Errorf("%w: a port only means something with tcp or udp", ErrBadSetting)
+	}
+	if err := validatePort(s.LocalPort); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validatePort accepts a port, a range, or nothing.
+func validatePort(port string) error {
+	if strings.TrimSpace(port) == "" {
+		return nil
+	}
+	for _, part := range strings.Split(port, "-") {
+		n, err := strconv.Atoi(strings.TrimSpace(part))
+		if err != nil || n < 1 || n > 65535 {
+			return fmt.Errorf("%w: %q is not a port or port range", ErrBadSetting, port)
+		}
+	}
+	return nil
+}
+
+func (s Setting) validateWindowsUpdate() error {
+	if err := inRange("quality_deferral_days", s.QualityDeferralDays, 0, 30); err != nil {
+		return err
+	}
+	if err := inRange("feature_deferral_days", s.FeatureDeferralDays, 0, 365); err != nil {
+		return err
+	}
+	if err := inRange("active_hours_start", s.ActiveHoursStart, 0, 23); err != nil {
+		return err
+	}
+	if err := inRange("active_hours_end", s.ActiveHoursEnd, 0, 23); err != nil {
+		return err
+	}
+	if (s.ActiveHoursStart == nil) != (s.ActiveHoursEnd == nil) {
+		return fmt.Errorf("%w: active hours need both a start and an end", ErrBadSetting)
+	}
+	if s.ActiveHoursStart != nil && *s.ActiveHoursStart == *s.ActiveHoursEnd {
+		return fmt.Errorf("%w: active hours cannot start and end at the same hour", ErrBadSetting)
+	}
+	if s.QualityDeferralDays == nil && s.FeatureDeferralDays == nil &&
+		s.ActiveHoursStart == nil && s.AutoRestart == nil {
+		return fmt.Errorf("%w: a windows_update setting with nothing set does nothing", ErrBadSetting)
+	}
+	return nil
+}
+
+func inRange(field string, value *int, low, high int) error {
+	if value == nil {
+		return nil
+	}
+	if *value < low || *value > high {
+		return fmt.Errorf("%w: %s must be between %d and %d", ErrBadSetting, field, low, high)
+	}
+	return nil
+}
+
+func (s Setting) validateBitLocker() error {
+	switch s.Method {
+	case XtsAes128, XtsAes256, "":
+	default:
+		return fmt.Errorf("%w: method must be %s or %s, not %q", ErrBadSetting, XtsAes128, XtsAes256, s.Method)
+	}
+	if !s.RequireEncryption && s.EscrowRecoveryKey {
+		return fmt.Errorf("%w: a recovery key can only be escrowed when encryption is required", ErrBadSetting)
+	}
+	if !s.RequireEncryption && s.Method != "" {
+		return fmt.Errorf("%w: an encryption method only means something when encryption is required", ErrBadSetting)
+	}
+	if !s.RequireEncryption {
+		return fmt.Errorf("%w: a bitlocker setting that requires nothing does nothing", ErrBadSetting)
+	}
+	return nil
 }

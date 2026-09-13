@@ -174,3 +174,113 @@ func TestMultiSZSplitsLines(t *testing.T) {
 		}
 	}
 }
+
+func intp(n int) *int    { return &n }
+func boolp(b bool) *bool { return &b }
+
+func TestValidateM8KindsAccepts(t *testing.T) {
+	for _, s := range []protocol.Setting{
+		{Kind: protocol.KindFirewallProfile, Profile: protocol.FirewallDomain, State: protocol.FirewallOn},
+		{Kind: protocol.KindFirewallRule, Name: "Allow app", Direction: protocol.DirectionInbound,
+			Action: protocol.ActionAllow, Protocol: protocol.ProtocolTCP, LocalPort: "443"},
+		{Kind: protocol.KindFirewallRule, Name: "Allow range", Direction: protocol.DirectionOutbound,
+			Action: protocol.ActionBlock, Protocol: protocol.ProtocolUDP, LocalPort: "5000-5010"},
+		{Kind: protocol.KindFirewallRule, Name: "Old rule", Ensure: protocol.EnsureAbsent},
+		{Kind: protocol.KindWindowsUpdate, QualityDeferralDays: intp(7)},
+		{Kind: protocol.KindWindowsUpdate, ActiveHoursStart: intp(8), ActiveHoursEnd: intp(18)},
+		{Kind: protocol.KindWindowsUpdate, AutoRestart: boolp(false)},
+		{Kind: protocol.KindBitLocker, RequireEncryption: true},
+		{Kind: protocol.KindBitLocker, RequireEncryption: true, Method: protocol.XtsAes256, EscrowRecoveryKey: true},
+	} {
+		if err := s.Validate(); err != nil {
+			t.Errorf("Validate(%+v) = %v", s, err)
+		}
+	}
+}
+
+func TestValidateM8KindsRejects(t *testing.T) {
+	cases := map[string]struct {
+		setting protocol.Setting
+		mention string
+	}{
+		"unknown firewall profile": {
+			protocol.Setting{Kind: protocol.KindFirewallProfile, Profile: "guest", State: protocol.FirewallOn},
+			"domain, private or public"},
+		"firewall neither on nor off": {
+			protocol.Setting{Kind: protocol.KindFirewallProfile, Profile: protocol.FirewallDomain, State: "maybe"},
+			"on or off"},
+		"rule without a name": {
+			protocol.Setting{Kind: protocol.KindFirewallRule, Direction: protocol.DirectionInbound, Action: protocol.ActionAllow},
+			"name"},
+		"rule without a direction": {
+			protocol.Setting{Kind: protocol.KindFirewallRule, Name: "X", Action: protocol.ActionAllow},
+			"direction"},
+		"rule without an action": {
+			protocol.Setting{Kind: protocol.KindFirewallRule, Name: "X", Direction: protocol.DirectionInbound},
+			"action"},
+		"port on protocol any": {
+			protocol.Setting{Kind: protocol.KindFirewallRule, Name: "X", Direction: protocol.DirectionInbound,
+				Action: protocol.ActionAllow, Protocol: protocol.ProtocolAny, LocalPort: "80"},
+			"only means something with tcp or udp"},
+		"port out of range": {
+			protocol.Setting{Kind: protocol.KindFirewallRule, Name: "X", Direction: protocol.DirectionInbound,
+				Action: protocol.ActionAllow, Protocol: protocol.ProtocolTCP, LocalPort: "70000"},
+			"not a port"},
+		"deferral too long": {
+			protocol.Setting{Kind: protocol.KindWindowsUpdate, QualityDeferralDays: intp(45)},
+			"between 0 and 30"},
+		"hour out of range": {
+			protocol.Setting{Kind: protocol.KindWindowsUpdate, ActiveHoursStart: intp(25), ActiveHoursEnd: intp(2)},
+			"between 0 and 23"},
+		"half of active hours": {
+			protocol.Setting{Kind: protocol.KindWindowsUpdate, ActiveHoursStart: intp(8)},
+			"both a start and an end"},
+		"active hours of no length": {
+			protocol.Setting{Kind: protocol.KindWindowsUpdate, ActiveHoursStart: intp(8), ActiveHoursEnd: intp(8)},
+			"same hour"},
+		"empty update policy": {
+			protocol.Setting{Kind: protocol.KindWindowsUpdate},
+			"does nothing"},
+		"bitlocker requiring nothing": {
+			protocol.Setting{Kind: protocol.KindBitLocker},
+			"does nothing"},
+		"escrow without encryption": {
+			protocol.Setting{Kind: protocol.KindBitLocker, EscrowRecoveryKey: true},
+			"only be escrowed when encryption is required"},
+		"unknown method": {
+			protocol.Setting{Kind: protocol.KindBitLocker, RequireEncryption: true, Method: "rot13"},
+			"method must be"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			err := tc.setting.Validate()
+			if err == nil {
+				t.Fatalf("Validate(%+v) should have failed", tc.setting)
+			}
+			if !errors.Is(err, protocol.ErrBadSetting) {
+				t.Errorf("error should wrap ErrBadSetting, got %v", err)
+			}
+			if !strings.Contains(err.Error(), tc.mention) {
+				t.Errorf("error %q should mention %q", err, tc.mention)
+			}
+		})
+	}
+}
+
+// One machine has one update policy, so two profiles configuring it are the
+// same setting and the engine will call it a conflict.
+func TestWindowsUpdateHasOneIdentity(t *testing.T) {
+	a := protocol.Setting{Kind: protocol.KindWindowsUpdate, QualityDeferralDays: intp(7)}
+	b := protocol.Setting{Kind: protocol.KindWindowsUpdate, QualityDeferralDays: intp(14)}
+	if a.Identity() != b.Identity() {
+		t.Fatalf("%q and %q should be the same setting", a.Identity(), b.Identity())
+	}
+}
+
+func TestFirewallRuleIdentityIgnoresCase(t *testing.T) {
+	a := protocol.Setting{Kind: protocol.KindFirewallRule, Name: "Allow App"}
+	b := protocol.Setting{Kind: protocol.KindFirewallRule, Name: " allow app "}
+	if a.Identity() != b.Identity() {
+		t.Fatalf("%q and %q should be the same rule", a.Identity(), b.Identity())
+	}
+}
