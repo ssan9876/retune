@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -256,9 +257,12 @@ func (s *Service) RecordStatus(ctx context.Context, deviceID, profileID uuid.UUI
 
 	return s.Store.InTx(ctx, func(q *store.Queries) error {
 		for _, r := range report.Settings {
+			// The agent knows profiles only by id. An administrator reading a
+			// conflict needs names.
+			detail := s.nameProfiles(ctx, q, r.Detail)
 			if err := q.SetSettingStatus(ctx, store.SettingStatus{
 				DeviceID: deviceID, ProfileID: profileID, Identity: r.Identity,
-				Version: report.Version, Status: r.Status, Detail: r.Detail, UpdatedAt: now,
+				Version: report.Version, Status: r.Status, Detail: detail, UpdatedAt: now,
 			}); err != nil {
 				return err
 			}
@@ -321,4 +325,27 @@ func canonical(raw []byte) ([]byte, error) {
 		return nil, fmt.Errorf("decode stored settings: %w", err)
 	}
 	return json.Marshal(settings)
+}
+
+// uuidPattern matches the profile ids an agent puts in a conflict detail.
+var uuidPattern = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
+
+// nameProfiles replaces profile ids in a detail with their names, because the
+// agent knows only ids and a person reading a conflict needs names.
+func (s *Service) nameProfiles(ctx context.Context, q *store.Queries, detail string) string {
+	if detail == "" {
+		return detail
+	}
+	return uuidPattern.ReplaceAllStringFunc(detail, func(raw string) string {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			return raw
+		}
+		p, err := q.GetProfile(ctx, id)
+		if err != nil {
+			// The profile has gone; the id is still better than nothing.
+			return raw
+		}
+		return p.Name
+	})
 }

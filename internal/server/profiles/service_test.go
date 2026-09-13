@@ -3,6 +3,7 @@ package profiles_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -296,5 +297,45 @@ func TestRecordStatusRejectsNonsense(t *testing.T) {
 		Settings: []protocol.SettingResult{{Identity: "x", Status: "vibes"}},
 	}); !errors.Is(err, profiles.ErrBadRequest) {
 		t.Errorf("an unknown status should be rejected, got %v", err)
+	}
+}
+
+// A conflict names the profiles involved, because an administrator reading it
+// cannot do anything with a pair of UUIDs.
+func TestConflictDetailNamesProfiles(t *testing.T) {
+	st := storetest.New(t)
+	ctx := context.Background()
+	svc := service(st)
+	d := device(t, st, "CONFLICTED")
+
+	a, err := svc.Create(ctx, profiles.NewProfile{Name: "Wants one", Settings: settings(), Actor: "ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := svc.Create(ctx, profiles.NewProfile{
+		Name: "Wants two", Actor: "ops",
+		Settings: []protocol.Setting{{Kind: protocol.KindService, Name: "Spooler", State: protocol.StateRunning}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	detail := "profiles disagree about this setting: [" + a.ID.String() + " " + b.ID.String() + "]"
+	if err := svc.RecordStatus(ctx, d.ID, a.ID, protocol.ProfileStatus{
+		Version:  1,
+		Settings: []protocol.SettingResult{{Identity: "service:spooler", Status: protocol.SettingConflict, Detail: detail}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, _, err := st.Q().ListSettingStatus(ctx, a.ID, "", store.Page{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(rows[0].Detail, "Wants one") || !strings.Contains(rows[0].Detail, "Wants two") {
+		t.Fatalf("the detail should name both profiles, got %q", rows[0].Detail)
+	}
+	if strings.Contains(rows[0].Detail, a.ID.String()) {
+		t.Errorf("the raw id should have been replaced, got %q", rows[0].Detail)
 	}
 }
