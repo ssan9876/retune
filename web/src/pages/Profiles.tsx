@@ -90,7 +90,20 @@ function SettingFields({
   if (setting.kind === "registry") {
     return (
       <>
-        <Field label="Key" hint="Under HKEY_LOCAL_MACHINE. The signed-in user's hive is not supported yet.">
+        <Field
+          label="Hive"
+          hint={
+            setting.hive === "HKCU"
+              ? "The signed-in user's hive. A device with nobody signed in reports that and changes nothing."
+              : undefined
+          }
+        >
+          <select value={setting.hive ?? "HKLM"} onChange={(e) => set({ hive: e.target.value })}>
+            <option value="HKLM">The machine (HKEY_LOCAL_MACHINE)</option>
+            <option value="HKCU">The signed-in user (HKEY_CURRENT_USER)</option>
+          </select>
+        </Field>
+        <Field label="Key" hint="Under the hive chosen above.">
           <input value={setting.key ?? ""} onChange={(e) => set({ key: e.target.value })} />
         </Field>
         <Field label="Value name">

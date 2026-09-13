@@ -90,7 +90,6 @@ func TestValidateRejects(t *testing.T) {
 	}{
 		"no kind":              {protocol.Setting{}, "kind"},
 		"unknown kind":         {protocol.Setting{Kind: "sorcery"}, "sorcery"},
-		"hkcu":                 {protocol.Setting{Kind: protocol.KindRegistry, Hive: "HKCU", Key: "X", Name: "Y", Type: protocol.RegSZ}, "HKCU"},
 		"unknown hive":         {protocol.Setting{Kind: protocol.KindRegistry, Hive: "HKXX", Key: "X", Name: "Y"}, "hive"},
 		"no registry key":      {protocol.Setting{Kind: protocol.KindRegistry, Hive: "HKLM", Name: "Y", Type: protocol.RegSZ}, "key"},
 		"no value name":        {protocol.Setting{Kind: protocol.KindRegistry, Hive: "HKLM", Key: "X", Type: protocol.RegSZ}, "value name"},
@@ -131,6 +130,11 @@ func TestValidateSettings(t *testing.T) {
 	ok := []protocol.Setting{
 		{Kind: protocol.KindService, Name: "Spooler", State: protocol.StateStopped},
 		{Kind: protocol.KindFile, Path: "C:/temp/a.txt", ContentBase64: "aGk="},
+		// The signed-in user's hive is accepted here; a machine with nobody
+		// signed in reports that when the setting is applied, not when it is
+		// saved.
+		{Kind: protocol.KindRegistry, Hive: "HKCU", Key: `Software\Retune`, Name: "Managed",
+			Type: protocol.RegSZ, Data: "yes"},
 	}
 	if err := protocol.ValidateSettings(ok); err != nil {
 		t.Fatal(err)
@@ -154,7 +158,7 @@ func TestValidateSettings(t *testing.T) {
 	// The error says which setting is wrong.
 	bad := []protocol.Setting{
 		{Kind: protocol.KindService, Name: "Spooler", State: protocol.StateStopped},
-		{Kind: protocol.KindRegistry, Hive: "HKCU", Key: "X", Name: "Y", Type: protocol.RegSZ},
+		{Kind: protocol.KindRegistry, Hive: "HKXX", Key: "X", Name: "Y", Type: protocol.RegSZ},
 	}
 	if err := protocol.ValidateSettings(bad); err == nil || !strings.Contains(err.Error(), "setting 2") {
 		t.Fatalf("the error should point at the setting, got %v", err)

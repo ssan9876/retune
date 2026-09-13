@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 
 	"retune/internal/agent/agentcfg"
@@ -39,9 +40,11 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, out io.Writer) error {
-	// The service control manager starts us with no arguments.
-	if len(args) == 0 && isWindowsService() {
-		return runService(ctx, defaultDataDir())
+	// The service control manager starts us with the arguments recorded when
+	// the service was installed, which is the only way a service learns
+	// anything about where its state lives.
+	if isWindowsService() {
+		return runService(ctx, serviceDataDir(args))
 	}
 	if len(args) == 0 {
 		return errors.New(usage)
@@ -139,7 +142,7 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if err := installService(exe); err != nil {
+		if err := installService(exe, *dataDir); err != nil {
 			return err
 		}
 		fmt.Fprintln(out, "Installed the Retune service.")
@@ -158,6 +161,21 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 	default:
 		return fmt.Errorf("unknown command %q\n%s", args[0], usage)
 	}
+}
+
+// serviceDataDir reads the state directory from the arguments the service
+// control manager passes. A service installed by the MSI is created without
+// them and uses the default.
+func serviceDataDir(args []string) string {
+	for i, a := range args {
+		if a == "--data-dir" && i+1 < len(args) {
+			return args[i+1]
+		}
+		if dir, found := strings.CutPrefix(a, "--data-dir="); found {
+			return dir
+		}
+	}
+	return defaultDataDir()
 }
 
 func defaultDataDir() string {

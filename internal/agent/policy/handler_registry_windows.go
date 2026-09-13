@@ -12,6 +12,7 @@ import (
 
 	"golang.org/x/sys/windows/registry"
 
+	"retune/internal/agent/winsession"
 	"retune/internal/protocol"
 )
 
@@ -33,13 +34,32 @@ func hiveOf(s protocol.Setting) (registry.Key, error) {
 	switch strings.ToUpper(s.Hive) {
 	case "HKLM":
 		return registry.LOCAL_MACHINE, nil
+	case "HKCU":
+		// The signed-in user's hive is reached through HKEY_USERS rather than
+		// by impersonating: the hive is loaded while they are signed in, and
+		// naming it by SID keeps this free of thread-token juggling.
+		return registry.USERS, nil
 	}
 	return 0, fmt.Errorf("unsupported registry hive %q", s.Hive)
 }
 
-func keyPath(s protocol.Setting) string {
-	return strings.Trim(strings.ReplaceAll(strings.TrimSpace(s.Key), "/", `\`), `\`)
+// keyPath is the path under the hive. For HKCU it is prefixed with the
+// signed-in user's SID, so a machine with nobody signed in says so rather than
+// writing somewhere arbitrary.
+func keyPath(s protocol.Setting) (string, error) {
+	path := strings.Trim(strings.ReplaceAll(strings.TrimSpace(s.Key), "/", `\`), `\`)
+	if !strings.EqualFold(s.Hive, "HKCU") {
+		return path, nil
+	}
+	sid, err := userHive()
+	if err != nil {
+		return "", fmt.Errorf("this setting applies to the signed-in user, but %w", err)
+	}
+	return sid + `\` + path, nil
 }
+
+// userHive is a variable so tests can supply a SID without a real session.
+var userHive = winsession.HiveSID
 
 // openKey opens the setting's key for the given access, reporting whether it
 // exists at all.
@@ -48,7 +68,11 @@ func openKey(s protocol.Setting, access uint32) (registry.Key, bool, error) {
 	if err != nil {
 		return 0, false, err
 	}
-	k, err := registry.OpenKey(hive, keyPath(s), access)
+	path, err := keyPath(s)
+	if err != nil {
+		return 0, false, err
+	}
+	k, err := registry.OpenKey(hive, path, access)
 	if errors.Is(err, registry.ErrNotExist) {
 		return 0, false, nil
 	}
@@ -194,7 +218,11 @@ func (h RegistryHandler) Set(_ context.Context, s protocol.Setting) error {
 		return nil
 	}
 
-	k, _, err := registry.CreateKey(hive, keyPath(s), registry.SET_VALUE)
+	path, err := keyPath(s)
+	if err != nil {
+		return err
+	}
+	k, _, err := registry.CreateKey(hive, path, registry.SET_VALUE)
 	if err != nil {
 		return err
 	}
@@ -253,7 +281,11 @@ func (h RegistryHandler) Revert(_ context.Context, s protocol.Setting, prior Sta
 		return nil
 	}
 
-	k, _, err := registry.CreateKey(hive, keyPath(s), registry.SET_VALUE)
+	path, err := keyPath(s)
+	if err != nil {
+		return err
+	}
+	k, _, err := registry.CreateKey(hive, path, registry.SET_VALUE)
 	if err != nil {
 		return err
 	}

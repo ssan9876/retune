@@ -225,9 +225,10 @@ func TestScriptsAreClosedToReadOnlyAdmins(t *testing.T) {
 	}
 }
 
-// A deployment set to run as the signed-in user is stored, reported pending
-// with a reason, and never sent to the agent as work.
-func TestRunAsUserIsReportedPendingAndNotSent(t *testing.T) {
+// A deployment set to run as the signed-in user reaches the agent either way.
+// With nobody signed in the server reports it pending, from what the check-in
+// told it; once somebody signs in it is ordinary work.
+func TestRunAsUserIsPendingUntilSomebodySignsIn(t *testing.T) {
 	a, srv := newTestApp(t)
 	admin := signedIn(t, a, srv, store.RoleAdmin)
 	_, agent := enrollDevice(t, a, srv, "DESKTOP-INTERACTIVE")
@@ -241,32 +242,64 @@ func TestRunAsUserIsReportedPendingAndNotSent(t *testing.T) {
 	script := decodeJSON[scriptResp](t, body)
 	assignScript(t, admin, script.ID, map[string]any{"run_as": "logged_in_user"})
 
+	// Nobody is signed in.
 	status, body = send(t, agent, http.MethodPost, srv.URL+"/api/agent/v1/checkin",
 		protocol.CheckinRequest{AgentVersion: "1.0.0"})
 	if status != http.StatusOK {
 		t.Fatalf("checkin: %d %s", status, body)
 	}
-	if items := decodeJSON[protocol.CheckinResponse](t, body).Items; len(items) != 0 {
-		t.Fatalf("it must not be handed to the agent as work, got %+v", items)
+	// The agent still receives it, so it can run the moment somebody signs in
+	// between check-ins.
+	if items := decodeJSON[protocol.CheckinResponse](t, body).Items; len(items) != 1 {
+		t.Fatalf("the agent should receive it, got %+v", items)
 	}
 
-	status, body = admin.do(http.MethodGet, "/items/script/"+script.ID+"/status", nil)
-	if status != http.StatusOK {
-		t.Fatalf("status: %d %s", status, body)
-	}
-	resp := decodeJSON[struct {
-		Rollup map[string]int `json:"rollup"`
-		Items  []struct {
-			Status string `json:"status"`
-			Detail string `json:"detail"`
-		} `json:"items"`
-	}](t, body)
+	resp := itemStatus(t, admin, script.ID)
 	if resp.Rollup[store.ItemPending] != 1 {
 		t.Fatalf("it should be reported pending, got %v", resp.Rollup)
 	}
-	if !strings.Contains(resp.Items[0].Detail, "not supported yet") {
+	if !strings.Contains(resp.Items[0].Detail, "sign in") {
 		t.Errorf("the detail should say why, got %q", resp.Items[0].Detail)
 	}
+
+	// Somebody signs in, so the server stops calling it pending on its own,
+	// and the run the agent reports settles it.
+	status, body = send(t, agent, http.MethodPost, srv.URL+"/api/agent/v1/checkin",
+		protocol.CheckinRequest{AgentVersion: "1.0.0", LoggedInUser: `CORP\ada`})
+	if status != http.StatusOK {
+		t.Fatalf("checkin: %d %s", status, body)
+	}
+	status, body = send(t, agent, http.MethodPost,
+		fmt.Sprintf("%s/api/agent/v1/scripts/%s/runs", srv.URL, script.ID),
+		protocol.ScriptRun{
+			Version: 1, Status: protocol.ResultSucceeded, Phase: protocol.PhaseScript,
+			ExitCode: 0, Stdout: "shown",
+		})
+	if status != http.StatusNoContent {
+		t.Fatalf("report run: %d %s", status, body)
+	}
+	resp = itemStatus(t, admin, script.ID)
+	if resp.Rollup[store.ItemPending] != 0 || resp.Rollup[store.ItemSucceeded] != 1 {
+		t.Fatalf("it should have succeeded, got %v", resp.Rollup)
+	}
+}
+
+// itemStatusResp is the part of the per-device status these tests read.
+type itemStatusResp struct {
+	Rollup map[string]int `json:"rollup"`
+	Items  []struct {
+		Status string `json:"status"`
+		Detail string `json:"detail"`
+	} `json:"items"`
+}
+
+func itemStatus(t *testing.T, admin *adminClient, scriptID string) itemStatusResp {
+	t.Helper()
+	status, body := admin.do(http.MethodGet, "/items/script/"+scriptID+"/status", nil)
+	if status != http.StatusOK {
+		t.Fatalf("status: %d %s", status, body)
+	}
+	return decodeJSON[itemStatusResp](t, body)
 }
 
 // The per-device status says which version it refers to, so "succeeded" is

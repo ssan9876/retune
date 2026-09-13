@@ -27,6 +27,10 @@ func opts(mutate func(*protocol.DeploymentOptions)) protocol.DeploymentOptions {
 }
 
 func TestDecide(t *testing.T) {
+	// Whether anybody is signed in is a property of the machine running the
+	// test, so the cases below decide it instead.
+	scripts.SetUserSession(t, false, "nobody is signed in")
+
 	cases := map[string]struct {
 		version int
 		opts    protocol.DeploymentOptions
@@ -111,11 +115,11 @@ func TestDecide(t *testing.T) {
 			now:     now,
 			wantRun: true,
 		},
-		"running as the signed-in user is not executable yet": {
+		"running as the signed-in user with nobody signed in": {
 			version: 1, opts: opts(func(o *protocol.DeploymentOptions) { o.RunAs = protocol.RunAsUser }),
 			state:   state.ItemState{},
 			now:     now,
-			wantRun: false, reason: "not supported yet",
+			wantRun: false, reason: "nobody is signed in",
 		},
 	}
 
@@ -327,7 +331,20 @@ func TestSuccessfulRemediationIsReported(t *testing.T) {
 	}
 }
 
-func TestRunAsUserRunsNothing(t *testing.T) {
+// With somebody signed in the same deployment is due, so the only thing
+// holding it back before was the missing session.
+func TestRunAsUserIsDueOnceSomebodySignsIn(t *testing.T) {
+	scripts.SetUserSession(t, true, "")
+
+	o := opts(func(o *protocol.DeploymentOptions) { o.RunAs = protocol.RunAsUser })
+	if got := scripts.Decide(1, o, state.ItemState{}, now); !got.Run {
+		t.Fatalf("it should be due, got %q", got.Reason)
+	}
+}
+
+func TestRunAsUserRunsNothingWithNobodySignedIn(t *testing.T) {
+	scripts.SetUserSession(t, false, "nobody is signed in")
+
 	client := &fakeClient{version: protocol.ScriptVersionResponse{Version: 1, Body: "install"}}
 	runner := &fakeRunner{exits: map[string]int{"install": 0}}
 	s, _ := newScheduler(t, client, runner)

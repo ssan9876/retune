@@ -118,7 +118,7 @@ describe("Scripts", () => {
     expect(assignment?.options).toMatchObject({ frequency: "recurring", run_as: "system" });
   });
 
-  it("warns that running as the signed-in user is not supported yet", async () => {
+  it("explains what running as the signed-in user means", async () => {
     fetchMock.mockImplementation((url: string) => {
       if (String(url).includes("/groups")) {
         return Promise.resolve(json({ items: [{ id: "g1", name: "All devices", kind: "builtin" }] }));
@@ -132,6 +132,6 @@ describe("Scripts", () => {
     await screen.findByLabelText("Run as");
     await userEvent.selectOptions(screen.getByLabelText("Run as"), "logged_in_user");
 
-    expect(screen.getByText(/Not supported yet/)).toBeInTheDocument();
+    expect(screen.getByText(/nobody signed in reports this as pending/)).toBeInTheDocument();
   });
 });

@@ -244,10 +244,8 @@ func (s Setting) validateRegistry() error {
 	switch strings.ToUpper(s.Hive) {
 	case "HKLM":
 	case "HKCU":
-		// Writing there needs the signed-in user's loaded hive, which needs
-		// the interactive-session support that does not exist yet. Refusing
-		// here beats letting someone build a profile that can only error.
-		return fmt.Errorf("%w: HKCU settings are not supported yet, because they need the signed-in user's hive", ErrBadSetting)
+		// Applied to the signed-in user's hive. A machine with nobody signed
+		// in reports that plainly rather than silently doing nothing.
 	default:
 		return fmt.Errorf("%w: hive must be HKLM, not %q", ErrBadSetting, s.Hive)
 	}

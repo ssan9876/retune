@@ -113,7 +113,7 @@ describe("Profiles", () => {
     fetchMock.mockImplementation((_url: string, init?: { method?: string }) => {
       if (init?.method === "POST") {
         return Promise.resolve(
-          json({ code: "bad_request", message: "setting 1: invalid setting: HKCU settings are not supported yet" }, 400),
+          json({ code: "bad_request", message: "setting 1: invalid setting: unsupported registry hive \"HKXX\"" }, 400),
         );
       }
       return Promise.resolve(json({ items: [], total: 0, limit: 50, offset: 0 }));
@@ -126,7 +126,7 @@ describe("Profiles", () => {
     await userEvent.click(screen.getByRole("button", { name: "Add a setting" }));
     await userEvent.click(screen.getByRole("button", { name: "Create profile" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("HKCU settings are not supported yet");
+    expect(await screen.findByRole("alert")).toHaveTextContent('unsupported registry hive "HKXX"');
   });
 
   it("offers to put previous values back when a profile is unassigned", async () => {

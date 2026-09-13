@@ -16,7 +16,7 @@ func runService(context.Context, string) error {
 	return errors.New("the Retune service is only available on Windows; use retune-agent run")
 }
 
-func installService(string) error {
+func installService(string, string) error {
 	return errors.New("service installation is only available on Windows")
 }
 

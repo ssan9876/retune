@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"retune/internal/agent/state"
+	"retune/internal/agent/winsession"
 	"retune/internal/protocol"
 )
 
@@ -21,10 +22,12 @@ type Decision struct {
 // the agent remembers and the clock, so all of it is testable without a
 // database, a filesystem, or a real script.
 func Decide(version int, opts protocol.DeploymentOptions, st state.ItemState, now time.Time) Decision {
-	if ok, reason := opts.Executable(); !ok {
-		// The deployment applies to this device but cannot run here yet. The
-		// server records that as pending; the agent simply does nothing.
-		return Decision{Reason: reason}
+	if opts.NeedsUserSession() {
+		if ok, reason := userSession(); !ok {
+			// It applies to this device but there is nobody to run it as. The
+			// server reports that as pending, from what the check-in told it.
+			return Decision{Reason: reason}
+		}
 	}
 
 	if st.LastRunAt.IsZero() {
@@ -53,3 +56,7 @@ func Decide(version int, opts protocol.DeploymentOptions, st state.ItemState, no
 	}
 	return Decision{Reason: "it has already run"}
 }
+
+// userSession reports whether a deployment that needs a signed-in user can run
+// here. It is a variable so tests can decide without a real session.
+var userSession = winsession.Available

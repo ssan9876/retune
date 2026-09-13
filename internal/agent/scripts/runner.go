@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"strings"
 	"sync"
@@ -11,6 +12,7 @@ import (
 
 	"retune/internal/agent/executor"
 	"retune/internal/agent/state"
+	"retune/internal/agent/winsession"
 	"retune/internal/protocol"
 )
 
@@ -185,7 +187,13 @@ func (s *Scheduler) runOne(ctx context.Context, body string, opts protocol.Deplo
 	defer cancel()
 
 	stdout, stderr := executor.NewCapped(protocol.MaxOutputBytes), executor.NewCapped(protocol.MaxOutputBytes)
-	code, err := s.Runner.RunPowerShell(runCtx, body, stdout, stderr)
+	// A deployment set to run as the signed-in user runs in their session, not
+	// as the service account.
+	runner := s.Runner
+	if opts.NeedsUserSession() {
+		runner = userRunner{}
+	}
+	code, err := runner.RunPowerShell(runCtx, body, stdout, stderr)
 
 	out := outcome{
 		exitCode: code,
@@ -230,4 +238,11 @@ func join(a, b string) string {
 		return a
 	}
 	return a + "\n" + b
+}
+
+// userRunner runs a script in the signed-in user's session.
+type userRunner struct{}
+
+func (userRunner) RunPowerShell(ctx context.Context, script string, stdout, stderr io.Writer) (int, error) {
+	return winsession.RunPowerShell(ctx, script, stdout, stderr)
 }

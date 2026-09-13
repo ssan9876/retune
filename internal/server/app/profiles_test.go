@@ -164,19 +164,30 @@ func TestBadSettingsAreRefusedWithTheReason(t *testing.T) {
 	a, srv := newTestApp(t)
 	admin := signedIn(t, a, srv, store.RoleAdmin)
 
-	// HKCU needs the signed-in user's hive, which is not supported yet, so it
-	// is refused when the profile is saved rather than erroring on every
-	// device forever.
+	// A hive that does not exist is refused when the profile is saved, rather
+	// than erroring on every device forever. HKLM and HKCU are the two there
+	// are.
 	status, body := admin.do(http.MethodPost, "/profiles", map[string]any{
-		"name": "User hive", "settings": []map[string]any{
-			{"kind": "registry", "hive": "HKCU", "key": "Software/X", "name": "Y", "type": "REG_SZ", "data": "z"},
+		"name": "Nowhere", "settings": []map[string]any{
+			{"kind": "registry", "hive": "HKXX", "key": "Software/X", "name": "Y", "type": "REG_SZ", "data": "z"},
 		},
 	})
 	if status != http.StatusBadRequest {
 		t.Fatalf("want 400, got %d %s", status, body)
 	}
-	if !strings.Contains(string(body), "HKCU") {
+	if !strings.Contains(string(body), "HKXX") {
 		t.Errorf("the error should explain what is wrong, got %s", body)
+	}
+
+	// The signed-in user's hive, by contrast, is saved: whether anybody is
+	// signed in is a question for the device, not for the author.
+	status, body = admin.do(http.MethodPost, "/profiles", map[string]any{
+		"name": "User hive", "settings": []map[string]any{
+			{"kind": "registry", "hive": "HKCU", "key": "Software/X", "name": "Y", "type": "REG_SZ", "data": "z"},
+		},
+	})
+	if status != http.StatusCreated {
+		t.Fatalf("HKCU should be accepted, got %d %s", status, body)
 	}
 
 	// And a setting the author repeated within one profile.

@@ -136,11 +136,11 @@ func TestCreateRejectsBadSettings(t *testing.T) {
 	_, err := svc.Create(ctx, profiles.NewProfile{
 		Name: "Broken", Actor: "ops",
 		Settings: []protocol.Setting{
-			{Kind: protocol.KindRegistry, Hive: "HKCU", Key: "X", Name: "Y", Type: protocol.RegSZ},
+			{Kind: protocol.KindRegistry, Hive: "HKXX", Key: "X", Name: "Y", Type: protocol.RegSZ},
 		},
 	})
 	if !errors.Is(err, profiles.ErrBadRequest) {
-		t.Fatalf("HKCU should be refused when the profile is saved, got %v", err)
+		t.Fatalf("an unknown hive should be refused when the profile is saved, got %v", err)
 	}
 
 	if _, err := svc.Create(ctx, profiles.NewProfile{Name: "Empty", Actor: "ops"}); !errors.Is(err, profiles.ErrBadRequest) {

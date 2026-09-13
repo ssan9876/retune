@@ -117,8 +117,10 @@ func (h *handler) serve(ctx context.Context, log *slog.Logger) error {
 	}
 }
 
-// installService registers the service and its Event Log source.
-func installService(exePath string) error {
+// installService registers the service and its Event Log source. The state
+// directory is recorded as an argument, because a service is started by the
+// control manager with nothing else to go on.
+func installService(exePath, dataDir string) error {
 	m, err := mgr.Connect()
 	if err != nil {
 		return adminError(err)
@@ -137,7 +139,7 @@ func installService(exePath string) error {
 		ServiceType:  windows.SERVICE_WIN32_OWN_PROCESS,
 		ErrorControl: mgr.ErrorNormal,
 		// An empty account name means LocalSystem.
-	})
+	}, "--data-dir", dataDir)
 	if err != nil {
 		return adminError(err)
 	}

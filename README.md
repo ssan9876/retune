@@ -245,7 +245,7 @@ re-describing a script does not. Assign one to a group and choose how it runs:
 |---|---|---|
 | How often | once | `once` per version, or `recurring` |
 | Every | 24 hours | the gap between recurring runs |
-| Run as | the system account | the signed-in user is stored but **not yet executed** |
+| Run as | the system account | or the signed-in user, in their own session |
 | Timeout | 600 seconds | per execution, 1 to 86400 |
 | Max retries | 2 | consecutive failures before the agent stops retrying that version |
 | Rerun on new version | yes | whether a new version runs again where an older one already ran |
@@ -261,9 +261,13 @@ runs detection again — and that second detection decides whether the deploymen
 succeeded, because a remediation that finishes cleanly while leaving the machine
 non-compliant has not actually fixed anything.
 
-Running as the signed-in user is accepted and stored, but nothing executes it
-yet: those devices report `pending` with that reason rather than appearing to
-work. It needs Win32 token work that has not been done.
+**Running as the signed-in user.** The agent runs as LocalSystem, so it takes
+the console user's token and starts the script in their session, with their
+environment and their profile. A machine with nobody signed in reports `pending`
+with that reason and runs nothing; it runs as soon as somebody signs in, without
+waiting for an administrator to do anything. Because the script is passed on the
+command line rather than through a file the user could not read, a script run
+this way is limited to 8 KiB.
 
 Every run is kept, so you can see whether a script is flapping rather than only
 its latest state. Deleting a script removes its assignments and keeps its runs.
@@ -303,8 +307,11 @@ enforcing it. If the assignment was set to put previous values back, it restores
 what was there before the profile first changed each setting — not what Retune
 last wrote — and leaves alone anything another profile still wants.
 
-Several things are refused rather than half-supported. `HKCU` registry values,
-which need the signed-in user's hive, are rejected when the profile is saved. An
+`HKCU` registry values are written to the signed-in user's hive, reached by SID
+under `HKEY_USERS`. On a machine with nobody signed in the setting reports that
+plainly and changes nothing, rather than writing somewhere arbitrary.
+
+Several other things are refused rather than half-supported. An
 `exact` group setting never removes the built-in Administrator account, whatever
 the profile says. A firewall rule is only removed if Retune created it, so a
 profile cannot delete a rule something else on the machine relies on. And

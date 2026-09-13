@@ -200,7 +200,7 @@ function AssignDialog({
             label="Run as"
             hint={
               runAs === "logged_in_user"
-                ? "Not supported yet: devices will report this as pending rather than running it."
+                ? "Runs in the signed-in user's session. A device with nobody signed in reports this as pending until somebody does."
                 : undefined
             }
           >

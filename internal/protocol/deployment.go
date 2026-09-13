@@ -17,8 +17,7 @@ const (
 	FrequencyRecurring = "recurring"
 )
 
-// Accounts a script can run as. RunAsUser is accepted and stored, but M6 does
-// not execute it: see Options.Executable.
+// Accounts a script can run as.
 const (
 	RunAsSystem = "system"
 	RunAsUser   = "logged_in_user"
@@ -64,15 +63,9 @@ func (o DeploymentOptions) Interval() time.Duration {
 	return time.Duration(o.IntervalHours) * time.Hour
 }
 
-// Executable reports whether the agent can actually run this deployment today.
-// A deployment set to run as the signed-in user is stored and shown, but not
-// executed, and says so rather than failing quietly.
-func (o DeploymentOptions) Executable() (bool, string) {
-	if o.RunAs == RunAsUser {
-		return false, "running as the logged-in user is not supported yet"
-	}
-	return true, ""
-}
+// NeedsUserSession reports whether this deployment can only run while somebody
+// is signed in.
+func (o DeploymentOptions) NeedsUserSession() bool { return o.RunAs == RunAsUser }
 
 // ParseOptions validates raw assignment options, filling in the defaults.
 // Unknown fields are rejected so a typo is not silently ignored.

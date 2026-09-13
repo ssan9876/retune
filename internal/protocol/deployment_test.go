@@ -2,7 +2,6 @@ package protocol_test
 
 import (
 	"errors"
-	"strings"
 	"testing"
 
 	"retune/internal/protocol"
@@ -34,23 +33,18 @@ func TestParseOptionsAccepts(t *testing.T) {
 	}
 }
 
-// Running as the signed-in user is accepted and stored; it is simply not
-// executed yet, which Executable explains.
-func TestRunAsUserIsStoredButNotExecutable(t *testing.T) {
+// Running as the signed-in user needs somebody to be signed in; running as the
+// system account never does.
+func TestRunAsUserNeedsASession(t *testing.T) {
 	o, err := protocol.ParseDeploymentOptions([]byte(`{"run_as":"logged_in_user"}`))
 	if err != nil {
 		t.Fatalf("run_as: logged_in_user must be accepted, got %v", err)
 	}
-	ok, reason := o.Executable()
-	if ok {
-		t.Fatal("it must not be executable in this milestone")
+	if !o.NeedsUserSession() {
+		t.Error("a deployment set to run as the signed-in user needs a session")
 	}
-	if !strings.Contains(reason, "not supported yet") {
-		t.Errorf("the reason should say so plainly, got %q", reason)
-	}
-
-	if ok, _ := protocol.DefaultDeploymentOptions().Executable(); !ok {
-		t.Error("running as the system account should be executable")
+	if protocol.DefaultDeploymentOptions().NeedsUserSession() {
+		t.Error("running as the system account does not need anybody signed in")
 	}
 }
 

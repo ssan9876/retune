@@ -204,15 +204,16 @@ func (h *Handler) checkin(w http.ResponseWriter, r *http.Request) {
 			}
 			item.Version = sc.CurrentVersion
 
-			// The server knows the options, so it records a deployment the
-			// agent cannot run rather than waiting to be told. That keeps the
-			// status honest whatever version of the agent is out there.
+			// A deployment that needs a signed-in user cannot run on a machine
+			// where nobody is. The check-in says who is signed in, so the
+			// server records that as pending; the agent still receives it, and
+			// reports a real result as soon as somebody signs in.
 			if opts, err := protocol.ParseDeploymentOptions(it.Options); err == nil {
-				if ok, reason := opts.Executable(); !ok {
-					if err := h.Scripts.SetItemPending(ctx, a.Device.ID, it.ID, sc.CurrentVersion, reason); err != nil {
+				if opts.NeedsUserSession() && strings.TrimSpace(req.LoggedInUser) == "" {
+					if err := h.Scripts.SetItemPending(ctx, a.Device.ID, it.ID, sc.CurrentVersion,
+						"waiting for somebody to sign in"); err != nil {
 						h.Log.Warn("record pending deployment", "script_id", it.ID, "error", err)
 					}
-					continue
 				}
 			}
 		}
