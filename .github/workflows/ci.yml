@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # The Linux job runs everything: the console build, the full Go suite (whose
+  # store tests start a throwaway Postgres through testcontainers), and the
+  # console's own tests.
+  linux:
+    name: Linux — build and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"
+          cache-dependency-path: go.sum
+
+      - name: Install console dependencies
+        run: npm --prefix web ci
+
+      - name: Test the console
+        run: npm --prefix web run test
+
+      # The Go binary embeds this build, so it must happen before the Go tests.
+      - name: Build the console
+        run: npm --prefix web run build
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build the binaries
+        run: go build -o bin/ ./cmd/...
+
+  # Windows covers the agent code that only exists there: DPAPI, the WMI and
+  # registry inventory collector, and running PowerShell. Docker on Windows
+  # runners cannot start Linux containers, so -short skips the Postgres tests
+  # the Linux job already ran.
+  windows:
+    name: Windows — agent tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"
+          cache-dependency-path: go.sum
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test without the database
+        run: go test -short ./...
+
+      - name: Build the binaries
+        run: go build -o bin/ ./cmd/...
