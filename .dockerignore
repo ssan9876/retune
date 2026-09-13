@@ -1,0 +1,8 @@
+.git
+bin
+data
+agent-data
+docs
+web/node_modules
+internal/server/console/dist/assets
+internal/server/console/dist/index.html
