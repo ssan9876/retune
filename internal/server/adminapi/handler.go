@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"retune/internal/server/apps"
 	"retune/internal/server/auth"
 	"retune/internal/server/bitlocker"
 	"retune/internal/server/commands"
@@ -35,6 +36,7 @@ type Handler struct {
 	Groups    *groups.Service
 	Scripts   *scripts.Service
 	Profiles  *profiles.Service
+	Apps      *apps.Service
 	BitLocker *bitlocker.Service
 	Enroll    *enroll.Service
 	Now       func() time.Time

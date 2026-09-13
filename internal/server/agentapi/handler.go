@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	"retune/internal/protocol"
+	"retune/internal/server/apps"
 	"retune/internal/server/bitlocker"
 	"retune/internal/server/ca"
 	"retune/internal/server/commands"
@@ -31,6 +32,7 @@ type Handler struct {
 	Commands        *commands.Service
 	Scripts         *scripts.Service
 	Profiles        *profiles.Service
+	Apps            *apps.Service
 	BitLocker       *bitlocker.Service
 	Store           *store.Store
 	Now             func() time.Time
