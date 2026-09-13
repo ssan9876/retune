@@ -94,7 +94,9 @@ docker compose exec server /retune-server bootstrap-admin --email you@example.co
 
 The stack is the server plus PostgreSQL. Migrations run at startup, so there is
 no separate migrate step. The `ca` volume holds the internal certificate
-authority: **losing it orphans every enrolled device**, so back it up.
+authority and the key that protects escrowed BitLocker recovery keys: **losing
+it orphans every enrolled device and makes every escrowed recovery key
+unreadable**, so back it up.
 
 ### Behind a reverse proxy
 
@@ -273,6 +275,10 @@ scripts and assigned to groups the same way.
 | `service` | a service's startup type and whether it is running |
 | `local_group_members` | who is in a local group, `additive` or `exact` |
 | `file` | a file's contents, or its absence (up to 1 MB) |
+| `firewall_profile` | whether the domain, private or public firewall is on |
+| `firewall_rule` | a named inbound or outbound rule |
+| `windows_update` | update deferrals, active hours and restart behaviour |
+| `bitlocker` | requiring the system drive to be encrypted, and escrowing its recovery key |
 
 Each setting is applied as: test, then set only if needed, then **test again**.
 That second test is what separates fixing something from merely running
@@ -291,10 +297,26 @@ enforcing it. If the assignment was set to put previous values back, it restores
 what was there before the profile first changed each setting — not what Retune
 last wrote — and leaves alone anything another profile still wants.
 
-Two things are refused rather than half-supported: `HKCU` registry values, which
-need the signed-in user's hive, are rejected when the profile is saved; and an
+Several things are refused rather than half-supported. `HKCU` registry values,
+which need the signed-in user's hive, are rejected when the profile is saved. An
 `exact` group setting never removes the built-in Administrator account, whatever
-the profile says.
+the profile says. A firewall rule is only removed if Retune created it, so a
+profile cannot delete a rule something else on the machine relies on. And
+BitLocker never decrypts a drive, never re-encrypts one already encrypted
+another way, and refuses to start on a machine with no TPM rather than leaving
+it demanding a startup key at every boot.
+
+### BitLocker recovery keys
+
+A `bitlocker` setting can escrow the system drive's recovery password. It is
+encrypted before it is stored, with a key in `DATA_DIR/secret.key` that is
+created on first use — **back that file up with the CA key, because without it
+every escrowed recovery key is unreadable.**
+
+A device's escrowed volumes appear on its page in the console. The key itself is
+never part of that listing: showing one is a separate, deliberate action that
+requires the admin role and is written to the audit log every time, with who
+asked and why. A read-only account can see that a key exists and cannot have it.
 
 ## Command-line reference
 

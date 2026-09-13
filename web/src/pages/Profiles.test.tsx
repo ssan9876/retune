@@ -144,3 +144,71 @@ describe("Profiles", () => {
     expect(screen.getByText(/Restores what was there before/)).toBeInTheDocument();
   });
 });
+
+describe("Profiles: the M8 setting kinds", () => {
+  it("offers the firewall, update and BitLocker kinds", async () => {
+    listOnly();
+    render(<Profiles />);
+    await screen.findByText("Baseline");
+
+    await userEvent.click(screen.getByRole("button", { name: "New profile" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add a setting" }));
+
+    const kind = screen.getByLabelText("Setting 1 kind");
+    for (const value of ["firewall_profile", "firewall_rule", "windows_update", "bitlocker"]) {
+      expect(kind.querySelector(`option[value="${value}"]`)).not.toBeNull();
+    }
+  });
+
+  it("builds a firewall rule", async () => {
+    const posted: Record<string, unknown>[] = [];
+    fetchMock.mockImplementation((_url: string, init?: { method?: string; body?: string }) => {
+      if (init?.method === "POST") {
+        posted.push(JSON.parse(init.body ?? "{}"));
+        return Promise.resolve(json({ ...profile, id: "p2" }, 201));
+      }
+      return Promise.resolve(json({ items: [], total: 0, limit: 50, offset: 0 }));
+    });
+    render(<Profiles />);
+    await screen.findByText("No profiles yet.");
+
+    await userEvent.click(screen.getByRole("button", { name: "New profile" }));
+    await userEvent.type(screen.getByLabelText("Name"), "Firewall baseline");
+    await userEvent.click(screen.getByRole("button", { name: "Add a setting" }));
+    await userEvent.selectOptions(screen.getByLabelText("Setting 1 kind"), "firewall_rule");
+    await userEvent.type(screen.getByLabelText("Rule name"), "Allow app");
+    await userEvent.type(screen.getByLabelText("Port"), "8443");
+    await userEvent.click(screen.getByRole("button", { name: "Create profile" }));
+
+    expect(posted[0].settings).toMatchObject([
+      { kind: "firewall_rule", name: "Allow app", direction: "inbound", action: "allow", local_port: "8443" },
+    ]);
+  });
+
+  it("says plainly what BitLocker will and will not do", async () => {
+    listOnly();
+    render(<Profiles />);
+    await screen.findByText("Baseline");
+
+    await userEvent.click(screen.getByRole("button", { name: "New profile" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add a setting" }));
+    await userEvent.selectOptions(screen.getByLabelText("Setting 1 kind"), "bitlocker");
+
+    expect(screen.getByText(/never decrypts a drive/)).toBeInTheDocument();
+    expect(screen.getByText(/every time one is revealed it is recorded/)).toBeInTheDocument();
+  });
+
+  it("lets an update policy leave a setting alone", async () => {
+    listOnly();
+    render(<Profiles />);
+    await screen.findByText("Baseline");
+
+    await userEvent.click(screen.getByRole("button", { name: "New profile" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add a setting" }));
+    await userEvent.selectOptions(screen.getByLabelText("Setting 1 kind"), "windows_update");
+
+    const restart = screen.getByLabelText("Restart while someone is signed in");
+    expect((restart as HTMLSelectElement).value).toBe("");
+    expect(screen.getByText(/Leave empty to leave this alone/)).toBeInTheDocument();
+  });
+});

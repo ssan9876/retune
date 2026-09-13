@@ -51,3 +51,27 @@
   border-bottom-color: var(--primary);
   font-weight: 500;
 }
+
+.recovery {
+  margin-top: var(--space-6);
+  border-top: 1px solid var(--rule);
+  padding-top: var(--space-4);
+}
+
+/* The confirmation and the key itself are set apart, because showing a
+   recovery key is a deliberate act and is recorded. */
+.recovery__confirm,
+.recovery__key {
+  border-left: 2px solid var(--primary);
+  padding-left: var(--space-3);
+  margin-top: var(--space-4);
+  font-size: var(--text-sm);
+}
+
+.recovery__key pre {
+  background: var(--surface-sunken);
+  padding: var(--space-3);
+  border-radius: var(--radius);
+  white-space: pre-wrap;
+  word-break: break-all;
+}

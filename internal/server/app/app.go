@@ -15,6 +15,7 @@ import (
 	"retune/internal/server/adminapi"
 	"retune/internal/server/agentapi"
 	"retune/internal/server/auth"
+	"retune/internal/server/bitlocker"
 	"retune/internal/server/ca"
 	"retune/internal/server/commands"
 	"retune/internal/server/console"
@@ -24,6 +25,7 @@ import (
 	"retune/internal/server/inventory"
 	"retune/internal/server/profiles"
 	"retune/internal/server/scripts"
+	"retune/internal/server/secrets"
 	"retune/internal/server/store"
 )
 
@@ -38,6 +40,7 @@ type App struct {
 	Commands  *commands.Service
 	Scripts   *scripts.Service
 	Profiles  *profiles.Service
+	BitLocker *bitlocker.Service
 	Devices   *devices.Service
 	Groups    *groups.Service
 	Auth      *auth.Service
@@ -89,18 +92,24 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	cmd := &commands.Service{Store: st, Now: time.Now}
 	scr := &scripts.Service{Store: st, Now: time.Now}
 	prof := &profiles.Service{Store: st, Now: time.Now}
+	secretKey, err := serverSecret(cfg)
+	if err != nil {
+		st.Close()
+		return nil, err
+	}
+	locker := &bitlocker.Service{Store: st, Key: secretKey, Now: time.Now}
 	dev := &devices.Service{Store: st}
 	authSvc := &auth.Service{
 		Store: st, Now: time.Now, SessionTTL: cfg.SessionTTL,
 		Limiter: auth.NewLimiter(10, 15*time.Minute, time.Now), Issuer: "Retune",
 	}
 	agent := &agentapi.Handler{
-		Enroll: svc, Inventory: inv, Commands: cmd, Scripts: scr, Profiles: prof, Store: st,
+		Enroll: svc, Inventory: inv, Commands: cmd, Scripts: scr, Profiles: prof, BitLocker: locker, Store: st,
 		Now: time.Now, CheckinInterval: cfg.CheckinInterval, Log: log,
 		ClientCert: clientCert,
 	}
 	admin := &adminapi.Handler{
-		Auth: authSvc, Store: st, Commands: cmd, Devices: dev, Enroll: svc, Groups: grp, Scripts: scr, Profiles: prof,
+		Auth: authSvc, Store: st, Commands: cmd, Devices: dev, Enroll: svc, Groups: grp, Scripts: scr, Profiles: prof, BitLocker: locker,
 		Now: time.Now, Log: log,
 	}
 	root := http.NewServeMux()
@@ -116,6 +125,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		Commands:  cmd,
 		Scripts:   scr,
 		Profiles:  prof,
+		BitLocker: locker,
 		Devices:   dev,
 		Groups:    grp,
 		Auth:      authSvc,
@@ -152,4 +162,13 @@ func uniq(items ...string) []string {
 		}
 	}
 	return out
+}
+
+// serverSecret loads the key that protects escrowed data at rest. It lives
+// beside the CA, because losing either one is equally unrecoverable.
+func serverSecret(cfg config.Server) (*secrets.Key, error) {
+	if cfg.CAKeySource == "env" {
+		return secrets.FromHex(os.Getenv("SECRET_KEY"))
+	}
+	return secrets.LoadOrCreateFile(cfg.DataDir)
 }

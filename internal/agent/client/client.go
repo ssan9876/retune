@@ -210,3 +210,20 @@ func (c *Client) FetchProfile(ctx context.Context, id string, version int) (prot
 func (c *Client) ReportProfileStatus(ctx context.Context, id string, status protocol.ProfileStatus) error {
 	return c.do(ctx, http.MethodPost, "/api/agent/v1/profiles/"+url.PathEscape(id)+"/status", status, nil)
 }
+
+// HasRecoveryKey asks whether the server already holds a recovery key for a
+// volume, so a compliant machine does not send one on every check-in.
+func (c *Client) HasRecoveryKey(ctx context.Context, volumeID string) (bool, error) {
+	var resp protocol.BitLockerHasResponse
+	path := "/api/agent/v1/bitlocker?volume_id=" + url.QueryEscape(volumeID)
+	err := c.do(ctx, http.MethodGet, path, nil, &resp)
+	return resp.Escrowed, err
+}
+
+// EscrowRecoveryKey sends a BitLocker recovery password to the server, which
+// stores it encrypted.
+func (c *Client) EscrowRecoveryKey(ctx context.Context, volumeID, method, recoveryPassword string) error {
+	return c.do(ctx, http.MethodPost, "/api/agent/v1/bitlocker", protocol.BitLockerEscrowRequest{
+		VolumeID: volumeID, Method: method, RecoveryPassword: recoveryPassword,
+	}, nil)
+}

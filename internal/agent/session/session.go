@@ -101,6 +101,11 @@ func New(cfg Config) (*Session, error) {
 		if cfg.Policy.Reconciler != nil && cfg.Policy.Reconciler.Client == nil {
 			cfg.Policy.Reconciler.Client = policyClient{s}
 		}
+		// The BitLocker handler escrows through the same client, so a
+		// certificate renewal is picked up there too.
+		if cfg.Policy.Reconciler != nil && len(cfg.Policy.Reconciler.Handlers) == 0 {
+			cfg.Policy.Reconciler.Handlers = policy.DefaultHandlers(policyClient{s})
+		}
 	}
 	return s, nil
 }
@@ -400,4 +405,16 @@ func (c policyClient) FetchProfile(ctx context.Context, id string, version int) 
 
 func (c policyClient) ReportProfileStatus(ctx context.Context, id string, status protocol.ProfileStatus) error {
 	return c.s.currentClient().ReportProfileStatus(ctx, id, status)
+}
+
+// HasRecoveryKey satisfies policy.Escrower through the session's current
+// client.
+func (c policyClient) HasRecoveryKey(ctx context.Context, volumeID string) (bool, error) {
+	return c.s.currentClient().HasRecoveryKey(ctx, volumeID)
+}
+
+// EscrowRecoveryKey satisfies policy.Escrower through the session's current
+// client.
+func (c policyClient) EscrowRecoveryKey(ctx context.Context, volumeID, method, recoveryPassword string) error {
+	return c.s.currentClient().EscrowRecoveryKey(ctx, volumeID, method, recoveryPassword)
 }

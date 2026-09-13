@@ -8,11 +8,13 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	"retune/internal/protocol"
+	"retune/internal/server/bitlocker"
 	"retune/internal/server/ca"
 	"retune/internal/server/commands"
 	"retune/internal/server/enroll"
@@ -29,6 +31,7 @@ type Handler struct {
 	Commands        *commands.Service
 	Scripts         *scripts.Service
 	Profiles        *profiles.Service
+	BitLocker       *bitlocker.Service
 	Store           *store.Store
 	Now             func() time.Time
 	CheckinInterval time.Duration
@@ -60,6 +63,8 @@ func (h *Handler) Routes() http.Handler {
 	mux.Handle("POST /api/agent/v1/scripts/{id}/runs", h.requireDevice(h.scriptRun))
 	mux.Handle("GET /api/agent/v1/profiles/{id}/versions/{version}", h.requireDevice(h.profileVersion))
 	mux.Handle("POST /api/agent/v1/profiles/{id}/status", h.requireDevice(h.profileStatus))
+	mux.Handle("GET /api/agent/v1/bitlocker", h.requireDevice(h.bitlockerStatus))
+	mux.Handle("POST /api/agent/v1/bitlocker", h.requireDevice(h.escrowBitLocker))
 	return mux
 }
 
@@ -434,6 +439,44 @@ func (h *Handler) profileStatus(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
 	default:
 		h.Log.Error("record profile status", "device_id", a.Device.ID, "profile_id", id, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+	}
+}
+
+// bitlockerStatus answers whether the server already holds a recovery key for a
+// volume, so a compliant machine does not send one on every check-in.
+func (h *Handler) bitlockerStatus(w http.ResponseWriter, r *http.Request) {
+	a := auth(r)
+	volumeID := r.URL.Query().Get("volume_id")
+	if strings.TrimSpace(volumeID) == "" {
+		writeError(w, http.StatusBadRequest, "bad_request", "volume_id is required")
+		return
+	}
+	has, err := h.BitLocker.Has(r.Context(), a.Device.ID, volumeID)
+	if err != nil {
+		h.Log.Error("check escrowed key", "device_id", a.Device.ID, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+		return
+	}
+	writeJSON(w, http.StatusOK, protocol.BitLockerHasResponse{Escrowed: has})
+}
+
+// escrowBitLocker stores a recovery password. The key is never logged, here or
+// anywhere else.
+func (h *Handler) escrowBitLocker(w http.ResponseWriter, r *http.Request) {
+	a := auth(r)
+	var req protocol.BitLockerEscrowRequest
+	if !decode(w, r, &req, maxCheckinBody) {
+		return
+	}
+	err := h.BitLocker.Escrow(r.Context(), a.Device.ID, req.VolumeID, req.Method, req.RecoveryPassword)
+	switch {
+	case err == nil:
+		writeNoContent(w)
+	case errors.Is(err, bitlocker.ErrBadRequest):
+		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
+	default:
+		h.Log.Error("escrow recovery key", "device_id", a.Device.ID, "volume_id", req.VolumeID, "error", err)
 		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
 	}
 }

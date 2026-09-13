@@ -74,10 +74,10 @@ func Run(ctx context.Context, opts Options) error {
 			State: st, Runner: scriptRunner, Log: opts.Log, Now: time.Now,
 		},
 		Policy: &policy.Syncer{
-			Reconciler: &policy.Reconciler{
-				Handlers: policy.DefaultHandlers(), State: st, Log: opts.Log,
-			},
-			Cache: st, Log: opts.Log,
+			// Handlers are filled in by the session, which owns the client
+			// the BitLocker handler escrows through.
+			Reconciler: &policy.Reconciler{State: st, Log: opts.Log},
+			Cache:      st, Log: opts.Log,
 		},
 		Log: opts.Log,
 	})

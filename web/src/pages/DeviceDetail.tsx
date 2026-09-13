@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { DeviceDetail as Detail } from "../api/types";
+import { RecoveryKeys } from "../components/RecoveryKeys";
 import { RunScriptDialog } from "../components/RunScriptDialog";
 import { StatusDot } from "../components/StatusDot";
 import { Button, ErrorNote, Spinner } from "../components/ui";
@@ -187,6 +188,8 @@ export default function DeviceDetail() {
           </table>
         </div>
       )}
+
+      <RecoveryKeys deviceId={device.id} />
 
       <RunScriptDialog
         deviceIds={[device.id]}
