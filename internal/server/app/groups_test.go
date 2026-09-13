@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"testing"
 
+	"retune/internal/protocol"
 	"retune/internal/server/store"
 )
 
@@ -164,5 +165,69 @@ func TestGroupAPIIsClosedToReadOnlyAdmins(t *testing.T) {
 		"rule": "ram_gb > 0",
 	}); status != http.StatusForbidden {
 		t.Errorf("a read-only admin should not run rules, got %d", status)
+	}
+}
+
+// TestEffectiveItemsReachCheckin is the point of the whole milestone: an item
+// assigned to a group the device belongs to comes back on its next check-in,
+// and an exclude anywhere takes it away again.
+func TestEffectiveItemsReachCheckin(t *testing.T) {
+	a, srv := newTestApp(t)
+	admin := signedIn(t, a, srv, store.RoleAdmin)
+	deviceID, agent := enrollDevice(t, a, srv, "DESKTOP-GROUPED")
+
+	checkinItems := func() []protocol.Item {
+		t.Helper()
+		status, body := send(t, agent, http.MethodPost, srv.URL+"/api/agent/v1/checkin",
+			protocol.CheckinRequest{AgentVersion: "1.0.0"})
+		if status != http.StatusOK {
+			t.Fatalf("checkin: %d %s", status, body)
+		}
+		return decodeJSON[protocol.CheckinResponse](t, body).Items
+	}
+
+	// Enrolling puts the device in the built-in group, so nothing else is
+	// needed for a fleet-wide assignment to reach it.
+	if items := checkinItems(); len(items) != 0 {
+		t.Fatalf("nothing is assigned yet, got %v", items)
+	}
+
+	item := "01a09983-0000-7000-8000-0000000000aa"
+	status, body := admin.do(http.MethodPost, "/assignments", map[string]string{
+		"item_kind": "script", "item_id": item,
+		"group_id": store.BuiltinGroupID.String(), "mode": "include",
+	})
+	if status != http.StatusCreated {
+		t.Fatalf("assign: %d %s", status, body)
+	}
+
+	items := checkinItems()
+	if len(items) != 1 || items[0].ID != item || items[0].Kind != "script" {
+		t.Fatalf("the assigned item should reach the device, got %v", items)
+	}
+
+	// A group that excludes the same item takes it away, even though the
+	// include is still there.
+	status, body = admin.do(http.MethodPost, "/groups", map[string]string{
+		"name": "Held back", "kind": "static",
+	})
+	if status != http.StatusCreated {
+		t.Fatalf("create group: %d %s", status, body)
+	}
+	held := decodeJSON[groupResp](t, body)
+
+	if status, body := admin.do(http.MethodPost, "/groups/"+held.ID+"/members",
+		map[string]string{"device_id": deviceID.String()}); status != http.StatusNoContent {
+		t.Fatalf("add member: %d %s", status, body)
+	}
+	if status, body := admin.do(http.MethodPost, "/assignments", map[string]string{
+		"item_kind": "script", "item_id": item,
+		"group_id": held.ID, "mode": "exclude",
+	}); status != http.StatusCreated {
+		t.Fatalf("exclude: %d %s", status, body)
+	}
+
+	if items := checkinItems(); len(items) != 0 {
+		t.Fatalf("exclude must win on check-in too, got %v", items)
 	}
 }

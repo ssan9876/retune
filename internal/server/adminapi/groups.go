@@ -316,11 +316,14 @@ func (h *Handler) createAssignment(w http.ResponseWriter, r *http.Request) {
 		ID: uuid.Must(uuid.NewV7()), ItemKind: req.ItemKind, ItemID: itemID,
 		GroupID: groupID, Mode: req.Mode, CreatedAt: h.Now(), CreatedBy: caller(r).Admin.Email,
 	}
+	groupName := ""
 	ctx := r.Context()
 	err = h.Store.InTx(ctx, func(q *store.Queries) error {
-		if _, err := q.GetGroup(ctx, groupID); err != nil {
+		g, err := q.GetGroup(ctx, groupID)
+		if err != nil {
 			return err
 		}
+		groupName = g.Name
 		if err := q.CreateAssignment(ctx, a); err != nil {
 			return err
 		}
@@ -343,7 +346,8 @@ func (h *Handler) createAssignment(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusCreated, assignmentJSON{
 		ID: a.ID.String(), ItemKind: a.ItemKind, ItemID: a.ItemID.String(),
-		GroupID: a.GroupID.String(), Mode: a.Mode, CreatedAt: a.CreatedAt, CreatedBy: a.CreatedBy,
+		GroupID: a.GroupID.String(), GroupName: groupName, Mode: a.Mode,
+		CreatedAt: a.CreatedAt, CreatedBy: a.CreatedBy,
 	})
 }
 
