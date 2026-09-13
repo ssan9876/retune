@@ -3,6 +3,6 @@
 package policy
 
 // DefaultHandlers are the setting kinds this agent can apply.
-func DefaultHandlers() []Handler {
-	return []Handler{RegistryHandler{}, ServiceHandler{}, GroupHandler{}, FileHandler{}}
+func DefaultHandlers(escrow Escrower) []Handler {
+	return Handlers(Options{PowerShell: RunPowerShell, Escrow: escrow})
 }

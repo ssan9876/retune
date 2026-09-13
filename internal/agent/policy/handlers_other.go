@@ -53,7 +53,9 @@ func (GroupHandler) Test(context.Context, protocol.Setting) (bool, error) {
 }
 func (GroupHandler) Set(context.Context, protocol.Setting) error { return errWindowsOnly }
 
-// DefaultHandlers are the setting kinds this agent can apply.
-func DefaultHandlers() []Handler {
-	return []Handler{RegistryHandler{}, ServiceHandler{}, GroupHandler{}, FileHandler{}}
+// DefaultHandlers are the setting kinds this agent can apply. Away from
+// Windows the platform-specific ones report that plainly rather than
+// pretending a setting was applied.
+func DefaultHandlers(escrow Escrower) []Handler {
+	return Handlers(Options{Escrow: escrow})
 }

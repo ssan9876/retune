@@ -511,3 +511,16 @@ func (s Setting) validateBitLocker() error {
 	}
 	return nil
 }
+
+// BitLockerEscrowRequest is POSTed to /api/agent/v1/bitlocker when a device
+// has a recovery password for a volume.
+type BitLockerEscrowRequest struct {
+	VolumeID         string `json:"volume_id"`
+	Method           string `json:"method"`
+	RecoveryPassword string `json:"recovery_password"`
+}
+
+// BitLockerHasResponse answers whether the server already holds a key.
+type BitLockerHasResponse struct {
+	Escrowed bool `json:"escrowed"`
+}
