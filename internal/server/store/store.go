@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -54,6 +55,37 @@ func (s *Store) Close() { s.pool.Close() }
 
 // Q returns Queries that run outside an explicit transaction.
 func (s *Store) Q() *Queries { return &Queries{db: s.pool} }
+
+// WithAdvisoryLock runs fn while holding the Postgres advisory lock id, and
+// reports whether it ran. It reports false without running fn when another
+// session already holds the lock, so a second replica skips the tick instead
+// of queueing behind the first and repeating the work.
+//
+// The lock is session-scoped, so it is taken and released on one dedicated
+// connection; releasing it from a different pooled connection would do nothing.
+func (s *Store) WithAdvisoryLock(ctx context.Context, id int64, fn func(q *Queries) error) (bool, error) {
+	conn, err := s.pool.Acquire(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer conn.Release()
+
+	var got bool
+	if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, id).Scan(&got); err != nil {
+		return false, err
+	}
+	if !got {
+		return false, nil
+	}
+	defer func() {
+		// A fresh context: the caller's may already be cancelled, and the lock
+		// must be released on this connection before it returns to the pool.
+		unlockCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		_, _ = conn.Exec(unlockCtx, `SELECT pg_advisory_unlock($1)`, id)
+	}()
+	return true, fn(&Queries{db: conn})
+}
 
 // InTx runs fn in a transaction, committing if fn returns nil.
 func (s *Store) InTx(ctx context.Context, fn func(q *Queries) error) error {

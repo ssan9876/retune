@@ -21,6 +21,7 @@ import (
 	"retune/internal/server/ca"
 	"retune/internal/server/enroll"
 	"retune/internal/server/store"
+	"retune/internal/server/sweeper"
 )
 
 const usage = `usage: retune-server <command>
@@ -99,6 +100,16 @@ func serve(ctx context.Context, getenv func(string) string) error {
 		return err
 	}
 	defer a.Close()
+
+	// Expiry and session cleanup need a timer: nothing in a request path can
+	// retire a command for a device that never checks in again.
+	sweep := &sweeper.Runner{
+		Store: a.Store,
+		Jobs:  sweeper.DefaultJobs(cfg.SweepInterval),
+		Log:   log,
+		Now:   time.Now,
+	}
+	sweep.Start(ctx)
 
 	srv := &http.Server{
 		Addr:              cfg.AgentListen,
