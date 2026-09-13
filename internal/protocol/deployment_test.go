@@ -1,31 +1,31 @@
-package scripts_test
+package protocol_test
 
 import (
 	"errors"
 	"strings"
 	"testing"
 
-	"retune/internal/server/scripts"
+	"retune/internal/protocol"
 )
 
 func TestParseOptionsDefaults(t *testing.T) {
 	for _, raw := range []string{"", "{}", "null"} {
-		o, err := scripts.ParseOptions([]byte(raw))
+		o, err := protocol.ParseDeploymentOptions([]byte(raw))
 		if err != nil {
 			t.Fatalf("ParseOptions(%q): %v", raw, err)
 		}
-		if o != scripts.DefaultOptions() {
+		if o != protocol.DefaultDeploymentOptions() {
 			t.Errorf("ParseOptions(%q) = %+v, want the defaults", raw, o)
 		}
 	}
 }
 
 func TestParseOptionsAccepts(t *testing.T) {
-	o, err := scripts.ParseOptions([]byte(`{"frequency":"recurring","interval_hours":6,"max_retries":0}`))
+	o, err := protocol.ParseDeploymentOptions([]byte(`{"frequency":"recurring","interval_hours":6,"max_retries":0}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if o.Frequency != scripts.FrequencyRecurring || o.IntervalHours != 6 || o.MaxRetries != 0 {
+	if o.Frequency != protocol.FrequencyRecurring || o.IntervalHours != 6 || o.MaxRetries != 0 {
 		t.Fatalf("got %+v", o)
 	}
 	// Unmentioned fields keep their defaults.
@@ -37,7 +37,7 @@ func TestParseOptionsAccepts(t *testing.T) {
 // Running as the signed-in user is accepted and stored; it is simply not
 // executed yet, which Executable explains.
 func TestRunAsUserIsStoredButNotExecutable(t *testing.T) {
-	o, err := scripts.ParseOptions([]byte(`{"run_as":"logged_in_user"}`))
+	o, err := protocol.ParseDeploymentOptions([]byte(`{"run_as":"logged_in_user"}`))
 	if err != nil {
 		t.Fatalf("run_as: logged_in_user must be accepted, got %v", err)
 	}
@@ -49,7 +49,7 @@ func TestRunAsUserIsStoredButNotExecutable(t *testing.T) {
 		t.Errorf("the reason should say so plainly, got %q", reason)
 	}
 
-	if ok, _ := scripts.DefaultOptions().Executable(); !ok {
+	if ok, _ := protocol.DefaultDeploymentOptions().Executable(); !ok {
 		t.Error("running as the system account should be executable")
 	}
 }
@@ -68,11 +68,11 @@ func TestParseOptionsRejects(t *testing.T) {
 	}
 	for name, raw := range cases {
 		t.Run(name, func(t *testing.T) {
-			_, err := scripts.ParseOptions([]byte(raw))
+			_, err := protocol.ParseDeploymentOptions([]byte(raw))
 			if err == nil {
 				t.Fatalf("ParseOptions(%s) should have failed", raw)
 			}
-			if !errors.Is(err, scripts.ErrBadOptions) {
+			if !errors.Is(err, protocol.ErrBadOptions) {
 				t.Errorf("error should wrap ErrBadOptions, got %v", err)
 			}
 		})
@@ -80,13 +80,13 @@ func TestParseOptionsRejects(t *testing.T) {
 }
 
 func TestOptionsRoundTrip(t *testing.T) {
-	want := scripts.DefaultOptions()
-	want.Frequency = scripts.FrequencyRecurring
+	want := protocol.DefaultDeploymentOptions()
+	want.Frequency = protocol.FrequencyRecurring
 	raw, err := want.Marshal()
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := scripts.ParseOptions(raw)
+	got, err := protocol.ParseDeploymentOptions(raw)
 	if err != nil || got != want {
 		t.Fatalf("round trip: %+v err %v", got, err)
 	}

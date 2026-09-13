@@ -10,7 +10,6 @@ import (
 
 	"retune/internal/protocol"
 	"retune/internal/server/groups"
-	"retune/internal/server/scripts"
 	"retune/internal/server/store"
 )
 
@@ -323,7 +322,7 @@ func (h *Handler) createAssignment(w http.ResponseWriter, r *http.Request) {
 	// something away.
 	var options []byte
 	if req.Mode == store.ModeInclude && req.ItemKind == protocol.ItemKindScript {
-		opts, err := scripts.ParseOptions(req.Options)
+		opts, err := protocol.ParseDeploymentOptions(req.Options)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "bad_options", err.Error())
 			return

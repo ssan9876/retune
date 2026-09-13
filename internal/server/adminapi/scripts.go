@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"retune/internal/protocol"
 	"retune/internal/server/scripts"
 	"retune/internal/server/store"
 )
@@ -44,7 +45,7 @@ func (h *Handler) writeScriptError(w http.ResponseWriter, what string, err error
 		writeError(w, http.StatusNotFound, "not_found", "no such script")
 	case errors.Is(err, scripts.ErrNameTaken):
 		writeError(w, http.StatusConflict, "name_taken", err.Error())
-	case errors.Is(err, scripts.ErrBadRequest), errors.Is(err, scripts.ErrBadOptions):
+	case errors.Is(err, scripts.ErrBadRequest), errors.Is(err, protocol.ErrBadOptions):
 		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
 	default:
 		h.internal(w, what, err)

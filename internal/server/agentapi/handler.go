@@ -185,6 +185,18 @@ func (h *Handler) checkin(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			item.Version = sc.CurrentVersion
+
+			// The server knows the options, so it records a deployment the
+			// agent cannot run rather than waiting to be told. That keeps the
+			// status honest whatever version of the agent is out there.
+			if opts, err := protocol.ParseDeploymentOptions(it.Options); err == nil {
+				if ok, reason := opts.Executable(); !ok {
+					if err := h.Scripts.SetItemPending(ctx, a.Device.ID, it.ID, sc.CurrentVersion, reason); err != nil {
+						h.Log.Warn("record pending deployment", "script_id", it.ID, "error", err)
+					}
+					continue
+				}
+			}
 		}
 		items = append(items, item)
 	}

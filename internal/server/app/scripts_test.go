@@ -3,6 +3,7 @@ package app_test
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"retune/internal/protocol"
@@ -221,5 +222,49 @@ func TestScriptsAreClosedToReadOnlyAdmins(t *testing.T) {
 		"name": "Nope", "body": "x",
 	}); status != http.StatusForbidden {
 		t.Errorf("a read-only admin should not create scripts, got %d", status)
+	}
+}
+
+// A deployment set to run as the signed-in user is stored, reported pending
+// with a reason, and never sent to the agent as work.
+func TestRunAsUserIsReportedPendingAndNotSent(t *testing.T) {
+	a, srv := newTestApp(t)
+	admin := signedIn(t, a, srv, store.RoleAdmin)
+	_, agent := enrollDevice(t, a, srv, "DESKTOP-INTERACTIVE")
+
+	status, body := admin.do(http.MethodPost, "/scripts", map[string]string{
+		"name": "Needs a user", "body": "Show-Dialog",
+	})
+	if status != http.StatusCreated {
+		t.Fatalf("create: %d %s", status, body)
+	}
+	script := decodeJSON[scriptResp](t, body)
+	assignScript(t, admin, script.ID, map[string]any{"run_as": "logged_in_user"})
+
+	status, body = send(t, agent, http.MethodPost, srv.URL+"/api/agent/v1/checkin",
+		protocol.CheckinRequest{AgentVersion: "1.0.0"})
+	if status != http.StatusOK {
+		t.Fatalf("checkin: %d %s", status, body)
+	}
+	if items := decodeJSON[protocol.CheckinResponse](t, body).Items; len(items) != 0 {
+		t.Fatalf("it must not be handed to the agent as work, got %+v", items)
+	}
+
+	status, body = admin.do(http.MethodGet, "/items/script/"+script.ID+"/status", nil)
+	if status != http.StatusOK {
+		t.Fatalf("status: %d %s", status, body)
+	}
+	resp := decodeJSON[struct {
+		Rollup map[string]int `json:"rollup"`
+		Items  []struct {
+			Status string `json:"status"`
+			Detail string `json:"detail"`
+		} `json:"items"`
+	}](t, body)
+	if resp.Rollup[store.ItemPending] != 1 {
+		t.Fatalf("it should be reported pending, got %v", resp.Rollup)
+	}
+	if !strings.Contains(resp.Items[0].Detail, "not supported yet") {
+		t.Errorf("the detail should say why, got %q", resp.Items[0].Detail)
 	}
 }

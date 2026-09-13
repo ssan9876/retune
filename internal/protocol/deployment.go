@@ -1,6 +1,4 @@
-// Package scripts owns the script library: versions, assignment options, and
-// the runs devices report back.
-package scripts
+package protocol
 
 import (
 	"bytes"
@@ -10,7 +8,7 @@ import (
 	"time"
 )
 
-// ErrBadOptions is returned when assignment options do not make sense.
+// ErrBadOptions is returned when deployment options do not make sense.
 var ErrBadOptions = errors.New("invalid deployment options")
 
 // Frequencies a deployment can run at.
@@ -33,8 +31,9 @@ const (
 	MaxRetriesLimit   = 10
 )
 
-// Options are the per-assignment settings of a script deployment.
-type Options struct {
+// DeploymentOptions are the per-assignment settings of a script deployment.
+// They travel to the agent on check-in, which is why they live here.
+type DeploymentOptions struct {
 	Frequency         string `json:"frequency"`
 	IntervalHours     int    `json:"interval_hours"`
 	RunAs             string `json:"run_as"`
@@ -44,8 +43,8 @@ type Options struct {
 }
 
 // DefaultOptions are applied to anything the caller leaves out.
-func DefaultOptions() Options {
-	return Options{
+func DefaultDeploymentOptions() DeploymentOptions {
+	return DeploymentOptions{
 		Frequency:         FrequencyOnce,
 		IntervalHours:     24,
 		RunAs:             RunAsSystem,
@@ -56,15 +55,19 @@ func DefaultOptions() Options {
 }
 
 // Timeout is the per-execution limit.
-func (o Options) Timeout() time.Duration { return time.Duration(o.TimeoutSeconds) * time.Second }
+func (o DeploymentOptions) Timeout() time.Duration {
+	return time.Duration(o.TimeoutSeconds) * time.Second
+}
 
 // Interval is how long to wait between recurring runs.
-func (o Options) Interval() time.Duration { return time.Duration(o.IntervalHours) * time.Hour }
+func (o DeploymentOptions) Interval() time.Duration {
+	return time.Duration(o.IntervalHours) * time.Hour
+}
 
 // Executable reports whether the agent can actually run this deployment today.
 // A deployment set to run as the signed-in user is stored and shown, but not
 // executed, and says so rather than failing quietly.
-func (o Options) Executable() (bool, string) {
+func (o DeploymentOptions) Executable() (bool, string) {
 	if o.RunAs == RunAsUser {
 		return false, "running as the logged-in user is not supported yet"
 	}
@@ -73,22 +76,22 @@ func (o Options) Executable() (bool, string) {
 
 // ParseOptions validates raw assignment options, filling in the defaults.
 // Unknown fields are rejected so a typo is not silently ignored.
-func ParseOptions(raw []byte) (Options, error) {
-	o := DefaultOptions()
+func ParseDeploymentOptions(raw []byte) (DeploymentOptions, error) {
+	o := DefaultDeploymentOptions()
 	if len(bytes.TrimSpace(raw)) > 0 && string(bytes.TrimSpace(raw)) != "null" {
 		dec := json.NewDecoder(bytes.NewReader(raw))
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&o); err != nil {
-			return Options{}, fmt.Errorf("%w: %v", ErrBadOptions, err)
+			return DeploymentOptions{}, fmt.Errorf("%w: %v", ErrBadOptions, err)
 		}
 	}
 	if err := o.validate(); err != nil {
-		return Options{}, err
+		return DeploymentOptions{}, err
 	}
 	return o, nil
 }
 
-func (o Options) validate() error {
+func (o DeploymentOptions) validate() error {
 	switch o.Frequency {
 	case FrequencyOnce, FrequencyRecurring:
 	default:
@@ -115,4 +118,4 @@ func (o Options) validate() error {
 }
 
 // Marshal returns the canonical JSON for storing on an assignment.
-func (o Options) Marshal() ([]byte, error) { return json.Marshal(o) }
+func (o DeploymentOptions) Marshal() ([]byte, error) { return json.Marshal(o) }

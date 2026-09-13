@@ -159,7 +159,7 @@ func TestUnknownType(t *testing.T) {
 }
 
 func TestCappedWriter(t *testing.T) {
-	c := newCapped(8)
+	c := NewCapped(8)
 	if _, err := c.Write([]byte("12345")); err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +170,7 @@ func TestCappedWriter(t *testing.T) {
 		t.Fatalf("capped = %q truncated = %v", c.String(), c.Truncated())
 	}
 
-	invalid := newCapped(16)
+	invalid := NewCapped(16)
 	if _, err := invalid.Write([]byte{0xff, 'a'}); err != nil {
 		t.Fatal(err)
 	}

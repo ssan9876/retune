@@ -68,7 +68,7 @@ func (e *Executor) runPowerShell(ctx context.Context, raw json.RawMessage, res *
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	stdout, stderr := newCapped(protocol.MaxOutputBytes), newCapped(protocol.MaxOutputBytes)
+	stdout, stderr := NewCapped(protocol.MaxOutputBytes), NewCapped(protocol.MaxOutputBytes)
 	code, err := e.Runner.RunPowerShell(ctx, p.Script, stdout, stderr)
 	res.Stdout, res.StdoutTruncated = stdout.String(), stdout.Truncated()
 	res.Stderr, res.StderrTruncated = stderr.String(), stderr.Truncated()
