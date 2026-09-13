@@ -1,6 +1,63 @@
-/* Apps reuses Scripts.css for the shared list/detail/actions idiom. This file
-   holds only what's specific to the apps table: the package ID column can be
-   long, so let it wrap rather than force horizontal scroll on a phone. */
+/* Apps has the same list/detail/actions idiom as Scripts, but its own rules:
+   duplicated rather than shared, so an edit to Scripts.css can never change
+   this page underneath it. */
+
+.app__description {
+  color: var(--ink-muted);
+  font-size: var(--text-xs);
+  margin-top: 2px;
+}
+
+.app__actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+/* An app name reads as a link but is a button, because it opens a panel
+   rather than navigating. */
+.linklike {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--primary);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.linklike:hover {
+  text-decoration: underline;
+}
+
+.app__detail {
+  margin-top: var(--space-6);
+  border-top: 1px solid var(--rule);
+  padding-top: var(--space-4);
+}
+
+.app__rollup {
+  display: flex;
+  gap: var(--space-4);
+  font-size: var(--text-sm);
+}
+
+.app__none {
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+}
+
+.app__output {
+  white-space: pre-wrap;
+  background: var(--surface-sunken);
+  padding: var(--space-3);
+  border-radius: var(--radius);
+  max-height: 20rem;
+  overflow: auto;
+}
+
+/* The package ID column can be long, so let it wrap rather than force
+   horizontal scroll on a phone. */
 .apps-table td.mono {
   word-break: break-all;
 }

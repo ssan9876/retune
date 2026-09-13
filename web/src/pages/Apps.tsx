@@ -7,7 +7,6 @@ import { Button, Dialog, EmptyState, ErrorNote, Field, Spinner } from "../compon
 import { useList } from "../hooks/useList";
 import { useSession } from "../session/SessionContext";
 import { relative } from "./Devices";
-import "./Scripts.css";
 import "./Apps.css";
 
 const ITEM_KIND = "app";
@@ -228,10 +227,10 @@ function AppDetail({ app }: { app: App }) {
 
   const counts = Object.entries(rollup);
   return (
-    <section className="script__detail">
+    <section className="app__detail">
       <h2>{app.name}</h2>
       {counts.length > 0 ? (
-        <p className="script__rollup">
+        <p className="app__rollup">
           {counts.map(([status, count]) => (
             <span key={status}>
               <StatusDot status={status} /> {count}
@@ -239,7 +238,7 @@ function AppDetail({ app }: { app: App }) {
           ))}
         </p>
       ) : (
-        <p className="script__none">No device has reported on this app yet.</p>
+        <p className="app__none">No device has reported on this app yet.</p>
       )}
 
       <ErrorNote error={error} />
@@ -277,7 +276,7 @@ function AppDetail({ app }: { app: App }) {
         </div>
       ) : null}
 
-      {installs[0]?.detail ? <pre className="mono script__output">{installs[0].detail}</pre> : null}
+      {installs[0]?.detail ? <pre className="mono app__output">{installs[0].detail}</pre> : null}
     </section>
   );
 }
@@ -355,12 +354,12 @@ export default function Apps() {
                     <button className="linklike" onClick={() => setSelected(app)}>
                       {app.name}
                     </button>
-                    {app.description ? <div className="script__description">{app.description}</div> : null}
+                    {app.description ? <div className="app__description">{app.description}</div> : null}
                   </td>
                   <td className="mono">{app.package_id}</td>
                   <td className="numeric">{app.current_version}</td>
                   <td>{relative(app.updated_at)}</td>
-                  <td className="script__actions">
+                  <td className="app__actions">
                     {canWrite ? (
                       <>
                         <Button variant="quiet" onClick={() => void openEditor(app)}>

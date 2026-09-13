@@ -84,6 +84,20 @@ describe("Apps", () => {
     expect(JSON.parse(String(call?.[1]?.body)).options).toMatchObject({ intent: "install" });
   });
 
+  it("sends uninstall intent when that is what was chosen", async () => {
+    listOnly();
+    render(<Apps />);
+    await screen.findByText("7-Zip");
+
+    await userEvent.click(screen.getByRole("button", { name: "Assign" }));
+    await screen.findByLabelText("What to do");
+    await userEvent.selectOptions(screen.getByLabelText("What to do"), "uninstall");
+    await userEvent.click(screen.getByRole("button", { name: "Assign to group" }));
+
+    const call = fetchMock.mock.calls.find(([url]) => String(url).includes("/assignments"));
+    expect(JSON.parse(String(call?.[1]?.body)).options).toMatchObject({ intent: "uninstall" });
+  });
+
   it("saves a new app", async () => {
     const posted: Record<string, unknown>[] = [];
     fetchMock.mockImplementation((url: string, init?: { method?: string; body?: string }) => {
