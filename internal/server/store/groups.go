@@ -313,6 +313,15 @@ func (q *Queries) CreateAssignment(ctx context.Context, a Assignment) error {
 	return err
 }
 
+// DeleteAssignmentsForItem removes every assignment of one item, used when the
+// item itself is deleted.
+func (q *Queries) DeleteAssignmentsForItem(ctx context.Context, kind string, itemID uuid.UUID) error {
+	_, err := q.db.Exec(ctx,
+		`DELETE FROM assignments WHERE tenant_id = $1 AND item_kind = $2 AND item_id = $3`,
+		DefaultTenantID, kind, itemID)
+	return err
+}
+
 func (q *Queries) DeleteAssignment(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, `DELETE FROM assignments WHERE id = $1`, id)
 	return err

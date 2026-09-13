@@ -1,6 +1,8 @@
 // Package protocol defines the v1 agent <-> server wire types.
 package protocol
 
+import "encoding/json"
+
 // DeviceFacts identifies a device at enrollment time.
 type DeviceFacts struct {
 	Hostname   string `json:"hostname"`
@@ -32,11 +34,16 @@ type CheckinRequest struct {
 	InventoryHash string   `json:"inventory_hash"`
 }
 
-// Item is one thing assigned to this device through its groups. Kinds arrive
-// with later milestones, and an agent ignores a kind it does not recognise.
+// Item is one thing assigned to this device through its groups. An agent
+// ignores a kind it does not recognise.
 type Item struct {
 	Kind string `json:"kind"`
 	ID   string `json:"id"`
+	// Version is the item's current version; the agent fetches the contents
+	// separately and caches them per version.
+	Version int `json:"version,omitempty"`
+	// Options configure the deployment. Their shape depends on the kind.
+	Options json.RawMessage `json:"options,omitempty"`
 }
 
 // CheckinResponse tells the agent when to check in next, whether inventory

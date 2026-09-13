@@ -202,7 +202,9 @@ func (q *Queries) ListScriptRuns(ctx context.Context, scriptID uuid.UUID, device
 		JOIN devices d ON d.id = r.device_id
 		WHERE r.tenant_id = $1 AND r.script_id = $2
 		  AND ($3::uuid IS NULL OR r.device_id = $3)
-		ORDER BY r.started_at DESC
+		-- The id breaks ties: two runs can share a timestamp, and UUIDv7 sorts
+		-- by creation time, so the newer row still comes first.
+		ORDER BY r.started_at DESC, r.id DESC
 		LIMIT $4 OFFSET $5`, DefaultTenantID, scriptID, deviceID, p.Limit, p.Offset)
 	if err != nil {
 		return nil, 0, err
