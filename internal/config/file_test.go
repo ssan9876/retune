@@ -94,3 +94,31 @@ func TestConfigFileErrors(t *testing.T) {
 		t.Fatal("malformed YAML must be an error")
 	}
 }
+
+func TestConfigFileNewKeys(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "retune-server.yaml")
+	body := "database_url: postgres://x/y\n" +
+		"public_url: https://mdm.example.com\n" +
+		"tls_mode: behind-proxy\n" +
+		"client_cert_header: X-Client-Cert\n" +
+		"trusted_proxies: 10.0.0.0/8\n" +
+		"ca_key_source: env\n" +
+		"sweep_interval_seconds: 60\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := LoadServer(env(map[string]string{"RETUNE_CONFIG": path}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.ClientCertHeader != "X-Client-Cert" {
+		t.Errorf("ClientCertHeader = %q", c.ClientCertHeader)
+	}
+	if len(c.TrustedProxies) != 1 || c.TrustedProxies[0].String() != "10.0.0.0/8" {
+		t.Errorf("TrustedProxies = %v", c.TrustedProxies)
+	}
+	if c.CAKeySource != "env" || c.SweepInterval != time.Minute {
+		t.Errorf("CAKeySource = %q, SweepInterval = %v", c.CAKeySource, c.SweepInterval)
+	}
+}
