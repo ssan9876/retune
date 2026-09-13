@@ -3,6 +3,7 @@ package agentapi
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -27,6 +28,10 @@ type Handler struct {
 	Now             func() time.Time
 	CheckinInterval time.Duration
 	Log             *slog.Logger
+	// ClientCert returns the device certificate for a request, already
+	// verified against the internal CA, or (nil, nil) if the request
+	// presented none. It is TLSClientCert unless a proxy terminates TLS.
+	ClientCert func(*http.Request) (*x509.Certificate, error)
 }
 
 type authKey struct{}
@@ -74,11 +79,21 @@ func (h *Handler) enroll(w http.ResponseWriter, r *http.Request) {
 // using the current one clears the superseded serial.
 func (h *Handler) requireDevice(next http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 {
+		leaf, certErr := h.ClientCert(r)
+		if certErr != nil {
+			var ce CertError
+			if errors.As(certErr, &ce) {
+				writeError(w, ce.Status, ce.Code, ce.Message)
+				return
+			}
+			h.Log.Error("read client certificate", "error", certErr)
+			writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+			return
+		}
+		if leaf == nil {
 			writeError(w, http.StatusUnauthorized, "client_cert_required", "a device client certificate is required")
 			return
 		}
-		leaf := r.TLS.VerifiedChains[0][0]
 		serial := leaf.SerialNumber.Text(16)
 		id, err := uuid.Parse(leaf.Subject.CommonName)
 		if err != nil {

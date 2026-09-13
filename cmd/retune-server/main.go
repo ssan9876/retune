@@ -108,7 +108,14 @@ func serve(ctx context.Context, getenv func(string) string) error {
 		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelWarn),
 	}
 	errc := make(chan error, 1)
-	go func() { errc <- srv.ListenAndServeTLS("", "") }()
+	go func() {
+		if cfg.TLSMode == "behind-proxy" {
+			// The proxy terminates TLS; wrapping it again here would be wrong.
+			errc <- srv.ListenAndServe()
+			return
+		}
+		errc <- srv.ListenAndServeTLS("", "")
+	}()
 	log.Info("agent API listening", "addr", cfg.AgentListen, "public_url", cfg.PublicURL,
 		"ca_fingerprint", pki.Fingerprint(a.CA.Cert().Raw))
 
