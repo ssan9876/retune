@@ -1,12 +1,14 @@
 package adminapi
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
 
 	"github.com/google/uuid"
 
+	"retune/internal/protocol"
 	"retune/internal/server/groups"
 	"retune/internal/server/store"
 )
@@ -247,21 +249,23 @@ func (h *Handler) memberCount(r *http.Request, id uuid.UUID) int {
 }
 
 type assignmentJSON struct {
-	ID        string    `json:"id"`
-	ItemKind  string    `json:"item_kind"`
-	ItemID    string    `json:"item_id"`
-	GroupID   string    `json:"group_id"`
-	GroupName string    `json:"group_name"`
-	Mode      string    `json:"mode"`
-	CreatedAt time.Time `json:"created_at"`
-	CreatedBy string    `json:"created_by"`
+	ID        string          `json:"id"`
+	ItemKind  string          `json:"item_kind"`
+	ItemID    string          `json:"item_id"`
+	GroupID   string          `json:"group_id"`
+	GroupName string          `json:"group_name"`
+	Mode      string          `json:"mode"`
+	Options   json.RawMessage `json:"options,omitempty"`
+	CreatedAt time.Time       `json:"created_at"`
+	CreatedBy string          `json:"created_by"`
 }
 
 type assignmentRequest struct {
-	ItemKind string `json:"item_kind"`
-	ItemID   string `json:"item_id"`
-	GroupID  string `json:"group_id"`
-	Mode     string `json:"mode"`
+	ItemKind string          `json:"item_kind"`
+	ItemID   string          `json:"item_id"`
+	GroupID  string          `json:"group_id"`
+	Mode     string          `json:"mode"`
+	Options  json.RawMessage `json:"options"`
 }
 
 func (h *Handler) listAssignments(w http.ResponseWriter, r *http.Request) {
@@ -286,6 +290,7 @@ func (h *Handler) listAssignments(w http.ResponseWriter, r *http.Request) {
 		items = append(items, assignmentJSON{
 			ID: a.ID.String(), ItemKind: a.ItemKind, ItemID: a.ItemID.String(),
 			GroupID: a.GroupID.String(), GroupName: name, Mode: a.Mode,
+			Options:   json.RawMessage(a.Options),
 			CreatedAt: a.CreatedAt, CreatedBy: a.CreatedBy,
 		})
 	}
@@ -312,9 +317,26 @@ func (h *Handler) createAssignment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Options are validated here so an agent never has to defend itself
+	// against nonsense. An exclude assignment carries none: it only takes
+	// something away.
+	var options []byte
+	if req.Mode == store.ModeInclude && req.ItemKind == protocol.ItemKindScript {
+		opts, err := protocol.ParseDeploymentOptions(req.Options)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "bad_options", err.Error())
+			return
+		}
+		if options, err = opts.Marshal(); err != nil {
+			h.internal(w, "encode options", err)
+			return
+		}
+	}
+
 	a := store.Assignment{
 		ID: uuid.Must(uuid.NewV7()), ItemKind: req.ItemKind, ItemID: itemID,
 		GroupID: groupID, Mode: req.Mode, CreatedAt: h.Now(), CreatedBy: caller(r).Admin.Email,
+		Options: options,
 	}
 	groupName := ""
 	ctx := r.Context()
@@ -347,6 +369,7 @@ func (h *Handler) createAssignment(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, assignmentJSON{
 		ID: a.ID.String(), ItemKind: a.ItemKind, ItemID: a.ItemID.String(),
 		GroupID: a.GroupID.String(), GroupName: groupName, Mode: a.Mode,
+		Options:   json.RawMessage(a.Options),
 		CreatedAt: a.CreatedAt, CreatedBy: a.CreatedBy,
 	})
 }
@@ -404,17 +427,20 @@ func (h *Handler) itemStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type row struct {
-		DeviceID  string    `json:"device_id"`
-		Hostname  string    `json:"hostname"`
-		Status    string    `json:"status"`
-		Detail    string    `json:"detail"`
+		DeviceID string `json:"device_id"`
+		Hostname string `json:"hostname"`
+		Status   string `json:"status"`
+		Detail   string `json:"detail"`
+		// Version says which version of the item the status refers to, so the
+		// console can report "succeeded on version 3".
+		Version   int       `json:"version"`
 		UpdatedAt time.Time `json:"updated_at"`
 	}
 	items := make([]row, 0, len(rows))
 	for _, s := range rows {
 		items = append(items, row{
 			DeviceID: s.DeviceID.String(), Hostname: s.Hostname,
-			Status: s.Status, Detail: s.Detail, UpdatedAt: s.UpdatedAt,
+			Status: s.Status, Detail: s.Detail, Version: s.Version, UpdatedAt: s.UpdatedAt,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{

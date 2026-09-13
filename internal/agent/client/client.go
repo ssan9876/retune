@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -181,4 +182,18 @@ func verifyPinned(pin, host string) func([][]byte, [][]*x509.Certificate) error 
 		})
 		return err
 	}
+}
+
+// FetchScript downloads one version of an assigned script. Bodies are fetched
+// once per version and cached, rather than resent on every check-in.
+func (c *Client) FetchScript(ctx context.Context, id string, version int) (protocol.ScriptVersionResponse, error) {
+	var resp protocol.ScriptVersionResponse
+	path := "/api/agent/v1/scripts/" + url.PathEscape(id) + "/versions/" + strconv.Itoa(version)
+	err := c.do(ctx, http.MethodGet, path, nil, &resp)
+	return resp, err
+}
+
+// ReportScriptRun tells the server what one execution did.
+func (c *Client) ReportScriptRun(ctx context.Context, id string, run protocol.ScriptRun) error {
+	return c.do(ctx, http.MethodPost, "/api/agent/v1/scripts/"+url.PathEscape(id)+"/runs", run, nil)
 }

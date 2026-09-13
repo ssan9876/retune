@@ -3,10 +3,12 @@
 package state
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	bolt "go.etcd.io/bbolt"
@@ -24,6 +26,8 @@ var (
 	bucketResults = []byte("results")
 	bucketLedger  = []byte("ledger")
 	bucketMeta    = []byte("meta")
+	bucketItems   = []byte("items")
+	bucketScripts = []byte("scripts")
 	keyInventory  = []byte("inventory_hash")
 )
 
@@ -54,7 +58,7 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("open agent state %s: %w", path, err)
 	}
 	err = db.Update(func(tx *bolt.Tx) error {
-		for _, b := range [][]byte{bucketResults, bucketLedger, bucketMeta} {
+		for _, b := range [][]byte{bucketResults, bucketLedger, bucketMeta, bucketItems, bucketScripts} {
 			if _, err := tx.CreateBucketIfNotExists(b); err != nil {
 				return err
 			}
@@ -194,4 +198,80 @@ func putJSON(b *bolt.Bucket, key string, v any) error {
 		return err
 	}
 	return b.Put([]byte(key), raw)
+}
+
+// ItemState is what the agent remembers about one assigned item, and is how it
+// decides whether that item needs to run again.
+type ItemState struct {
+	Version    int       `json:"version"`
+	LastRunAt  time.Time `json:"last_run_at"`
+	LastStatus string    `json:"last_status"`
+	// Failures counts consecutive failures of this version.
+	Failures int `json:"failures"`
+}
+
+// ItemState returns what is remembered about an item. An item never seen
+// before reports the zero value rather than an error, because "never run" is
+// the normal starting point.
+func (s *Store) ItemState(id string) (ItemState, error) {
+	var out ItemState
+	err := s.db.View(func(tx *bolt.Tx) error {
+		raw := tx.Bucket(bucketItems).Get([]byte(id))
+		if raw == nil {
+			return nil
+		}
+		return json.Unmarshal(raw, &out)
+	})
+	return out, err
+}
+
+// SetItemState records what happened to an item.
+func (s *Store) SetItemState(id string, st ItemState) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		return putJSON(tx.Bucket(bucketItems), id, st)
+	})
+}
+
+// scriptKey identifies one cached script version.
+func scriptKey(id string, version int) string {
+	return id + "@" + strconv.Itoa(version)
+}
+
+// CachedScript returns a stored script version, reporting whether it was held.
+// Bodies are cached per version, so a check-in only fetches one the agent has
+// not seen.
+func (s *Store) CachedScript(id string, version int) (protocol.ScriptVersionResponse, bool, error) {
+	var out protocol.ScriptVersionResponse
+	found := false
+	err := s.db.View(func(tx *bolt.Tx) error {
+		raw := tx.Bucket(bucketScripts).Get([]byte(scriptKey(id, version)))
+		if raw == nil {
+			return nil
+		}
+		found = true
+		return json.Unmarshal(raw, &out)
+	})
+	if err != nil {
+		return protocol.ScriptVersionResponse{}, false, err
+	}
+	return out, found, nil
+}
+
+// CacheScript stores a fetched script version and drops older cached versions
+// of the same script, which will never be asked for again.
+func (s *Store) CacheScript(id string, v protocol.ScriptVersionResponse) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketScripts)
+		prefix := []byte(id + "@")
+		keep := scriptKey(id, v.Version)
+		c := b.Cursor()
+		for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
+			if string(k) != keep {
+				if err := c.Delete(); err != nil {
+					return err
+				}
+			}
+		}
+		return putJSON(b, keep, v)
+	})
 }

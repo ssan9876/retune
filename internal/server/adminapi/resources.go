@@ -37,6 +37,14 @@ func (h *Handler) mountResources(mux *http.ServeMux, base string) {
 	mux.Handle("POST "+base+"/groups/{id}/members", h.write(h.addGroupMember))
 	mux.Handle("DELETE "+base+"/groups/{id}/members/{deviceID}", h.write(h.removeGroupMember))
 
+	mux.Handle("GET "+base+"/scripts", h.read(h.listScripts))
+	mux.Handle("POST "+base+"/scripts", h.write(h.createScript))
+	mux.Handle("GET "+base+"/scripts/{id}", h.read(h.getScript))
+	mux.Handle("POST "+base+"/scripts/{id}", h.write(h.updateScript))
+	mux.Handle("DELETE "+base+"/scripts/{id}", h.write(h.deleteScript))
+	mux.Handle("GET "+base+"/scripts/{id}/versions", h.read(h.listScriptVersions))
+	mux.Handle("GET "+base+"/scripts/{id}/runs", h.read(h.listScriptRuns))
+
 	mux.Handle("GET "+base+"/assignments", h.read(h.listAssignments))
 	mux.Handle("POST "+base+"/assignments", h.write(h.createAssignment))
 	mux.Handle("DELETE "+base+"/assignments/{id}", h.write(h.deleteAssignment))

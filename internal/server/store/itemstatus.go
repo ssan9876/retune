@@ -23,19 +23,23 @@ type ItemStatus struct {
 	Hostname  string
 	ItemKind  string
 	ItemID    uuid.UUID
-	Status    string
-	Detail    string
+	Status string
+	Detail string
+	// Version is the item version this status refers to, so the console can
+	// say "succeeded on version 3" rather than just "succeeded".
+	Version   int
 	UpdatedAt time.Time
 }
 
 // SetItemStatus records the latest state of an item on a device.
 func (q *Queries) SetItemStatus(ctx context.Context, s ItemStatus) error {
 	_, err := q.db.Exec(ctx, `
-		INSERT INTO device_item_status (device_id, tenant_id, item_kind, item_id, status, detail, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO device_item_status (device_id, tenant_id, item_kind, item_id, status, detail, version, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (device_id, item_kind, item_id) DO UPDATE
-		SET status = EXCLUDED.status, detail = EXCLUDED.detail, updated_at = EXCLUDED.updated_at`,
-		s.DeviceID, DefaultTenantID, s.ItemKind, s.ItemID, s.Status, s.Detail, s.UpdatedAt)
+		SET status = EXCLUDED.status, detail = EXCLUDED.detail,
+		    version = EXCLUDED.version, updated_at = EXCLUDED.updated_at`,
+		s.DeviceID, DefaultTenantID, s.ItemKind, s.ItemID, s.Status, s.Detail, s.Version, s.UpdatedAt)
 	return err
 }
 
@@ -67,7 +71,7 @@ func (q *Queries) ItemStatusRollup(ctx context.Context, itemKind string, itemID 
 func (q *Queries) ListItemStatus(ctx context.Context, itemKind string, itemID uuid.UUID, status string, page Page) ([]ItemStatus, int, error) {
 	p := page.Normalized()
 	rows, err := q.db.Query(ctx, `
-		SELECT s.device_id, d.hostname, s.item_kind, s.item_id, s.status, s.detail, s.updated_at,
+		SELECT s.device_id, d.hostname, s.item_kind, s.item_id, s.status, s.detail, s.version, s.updated_at,
 		       count(*) OVER () AS total
 		FROM device_item_status s
 		JOIN devices d ON d.id = s.device_id
@@ -84,7 +88,7 @@ func (q *Queries) ListItemStatus(ctx context.Context, itemKind string, itemID uu
 	for rows.Next() {
 		var s ItemStatus
 		if err := rows.Scan(&s.DeviceID, &s.Hostname, &s.ItemKind, &s.ItemID,
-			&s.Status, &s.Detail, &s.UpdatedAt, &total); err != nil {
+			&s.Status, &s.Detail, &s.Version, &s.UpdatedAt, &total); err != nil {
 			return nil, 0, err
 		}
 		out = append(out, s)

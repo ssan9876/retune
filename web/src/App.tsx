@@ -9,6 +9,7 @@ import DeviceDetail from "./pages/DeviceDetail";
 import Devices from "./pages/Devices";
 import Groups from "./pages/Groups";
 import Login from "./pages/Login";
+import Scripts from "./pages/Scripts";
 import Tokens from "./pages/Tokens";
 import { useSession } from "./session/SessionContext";
 
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="/devices" element={<Devices />} />
         <Route path="/devices/:id" element={<DeviceDetail />} />
         <Route path="/groups" element={<Groups />} />
+        <Route path="/scripts" element={<Scripts />} />
         <Route path="/commands" element={<Commands />} />
         <Route path="/tokens" element={<Tokens />} />
         <Route path="/audit" element={<Audit />} />

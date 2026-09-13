@@ -19,6 +19,7 @@ import (
 	"retune/internal/agent/facts"
 	"retune/internal/agent/identity"
 	"retune/internal/agent/inventory"
+	"retune/internal/agent/scripts"
 	"retune/internal/agent/session"
 	"retune/internal/agent/state"
 )
@@ -57,15 +58,19 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	defer st.Close()
 
+	scriptRunner := executor.DefaultRunner(filepath.Join(opts.DataDir, "scripts"))
 	sess, err := session.New(session.Config{
 		Identity:  id,
 		IDStore:   idStore,
 		State:     st,
 		Collector: inventory.NewCollector(),
 		Executor: &executor.Executor{
-			Runner:    executor.DefaultRunner(filepath.Join(opts.DataDir, "scripts")),
+			Runner:    scriptRunner,
 			Restarter: executor.DefaultRestarter(),
 			Now:       time.Now,
+		},
+		Scripts: &scripts.Scheduler{
+			State: st, Runner: scriptRunner, Log: opts.Log, Now: time.Now,
 		},
 		Log: opts.Log,
 	})

@@ -18,6 +18,8 @@ Go agent runs on each machine.
   codes, roles (admin and read-only), enrollment tokens, and an audit log.
 - **Groups and assignments.** Static groups, or dynamic groups defined by a
   rule over inventory; items assigned to groups with include and exclude.
+- **Script deployments.** A versioned PowerShell library assigned to groups,
+  scheduled by the agent, with optional detect-and-remediate pairs.
 - **Packaging.** A container image and Compose stack for the server, and an MSI
   that installs the agent as a Windows service which enrolls itself.
 
@@ -216,6 +218,44 @@ of nesting.
 Items are assigned to groups as `include` or `exclude`, and **exclude always
 wins** — if any group a device belongs to excludes an item, that device does not
 get it, whatever else includes it.
+
+## Deploying scripts
+
+A **command** is a one-off: run this now, on these machines, once. A
+**deployment** is a standing statement about a fleet — "every workstation
+should have this" — that keeps applying as machines join a group, come back
+online, or get a new version of the script.
+
+Scripts live in a library under **Scripts**. Every edit to a body creates a new
+immutable version, so a run always tells you exactly what ran; renaming or
+re-describing a script does not. Assign one to a group and choose how it runs:
+
+| Option | Default | Meaning |
+|---|---|---|
+| How often | once | `once` per version, or `recurring` |
+| Every | 24 hours | the gap between recurring runs |
+| Run as | the system account | the signed-in user is stored but **not yet executed** |
+| Timeout | 600 seconds | per execution, 1 to 86400 |
+| Max retries | 2 | consecutive failures before the agent stops retrying that version |
+| Rerun on new version | yes | whether a new version runs again where an older one already ran |
+
+The agent decides when to run, from its own local state, so a machine that was
+offline for a week comes back to one run rather than a week of missed ones. It
+fetches each body once per version and caches it.
+
+**Detection and remediation.** Give a script an optional detection script and it
+becomes a pair. Detection runs first: exit 0 means there is nothing to do, and
+the main script never runs. Any other exit code runs the main script and then
+runs detection again — and that second detection decides whether the deployment
+succeeded, because a remediation that finishes cleanly while leaving the machine
+non-compliant has not actually fixed anything.
+
+Running as the signed-in user is accepted and stored, but nothing executes it
+yet: those devices report `pending` with that reason rather than appearing to
+work. It needs Win32 token work that has not been done.
+
+Every run is kept, so you can see whether a script is flapping rather than only
+its latest state. Deleting a script removes its assignments and keeps its runs.
 
 ## Command-line reference
 

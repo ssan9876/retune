@@ -46,12 +46,16 @@ type Assignment struct {
 	Mode      string
 	CreatedAt time.Time
 	CreatedBy string
+	// Options configure the deployment; their shape depends on the kind.
+	Options []byte
 }
 
-// Item identifies one assigned thing.
+// Item identifies one assigned thing, with the options of the assignment that
+// won.
 type Item struct {
-	Kind string
-	ID   uuid.UUID
+	Kind    string
+	ID      uuid.UUID
+	Options []byte
 }
 
 const groupCols = `id, name, description, kind, rule, created_at, updated_at, evaluated_at`
@@ -303,9 +307,18 @@ func (q *Queries) ActiveDeviceIDs(ctx context.Context) ([]uuid.UUID, error) {
 
 func (q *Queries) CreateAssignment(ctx context.Context, a Assignment) error {
 	_, err := q.db.Exec(ctx, `
-		INSERT INTO assignments (id, tenant_id, item_kind, item_id, group_id, mode, created_at, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		a.ID, DefaultTenantID, a.ItemKind, a.ItemID, a.GroupID, a.Mode, a.CreatedAt, a.CreatedBy)
+		INSERT INTO assignments (id, tenant_id, item_kind, item_id, group_id, mode, created_at, created_by, options)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, coalesce($9, '{}'::jsonb))`,
+		a.ID, DefaultTenantID, a.ItemKind, a.ItemID, a.GroupID, a.Mode, a.CreatedAt, a.CreatedBy, a.Options)
+	return err
+}
+
+// DeleteAssignmentsForItem removes every assignment of one item, used when the
+// item itself is deleted.
+func (q *Queries) DeleteAssignmentsForItem(ctx context.Context, kind string, itemID uuid.UUID) error {
+	_, err := q.db.Exec(ctx,
+		`DELETE FROM assignments WHERE tenant_id = $1 AND item_kind = $2 AND item_id = $3`,
+		DefaultTenantID, kind, itemID)
 	return err
 }
 
@@ -317,16 +330,16 @@ func (q *Queries) DeleteAssignment(ctx context.Context, id uuid.UUID) error {
 func (q *Queries) GetAssignment(ctx context.Context, id uuid.UUID) (Assignment, error) {
 	var a Assignment
 	err := q.db.QueryRow(ctx, `
-		SELECT id, item_kind, item_id, group_id, mode, created_at, created_by
+		SELECT id, item_kind, item_id, group_id, mode, created_at, created_by, options
 		FROM assignments WHERE id = $1`, id).
-		Scan(&a.ID, &a.ItemKind, &a.ItemID, &a.GroupID, &a.Mode, &a.CreatedAt, &a.CreatedBy)
+		Scan(&a.ID, &a.ItemKind, &a.ItemID, &a.GroupID, &a.Mode, &a.CreatedAt, &a.CreatedBy, &a.Options)
 	return a, notFound(err)
 }
 
 // ListAssignments returns the assignments for one item.
 func (q *Queries) ListAssignments(ctx context.Context, itemKind string, itemID uuid.UUID) ([]Assignment, error) {
 	rows, err := q.db.Query(ctx, `
-		SELECT id, item_kind, item_id, group_id, mode, created_at, created_by
+		SELECT id, item_kind, item_id, group_id, mode, created_at, created_by, options
 		FROM assignments
 		WHERE tenant_id = $1 AND item_kind = $2 AND item_id = $3
 		ORDER BY mode, created_at`, DefaultTenantID, itemKind, itemID)
@@ -337,7 +350,8 @@ func (q *Queries) ListAssignments(ctx context.Context, itemKind string, itemID u
 	var out []Assignment
 	for rows.Next() {
 		var a Assignment
-		if err := rows.Scan(&a.ID, &a.ItemKind, &a.ItemID, &a.GroupID, &a.Mode, &a.CreatedAt, &a.CreatedBy); err != nil {
+		if err := rows.Scan(&a.ID, &a.ItemKind, &a.ItemID, &a.GroupID, &a.Mode,
+			&a.CreatedAt, &a.CreatedBy, &a.Options); err != nil {
 			return nil, err
 		}
 		out = append(out, a)
@@ -349,8 +363,11 @@ func (q *Queries) ListAssignments(ctx context.Context, itemKind string, itemID u
 // through one of its groups and excluded through none of them. Exclude always
 // wins, whichever group it came from.
 func (q *Queries) EffectiveItems(ctx context.Context, deviceID uuid.UUID) ([]Item, error) {
+	// DISTINCT ON with the ordering below is the conflict rule: when the same
+	// item reaches a device through several groups, the most recently created
+	// include assignment supplies the options.
 	rows, err := q.db.Query(ctx, `
-		SELECT DISTINCT a.item_kind, a.item_id
+		SELECT DISTINCT ON (a.item_kind, a.item_id) a.item_kind, a.item_id, a.options
 		FROM assignments a
 		JOIN group_members gm ON gm.group_id = a.group_id AND gm.device_id = $1
 		WHERE a.mode = 'include'
@@ -359,7 +376,7 @@ func (q *Queries) EffectiveItems(ctx context.Context, deviceID uuid.UUID) ([]Ite
 		      JOIN group_members gx ON gx.group_id = x.group_id AND gx.device_id = $1
 		      WHERE x.mode = 'exclude'
 		        AND x.item_kind = a.item_kind AND x.item_id = a.item_id)
-		ORDER BY a.item_kind, a.item_id`, deviceID)
+		ORDER BY a.item_kind, a.item_id, a.created_at DESC`, deviceID)
 	if err != nil {
 		return nil, err
 	}
@@ -367,7 +384,7 @@ func (q *Queries) EffectiveItems(ctx context.Context, deviceID uuid.UUID) ([]Ite
 	var out []Item
 	for rows.Next() {
 		var it Item
-		if err := rows.Scan(&it.Kind, &it.ID); err != nil {
+		if err := rows.Scan(&it.Kind, &it.ID, &it.Options); err != nil {
 			return nil, err
 		}
 		out = append(out, it)

@@ -18,6 +18,7 @@ import (
 	"retune/internal/agent/executor"
 	"retune/internal/agent/identity"
 	"retune/internal/agent/inventory"
+	"retune/internal/agent/scripts"
 	"retune/internal/agent/state"
 	"retune/internal/protocol"
 )
@@ -34,11 +35,13 @@ const workQueueSize = 64
 
 // Config wires a Session.
 type Config struct {
-	Identity    *identity.Identity
-	IDStore     identity.Store
-	State       *state.Store
-	Collector   inventory.Collector
-	Executor    *executor.Executor
+	Identity  *identity.Identity
+	IDStore   identity.Store
+	State     *state.Store
+	Collector inventory.Collector
+	Executor  *executor.Executor
+	// Scripts, when set, applies the deployments assigned to this device.
+	Scripts     *scripts.Scheduler
 	Log         *slog.Logger
 	Now         func() time.Time
 	RenewBefore time.Duration
@@ -83,6 +86,9 @@ func New(cfg Config) (*Session, error) {
 	}
 	if cfg.Executor.RefreshInventory == nil {
 		cfg.Executor.RefreshInventory = s.UploadInventory
+	}
+	if cfg.Scripts != nil && cfg.Scripts.Client == nil {
+		cfg.Scripts.Client = scriptClient{s}
 	}
 	return s, nil
 }
@@ -132,6 +138,20 @@ func (s *Session) Checkin(ctx context.Context, req protocol.CheckinRequest) (pro
 	}
 	for _, cmd := range resp.Commands {
 		s.enqueue(cmd)
+	}
+	// Assigned scripts are applied in the background: a long-running
+	// deployment must not hold up check-ins, inventory or commands. The
+	// scheduler runs one script at a time, so a slow one simply means the next
+	// check-in finds it still busy.
+	if s.cfg.Scripts != nil && len(resp.Items) > 0 {
+		items := resp.Items
+		s.pending.Add(1)
+		go func() {
+			defer s.pending.Done()
+			if err := s.cfg.Scripts.Sync(ctx, items); err != nil {
+				s.cfg.Log.Warn("applying assigned scripts failed", "error", err)
+			}
+		}()
 	}
 	return resp, nil
 }
@@ -331,4 +351,17 @@ func (s *Session) currentClient() *client.Client {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.client
+}
+
+// scriptClient routes the scheduler's calls through the session's current
+// client, so a certificate renewal is picked up without the scheduler knowing
+// anything about certificates.
+type scriptClient struct{ s *Session }
+
+func (c scriptClient) FetchScript(ctx context.Context, id string, version int) (protocol.ScriptVersionResponse, error) {
+	return c.s.currentClient().FetchScript(ctx, id, version)
+}
+
+func (c scriptClient) ReportScriptRun(ctx context.Context, id string, run protocol.ScriptRun) error {
+	return c.s.currentClient().ReportScriptRun(ctx, id, run)
 }
