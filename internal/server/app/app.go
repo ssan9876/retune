@@ -20,6 +20,7 @@ import (
 	"retune/internal/server/console"
 	"retune/internal/server/devices"
 	"retune/internal/server/enroll"
+	"retune/internal/server/groups"
 	"retune/internal/server/inventory"
 	"retune/internal/server/store"
 )
@@ -34,6 +35,7 @@ type App struct {
 	Inventory *inventory.Service
 	Commands  *commands.Service
 	Devices   *devices.Service
+	Groups    *groups.Service
 	Auth      *auth.Service
 	Handler   http.Handler
 	TLSConfig *tls.Config
@@ -78,7 +80,8 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	}
 
 	svc := &enroll.Service{Store: st, CA: authority, Now: time.Now, CertValidity: clientCertValidity}
-	inv := &inventory.Service{Store: st, Now: time.Now}
+	grp := &groups.Service{Store: st, Now: time.Now, Log: log}
+	inv := &inventory.Service{Store: st, Now: time.Now, Groups: grp, Log: log}
 	cmd := &commands.Service{Store: st, Now: time.Now}
 	dev := &devices.Service{Store: st}
 	authSvc := &auth.Service{
@@ -91,7 +94,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		ClientCert: clientCert,
 	}
 	admin := &adminapi.Handler{
-		Auth: authSvc, Store: st, Commands: cmd, Devices: dev, Enroll: svc,
+		Auth: authSvc, Store: st, Commands: cmd, Devices: dev, Enroll: svc, Groups: grp,
 		Now: time.Now, Log: log,
 	}
 	root := http.NewServeMux()
@@ -106,6 +109,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		Inventory: inv,
 		Commands:  cmd,
 		Devices:   dev,
+		Groups:    grp,
 		Auth:      authSvc,
 		Handler:   root,
 		TLSConfig: tlsCfg,

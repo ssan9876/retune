@@ -24,5 +24,24 @@ func (h *Handler) mountResources(mux *http.ServeMux, base string) {
 	mux.Handle("POST "+base+"/admins/{id}/totp", h.write(h.setAdminTOTP))
 	mux.Handle("POST "+base+"/admins/{id}/disabled", h.write(h.setAdminDisabled))
 
+	mux.Handle("GET "+base+"/groups", h.read(h.listGroups))
+	mux.Handle("POST "+base+"/groups", h.write(h.createGroup))
+	// Rule preview reads nothing it changes, but it runs a rule, so it is
+	// behind the write guard rather than being open to read-only accounts.
+	mux.Handle("POST "+base+"/groups/preview", h.write(h.previewRule))
+	mux.Handle("GET "+base+"/groups/{id}", h.read(h.getGroup))
+	mux.Handle("POST "+base+"/groups/{id}", h.write(h.updateGroup))
+	mux.Handle("DELETE "+base+"/groups/{id}", h.write(h.deleteGroup))
+	mux.Handle("POST "+base+"/groups/{id}/evaluate", h.write(h.evaluateGroup))
+	mux.Handle("GET "+base+"/groups/{id}/members", h.read(h.listGroupMembers))
+	mux.Handle("POST "+base+"/groups/{id}/members", h.write(h.addGroupMember))
+	mux.Handle("DELETE "+base+"/groups/{id}/members/{deviceID}", h.write(h.removeGroupMember))
+
+	mux.Handle("GET "+base+"/assignments", h.read(h.listAssignments))
+	mux.Handle("POST "+base+"/assignments", h.write(h.createAssignment))
+	mux.Handle("DELETE "+base+"/assignments/{id}", h.write(h.deleteAssignment))
+
+	mux.Handle("GET "+base+"/items/{kind}/{id}/status", h.read(h.itemStatus))
+
 	mux.Handle("GET "+base+"/audit", h.read(h.listAudit))
 }

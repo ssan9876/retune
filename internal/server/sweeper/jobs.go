@@ -11,7 +11,26 @@ import (
 const (
 	lockExpireCommands  = 5274001
 	lockCleanupSessions = 5274002
+	lockEvaluateGroups  = 5274003
 )
+
+// GroupEvaluator recomputes dynamic group membership.
+type GroupEvaluator interface {
+	EvaluateAll(ctx context.Context) (int, error)
+}
+
+// GroupJob re-evaluates every dynamic group. Its interval is fixed at the 15
+// minutes the design calls for, independent of the configured sweep interval,
+// because it is a good deal more expensive than expiring a few rows.
+func GroupJob(g GroupEvaluator) Job {
+	return Job{
+		Name: "groups.evaluate", LockID: lockEvaluateGroups, Interval: 15 * time.Minute,
+		Run: func(ctx context.Context, _ *store.Queries, _ time.Time) (int64, error) {
+			n, err := g.EvaluateAll(ctx)
+			return int64(n), err
+		},
+	}
+}
 
 // DefaultJobs are the maintenance jobs every server runs.
 func DefaultJobs(interval time.Duration) []Job {
