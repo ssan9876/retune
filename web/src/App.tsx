@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { Shell } from "./components/Shell";
 import { Spinner } from "./components/ui";
 import Admins from "./pages/Admins";
+import Apps from "./pages/Apps";
 import Audit from "./pages/Audit";
 import Commands from "./pages/Commands";
 import DeviceDetail from "./pages/DeviceDetail";
@@ -26,6 +27,7 @@ export default function App() {
         <Route path="/devices/:id" element={<DeviceDetail />} />
         <Route path="/groups" element={<Groups />} />
         <Route path="/scripts" element={<Scripts />} />
+        <Route path="/apps" element={<Apps />} />
         <Route path="/profiles" element={<Profiles />} />
         <Route path="/commands" element={<Commands />} />
         <Route path="/tokens" element={<Tokens />} />

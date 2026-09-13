@@ -9,6 +9,7 @@ const LINKS = [
   { to: "/devices", label: "Devices" },
   { to: "/groups", label: "Groups" },
   { to: "/scripts", label: "Scripts" },
+  { to: "/apps", label: "Apps" },
   { to: "/profiles", label: "Profiles" },
   { to: "/commands", label: "Commands" },
   { to: "/tokens", label: "Enrollment" },

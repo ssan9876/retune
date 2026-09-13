@@ -148,6 +148,37 @@ export interface ScriptRun {
   finished_at: string;
 }
 
+export interface App {
+  id: string;
+  name: string;
+  description: string;
+  package_id: string;
+  pinned_version?: string;
+  scope?: string;
+  install_args?: string;
+  current_version: number;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+}
+
+export interface AppInstall {
+  id: string;
+  device_id: string;
+  hostname: string;
+  version: number;
+  intent: string;
+  status: string;
+  installed_version: string;
+  exit_code: number;
+  stdout: string;
+  stderr: string;
+  error: string;
+  detail: string;
+  started_at: string;
+  finished_at: string;
+}
+
 export interface Setting {
   kind: string;
   hive?: string;
