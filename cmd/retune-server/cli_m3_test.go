@@ -8,7 +8,10 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
+	"retune/internal/pki"
+	"retune/internal/server/ca"
 	"retune/internal/server/store"
 	"retune/internal/server/store/storetest"
 )
@@ -39,11 +42,17 @@ func TestCommandsReadConfigFile(t *testing.T) {
 	if out := runOut(t, e, "device", "list"); !strings.Contains(out, "0 device(s)") {
 		t.Fatalf("device list = %q", out)
 	}
-	if out := runOut(t, e, "ca", "fingerprint"); !strings.HasPrefix(out, "sha256:") {
-		t.Fatalf("ca fingerprint = %q", out)
+	// The CA is created by the server, not by the ca commands, so make one in
+	// the directory the config file names and check the command finds it there.
+	authority, err := ca.LoadOrCreate(ctx, ca.FileKeyStore{Dir: filepath.Join(dir, "data", "ca")}, time.Now())
+	if err != nil {
+		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "data", "ca", "ca.crt")); err != nil {
 		t.Fatalf("the CA must land in the configured data_dir: %v", err)
+	}
+	if out := strings.TrimSpace(runOut(t, e, "ca", "fingerprint")); out != pki.Fingerprint(authority.Cert().Raw) {
+		t.Fatalf("ca fingerprint = %q, did not read the configured data_dir", out)
 	}
 }
 

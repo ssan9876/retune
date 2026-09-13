@@ -35,7 +35,8 @@ func TestLoadServerErrors(t *testing.T) {
 		"missing db":          {map[string]string{"DATABASE_URL": ""}, "DATABASE_URL"},
 		"http public url":     {map[string]string{"PUBLIC_URL": "http://h"}, "PUBLIC_URL"},
 		"missing public url":  {map[string]string{"PUBLIC_URL": ""}, "PUBLIC_URL"},
-		"bad tls mode":        {map[string]string{"TLS_MODE": "behind-proxy"}, "TLS_MODE"},
+		"bad tls mode":        {map[string]string{"TLS_MODE": "passthrough"}, "TLS_MODE"},
+		"bad ca key source":   {map[string]string{"CA_KEY_SOURCE": "kms"}, "CA_KEY_SOURCE"},
 		"provided needs cert": {map[string]string{"TLS_MODE": "provided"}, "TLS_CERT_FILE"},
 		"interval too small":  {map[string]string{"CHECKIN_INTERVAL_SECONDS": "5"}, "CHECKIN_INTERVAL_SECONDS"},
 	}
@@ -85,5 +86,86 @@ func TestLoadServerProvidedAndInterval(t *testing.T) {
 	}
 	if c.TLSMode != "provided" || c.CheckinInterval != time.Minute {
 		t.Fatalf("got %+v", c)
+	}
+}
+
+func TestLoadServerBehindProxy(t *testing.T) {
+	base := map[string]string{
+		"DATABASE_URL": "postgres://x/y",
+		"PUBLIC_URL":   "https://mdm.example.com",
+		"TLS_MODE":     "behind-proxy",
+	}
+	with := func(extra map[string]string) func(string) string {
+		m := map[string]string{}
+		for k, v := range base {
+			m[k] = v
+		}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return env(m)
+	}
+
+	t.Run("requires a trusted proxy list", func(t *testing.T) {
+		_, err := LoadServer(with(nil))
+		if err == nil || !strings.Contains(err.Error(), "TRUSTED_PROXIES") {
+			t.Fatalf("want a TRUSTED_PROXIES error, got %v", err)
+		}
+	})
+
+	t.Run("rejects an empty header name", func(t *testing.T) {
+		_, err := LoadServer(with(map[string]string{
+			"TRUSTED_PROXIES": "10.0.0.0/8", "CLIENT_CERT_HEADER": " ",
+		}))
+		if err == nil || !strings.Contains(err.Error(), "CLIENT_CERT_HEADER") {
+			t.Fatalf("want a CLIENT_CERT_HEADER error, got %v", err)
+		}
+	})
+
+	t.Run("accepts CIDRs and bare addresses", func(t *testing.T) {
+		c, err := LoadServer(with(map[string]string{"TRUSTED_PROXIES": "10.0.0.0/8, 192.168.1.7"}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(c.TrustedProxies) != 2 {
+			t.Fatalf("want 2 prefixes, got %d", len(c.TrustedProxies))
+		}
+		if !c.TrustedProxies[1].IsSingleIP() {
+			t.Error("a bare address should become a single-IP prefix")
+		}
+		if c.ClientCertHeader != "X-Forwarded-Client-Cert" {
+			t.Errorf("default header = %q", c.ClientCertHeader)
+		}
+	})
+
+	t.Run("rejects an unparseable entry", func(t *testing.T) {
+		_, err := LoadServer(with(map[string]string{"TRUSTED_PROXIES": "10.0.0.0/8, nonsense"}))
+		if err == nil || !strings.Contains(err.Error(), "nonsense") {
+			t.Fatalf("want the bad value named, got %v", err)
+		}
+	})
+}
+
+func TestSweepInterval(t *testing.T) {
+	base := map[string]string{"DATABASE_URL": "postgres://x", "PUBLIC_URL": "https://h"}
+	with := func(v string) func(string) string {
+		m := map[string]string{}
+		for k, val := range base {
+			m[k] = val
+		}
+		if v != "" {
+			m["SWEEP_INTERVAL_SECONDS"] = v
+		}
+		return env(m)
+	}
+	c, err := LoadServer(with(""))
+	if err != nil || c.SweepInterval != 5*time.Minute {
+		t.Fatalf("default sweep interval = %v, err %v", c.SweepInterval, err)
+	}
+	if c, err := LoadServer(with("30")); err != nil || c.SweepInterval != 30*time.Second {
+		t.Fatalf("sweep interval = %v, err %v", c.SweepInterval, err)
+	}
+	if _, err := LoadServer(with("5")); err == nil {
+		t.Error("want an error below the 10 second minimum")
 	}
 }

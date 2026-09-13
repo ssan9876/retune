@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -47,15 +48,33 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	if err != nil {
 		return nil, err
 	}
-	authority, err := ca.LoadOrCreate(ctx, ca.FileKeyStore{Dir: filepath.Join(cfg.DataDir, "ca")}, time.Now())
+	var keys ca.KeyStore = ca.FileKeyStore{Dir: filepath.Join(cfg.DataDir, "ca")}
+	if cfg.CAKeySource == "env" {
+		keys = ca.EnvKeyStore{CertPEM: os.Getenv("CA_CERT_PEM"), KeyPEM: os.Getenv("CA_KEY_PEM")}
+	}
+	authority, err := ca.LoadOrCreate(ctx, keys, time.Now())
 	if err != nil {
 		st.Close()
 		return nil, err
 	}
-	serverCert, err := loadServerCert(cfg, authority)
-	if err != nil {
-		st.Close()
-		return nil, err
+	// Behind a proxy there is no handshake here, so the device certificate
+	// arrives in a header and this server holds no TLS configuration at all.
+	clientCert := agentapi.TLSClientCert
+	var tlsCfg *tls.Config
+	if cfg.TLSMode == "behind-proxy" {
+		clientCert = agentapi.HeaderClientCert(cfg.ClientCertHeader, cfg.TrustedProxies, authority.Pool())
+	} else {
+		serverCert, err := loadServerCert(cfg, authority)
+		if err != nil {
+			st.Close()
+			return nil, err
+		}
+		tlsCfg = &tls.Config{
+			MinVersion:   tls.VersionTLS12,
+			Certificates: []tls.Certificate{serverCert},
+			ClientAuth:   tls.VerifyClientCertIfGiven,
+			ClientCAs:    authority.Pool(),
+		}
 	}
 
 	svc := &enroll.Service{Store: st, CA: authority, Now: time.Now, CertValidity: clientCertValidity}
@@ -69,6 +88,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	agent := &agentapi.Handler{
 		Enroll: svc, Inventory: inv, Commands: cmd, Store: st,
 		Now: time.Now, CheckinInterval: cfg.CheckinInterval, Log: log,
+		ClientCert: clientCert,
 	}
 	admin := &adminapi.Handler{
 		Auth: authSvc, Store: st, Commands: cmd, Devices: dev, Enroll: svc,
@@ -88,12 +108,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		Devices:   dev,
 		Auth:      authSvc,
 		Handler:   root,
-		TLSConfig: &tls.Config{
-			MinVersion:   tls.VersionTLS12,
-			Certificates: []tls.Certificate{serverCert},
-			ClientAuth:   tls.VerifyClientCertIfGiven,
-			ClientCAs:    authority.Pool(),
-		},
+		TLSConfig: tlsCfg,
 	}, nil
 }
 

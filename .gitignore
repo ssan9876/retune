@@ -5,3 +5,4 @@
 /web/node_modules/
 /internal/server/console/dist/*
 !/internal/server/console/dist/.gitkeep
+/scratch-agent/

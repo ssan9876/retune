@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"encoding/pem"
 	"errors"
 	"flag"
 	"fmt"
@@ -21,6 +22,7 @@ import (
 	"retune/internal/server/ca"
 	"retune/internal/server/enroll"
 	"retune/internal/server/store"
+	"retune/internal/server/sweeper"
 )
 
 const usage = `usage: retune-server <command>
@@ -30,6 +32,7 @@ commands:
   migrate                apply database migrations
   token create [flags]   create an enrollment token (--label, --max-uses, --expires-in)
   ca fingerprint         print the internal CA fingerprint for agent pinning
+  ca cert                print the internal CA certificate (PEM) for a reverse proxy
   device list            list enrolled devices
   device show <id>       show one device with its inventory and recent commands
   device retire <id>     stop accepting check-ins from a device
@@ -100,6 +103,16 @@ func serve(ctx context.Context, getenv func(string) string) error {
 	}
 	defer a.Close()
 
+	// Expiry and session cleanup need a timer: nothing in a request path can
+	// retire a command for a device that never checks in again.
+	sweep := &sweeper.Runner{
+		Store: a.Store,
+		Jobs:  sweeper.DefaultJobs(cfg.SweepInterval),
+		Log:   log,
+		Now:   time.Now,
+	}
+	sweep.Start(ctx)
+
 	srv := &http.Server{
 		Addr:              cfg.AgentListen,
 		Handler:           a.Handler,
@@ -108,7 +121,14 @@ func serve(ctx context.Context, getenv func(string) string) error {
 		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelWarn),
 	}
 	errc := make(chan error, 1)
-	go func() { errc <- srv.ListenAndServeTLS("", "") }()
+	go func() {
+		if cfg.TLSMode == "behind-proxy" {
+			// The proxy terminates TLS; wrapping it again here would be wrong.
+			errc <- srv.ListenAndServe()
+			return
+		}
+		errc <- srv.ListenAndServeTLS("", "")
+	}()
 	log.Info("agent API listening", "addr", cfg.AgentListen, "public_url", cfg.PublicURL,
 		"ca_fingerprint", pki.Fingerprint(a.CA.Cert().Raw))
 
@@ -160,16 +180,26 @@ func tokenCmd(ctx context.Context, args []string, getenv func(string) string, ou
 }
 
 func caCmd(ctx context.Context, args []string, getenv func(string) string, out io.Writer) error {
-	if len(args) != 1 || args[0] != "fingerprint" {
-		return errors.New("usage: retune-server ca fingerprint")
+	if len(args) != 1 || (args[0] != "fingerprint" && args[0] != "cert") {
+		return errors.New("usage: retune-server ca (fingerprint | cert)")
 	}
 	dir, err := config.DataDir(getenv)
 	if err != nil {
 		return err
 	}
-	authority, err := ca.LoadOrCreate(ctx, ca.FileKeyStore{Dir: filepath.Join(dir, "ca")}, time.Now())
+	// Read only: creating a CA as a side effect of asking about one is
+	// surprising, and in a container with an empty volume it would mint a
+	// throwaway authority that no enrolled device trusts.
+	authority, err := ca.Load(ctx, ca.FileKeyStore{Dir: filepath.Join(dir, "ca")})
+	if errors.Is(err, ca.ErrNotExist) {
+		return errors.New("no certificate authority exists yet; start the server once to create one")
+	}
 	if err != nil {
 		return err
+	}
+	if args[0] == "cert" {
+		// The PEM a reverse proxy needs in order to verify device certificates.
+		return pem.Encode(out, &pem.Block{Type: "CERTIFICATE", Bytes: authority.Cert().Raw})
 	}
 	fmt.Fprintln(out, pki.Fingerprint(authority.Cert().Raw))
 	return nil

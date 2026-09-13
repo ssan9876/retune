@@ -25,6 +25,10 @@ type fileConfig struct {
 	DataDir                string `yaml:"data_dir"`
 	CheckinIntervalSeconds int    `yaml:"checkin_interval_seconds"`
 	SessionTTLHours        int    `yaml:"session_ttl_hours"`
+	ClientCertHeader       string `yaml:"client_cert_header"`
+	TrustedProxies         string `yaml:"trusted_proxies"`
+	CAKeySource            string `yaml:"ca_key_source"`
+	SweepIntervalSeconds   int    `yaml:"sweep_interval_seconds"`
 }
 
 // DatabaseURL resolves the database connection string for commands that need
@@ -96,6 +100,12 @@ func loadConfigFile(getenv func(string) string) (map[string]string, error) {
 	set("TLS_CERT_FILE", f.TLSCertFile)
 	set("TLS_KEY_FILE", f.TLSKeyFile)
 	set("DATA_DIR", f.DataDir)
+	set("CLIENT_CERT_HEADER", f.ClientCertHeader)
+	set("TRUSTED_PROXIES", f.TrustedProxies)
+	set("CA_KEY_SOURCE", f.CAKeySource)
+	if f.SweepIntervalSeconds != 0 {
+		set("SWEEP_INTERVAL_SECONDS", strconv.Itoa(f.SweepIntervalSeconds))
+	}
 	if f.CheckinIntervalSeconds != 0 {
 		set("CHECKIN_INTERVAL_SECONDS", strconv.Itoa(f.CheckinIntervalSeconds))
 	}

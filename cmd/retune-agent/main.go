@@ -8,29 +8,28 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math/rand/v2"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"runtime"
 	"syscall"
-	"time"
 
+	"retune/internal/agent/agentcfg"
 	"retune/internal/agent/checkin"
 	"retune/internal/agent/enrollment"
-	"retune/internal/agent/executor"
 	"retune/internal/agent/facts"
 	"retune/internal/agent/identity"
-	"retune/internal/agent/inventory"
-	"retune/internal/agent/session"
-	"retune/internal/agent/state"
+	"retune/internal/agent/runner"
 )
 
 const usage = `usage: retune-agent <command>
 
 commands:
   enroll --server URL --token T [--pin sha256:...] [--data-dir D]
-  run [--data-dir D] [--once]`
+  run [--data-dir D] [--once]
+  configure --server URL --token T [--pin sha256:...] [--data-dir D]   (Windows)
+  install [--data-dir D]                                              (Windows)
+  uninstall                                                           (Windows)`
 
 func main() {
 	if err := run(context.Background(), os.Args[1:], os.Stdout); err != nil {
@@ -40,6 +39,10 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, out io.Writer) error {
+	// The service control manager starts us with no arguments.
+	if len(args) == 0 && isWindowsService() {
+		return runService(ctx, defaultDataDir())
+	}
 	if len(args) == 0 {
 		return errors.New(usage)
 	}
@@ -71,58 +74,85 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		idStore := identity.Store{Dir: *dataDir, Keys: identity.DefaultKeys()}
-		id, err := idStore.Load()
-		if err != nil {
-			return err
-		}
-		st, err := state.Open(filepath.Join(*dataDir, "state.db"))
-		if err != nil {
-			return err
-		}
-		defer st.Close()
-
-		log := slog.New(slog.NewTextHandler(os.Stderr, nil))
-		sess, err := session.New(session.Config{
-			Identity:  id,
-			IDStore:   idStore,
-			State:     st,
-			Collector: inventory.NewCollector(),
-			Executor: &executor.Executor{
-				Runner:    executor.DefaultRunner(filepath.Join(*dataDir, "scripts")),
-				Restarter: executor.DefaultRestarter(),
-				Now:       time.Now,
-			},
-			Log: log,
-		})
-		if err != nil {
-			return err
-		}
-
 		ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 		defer stop()
-		sess.Start(ctx)
-
-		loop := &checkin.Loop{Client: sess, Facts: facts.Checkin, Log: log, Rand: rand.Float64}
-		if *once {
-			wait, err := loop.RunOnce(ctx)
-			switch {
-			case errors.Is(err, checkin.ErrUnenrolled):
-				fmt.Fprintln(out, "This device was unenrolled; local identity and state removed.")
-				return nil
-			case err != nil:
-				return err
-			}
-			sess.Wait()
-			if err := sess.FlushResults(ctx); err != nil {
-				log.Warn("some results are still queued", "error", err)
-			}
-			fmt.Fprintf(out, "Check-in OK; next in %s\n", wait.Round(time.Second))
+		err := runner.Run(ctx, runner.Options{
+			DataDir: *dataDir,
+			Once:    *once,
+			Log:     slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Out:     out,
+		})
+		if errors.Is(err, checkin.ErrUnenrolled) {
+			fmt.Fprintln(out, "This device was unenrolled; local identity and state removed.")
 			return nil
 		}
-		if errors.Is(loop.Run(ctx), checkin.ErrUnenrolled) {
-			fmt.Fprintln(out, "This device was unenrolled; local identity and state removed.")
+		return err
+
+	case "configure":
+		server := fs.String("server", "", "server URL, e.g. https://mdm.example.com")
+		token := fs.String("token", "", "enrollment token")
+		pin := fs.String("pin", "", "server CA fingerprint (sha256:...) for self-signed servers")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
 		}
+		if *server == "" || *token == "" {
+			return errors.New("--server and --token are required")
+		}
+		if err := agentcfg.Save(*dataDir, agentcfg.Config{
+			ServerURL: *server, EnrollToken: *token, ServerCertFingerprint: *pin,
+		}); err != nil {
+			return err
+		}
+		// The directory holds the enrollment token and, shortly, the device
+		// key, so it must not be readable by ordinary users.
+		if err := secureDataDir(*dataDir); err != nil {
+			return err
+		}
+		// The MSI installs the service itself, so this is the only place on
+		// that path where the Event Log source gets registered.
+		if err := registerEventLogSource(); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "Wrote %s; the service will enroll on its next start.\n",
+			filepath.Join(*dataDir, agentcfg.FileName))
+		return nil
+
+	case "cleanup":
+		// Run by the installer on uninstall, before the executable is removed.
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if err := removeEventLogSource(); err != nil {
+			return err
+		}
+		if err := os.RemoveAll(*dataDir); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "Removed %s and the Event Log source.\n", *dataDir)
+		return nil
+
+	case "install":
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		exe, err := os.Executable()
+		if err != nil {
+			return err
+		}
+		if err := installService(exe); err != nil {
+			return err
+		}
+		fmt.Fprintln(out, "Installed the Retune service.")
+		return nil
+
+	case "uninstall":
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if err := uninstallService(); err != nil {
+			return err
+		}
+		fmt.Fprintln(out, "Removed the Retune service.")
 		return nil
 
 	default:

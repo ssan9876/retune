@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The Retune agent installer.
+
+  The UpgradeCode identifies the product across all versions and must never
+  change: a new one would make every future MSI install alongside the old one
+  instead of upgrading it.
+
+  Built by build.ps1, which supplies Version and AgentExe.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Retune Agent"
+           Manufacturer="Retune"
+           Version="$(var.Version)"
+           UpgradeCode="632B6E61-F007-4EF7-BE50-33DFD9F86799"
+           Scope="perMachine"
+           Compressed="yes">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of the Retune Agent is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Settings for the machine. The token is a credential, so it is kept out
+         of the installer log; the agent removes it from disk once spent. -->
+    <Property Id="SERVER_URL" Secure="yes" />
+    <Property Id="ENROLL_TOKEN" Secure="yes" Hidden="yes" />
+    <Property Id="SERVER_CERT_FINGERPRINT" Secure="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Retune" />
+    </StandardDirectory>
+
+    <ComponentGroup Id="AgentFiles" Directory="INSTALLFOLDER">
+      <Component Id="AgentExe" Guid="*">
+        <File Id="RetuneAgentExe"
+              Name="retune-agent.exe"
+              Source="$(var.AgentExe)"
+              KeyPath="yes" />
+
+        <ServiceInstall Id="RetuneService"
+                        Name="Retune"
+                        DisplayName="Retune Agent"
+                        Description="Reports inventory to the Retune server and runs assigned commands."
+                        Type="ownProcess"
+                        Start="auto"
+                        Account="LocalSystem"
+                        ErrorControl="normal"
+                        Vital="yes" />
+        <!-- Stop on both install and uninstall so an upgrade can replace the
+             running binary. -->
+        <ServiceControl Id="RetuneServiceControl"
+                        Name="Retune"
+                        Start="install"
+                        Stop="both"
+                        Remove="uninstall"
+                        Wait="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <Feature Id="Main">
+      <ComponentGroupRef Id="AgentFiles" />
+    </Feature>
+
+    <!-- Writing the settings file through the agent itself keeps one copy of
+         the logic: the same code that reads agent.yaml writes it, and it also
+         restricts the data directory to SYSTEM and Administrators. -->
+    <!-- The command line carries the enrollment token, so the property that
+         holds it is hidden: without this the token appears in verbose installer
+         logs three times over, in the property change, the scheduled action's
+         data, and the final property dump. SilentExec rather than QuietExec for
+         the same reason: QuietExec logs the command line it runs.
+
+         One occurrence survives. Windows Installer logs a deferred action's
+         CustomActionData in its "Executing op: CustomActionSchedule" line and
+         does not honour MsiHiddenProperties there, so a log taken with /l*v
+         contains the token. Nothing in the package can suppress it. It only
+         matters when an administrator asks for verbose logging (msiexec writes
+         no log by default), and the token is spent seconds later, but prefer
+         single-use tokens and delete such logs. -->
+    <Property Id="ConfigureAgent" Hidden="yes" />
+    <CustomAction Id="SetConfigureCommand"
+                  Property="ConfigureAgent"
+                  Value="&quot;[INSTALLFOLDER]retune-agent.exe&quot; configure --server &quot;[SERVER_URL]&quot; --token &quot;[ENROLL_TOKEN]&quot; --pin &quot;[SERVER_CERT_FINGERPRINT]&quot;" />
+    <CustomAction Id="ConfigureAgent"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixSilentExec64"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <!-- Remove the identity, state, settings and Event Log source on
+         uninstall. A reinstall needs a fresh token in any case, because the
+         old one is spent. This runs the agent, so it must happen while the
+         executable is still on disk. -->
+    <CustomAction Id="SetRemoveDataCommand"
+                  Property="RemoveAgentData"
+                  Value="&quot;[INSTALLFOLDER]retune-agent.exe&quot; cleanup --data-dir &quot;[CommonAppDataFolder]Retune&quot;" />
+    <CustomAction Id="RemoveAgentData"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixQuietExec64"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <InstallExecuteSequence>
+      <Custom Action="SetConfigureCommand" Before="ConfigureAgent"
+              Condition="NOT Installed AND SERVER_URL AND ENROLL_TOKEN" />
+      <!-- After the files are on disk, before the service is started, so the
+           service finds its settings on its very first start. -->
+      <Custom Action="ConfigureAgent" After="InstallFiles"
+              Condition="NOT Installed AND SERVER_URL AND ENROLL_TOKEN" />
+
+      <Custom Action="SetRemoveDataCommand" Before="RemoveAgentData"
+              Condition="REMOVE=&quot;ALL&quot;" />
+      <!-- Before RemoveFiles: the action runs retune-agent.exe, which
+           RemoveFiles is about to delete. -->
+      <Custom Action="RemoveAgentData" Before="RemoveFiles"
+              Condition="REMOVE=&quot;ALL&quot;" />
+    </InstallExecuteSequence>
+  </Package>
+</Wix>
