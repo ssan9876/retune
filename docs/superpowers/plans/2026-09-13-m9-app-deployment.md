@@ -353,6 +353,10 @@ git commit -m "refactor: resolve check-in item versions through one dispatcher"
 - Modify: `internal/agent/session/session.go` — `Config`, `New`, `Checkin`, plus two adapter types
 - Test: `internal/agent/session/session_test.go`
 
+`internal/agent/runner/runner.go` needs no change here: it sets `Scripts` and
+`Policy` on the config, and `New` is what turns those into syncers. Task 11 is
+where it gains a line.
+
 **Interfaces:**
 - Produces:
   ```go
@@ -1501,7 +1505,15 @@ In `internal/server/adminapi/itemkinds.go`, add to `optionsParsers`:
 	},
 ```
 
-Add `Apps *apps.Service` to the `adminapi.Handler` struct. In `internal/server/app/app.go`, add `Apps *apps.Service` to the `App` struct, construct `appSvc := &apps.Service{Store: st, Now: time.Now}` beside `prof`, pass `Apps: appSvc` to both the `adminapi.Handler` and the `agentapi.Handler` literals, and add `Apps: appSvc` to the returned `&App{...}`.
+Add `Apps *apps.Service` to the `adminapi.Handler` struct **and to the
+`agentapi.Handler` struct**. The agent handler does not use the field until
+Task 8, but wiring both here keeps every change to `app.go` in one task, and an
+as-yet-unused struct field compiles.
+
+In `internal/server/app/app.go`: add `Apps *apps.Service` to the `App` struct,
+construct `appSvc := &apps.Service{Store: st, Now: time.Now}` beside `prof`,
+pass `Apps: appSvc` to both the `adminapi.Handler` and the `agentapi.Handler`
+literals, and add `Apps: appSvc` to the returned `&App{...}`.
 
 - [ ] **Step 5: Run the tests**
 
@@ -1630,7 +1642,8 @@ Expected: FAIL — the agent routes 404.
 
 - [ ] **Step 3: Add the field, the routes and the `itemVersion` case**
 
-Add `Apps *apps.Service` to the `agentapi.Handler` struct. In `Routes()`, beside the profile pair:
+Task 7 already added the `Apps *apps.Service` field to the `agentapi.Handler`
+struct; do not add it again. In `Routes()`, beside the profile pair:
 
 ```go
 	mux.Handle("GET /api/agent/v1/apps/{id}/versions/{version}", h.requireDevice(h.appVersion))
@@ -1957,6 +1970,11 @@ func uninstall() protocol.AppOptions {
 }
 
 func TestDecide(t *testing.T) {
+	// Every state that represents an app already acted on carries the intent
+	// it was acted on under. A zero Intent means "never acted on", which is a
+	// fresh instruction however the rest of the state reads.
+	const install, remove = protocol.IntentInstall, protocol.IntentUninstall
+
 	cases := map[string]struct {
 		version int
 		opts    protocol.AppOptions
@@ -1969,43 +1987,47 @@ func TestDecide(t *testing.T) {
 		},
 		"a new version is a fresh instruction": {
 			version: 2, opts: opts(nil),
-			state: state.AppState{Version: 1, Installed: true, LastSeenAt: now, LastActedAt: now},
+			state: state.AppState{Version: 1, Intent: install, Installed: true, LastSeenAt: now},
+			want:  apps.ActionDetect,
+		},
+		"a changed intent is re-checked before acting on it": {
+			version: 1, opts: uninstall(),
+			state: state.AppState{Version: 1, Intent: install, Installed: true, LastSeenAt: now},
 			want:  apps.ActionDetect,
 		},
 		"installed and checked recently: nothing to do": {
 			version: 1, opts: opts(nil),
-			state: state.AppState{Version: 1, Installed: true, LastSeenAt: now.Add(-10 * time.Minute)},
-			want:  apps.ActionNone,
+			state: state.AppState{
+				Version: 1, Intent: install, Installed: true, LastSeenAt: now.Add(-10 * time.Minute),
+			},
+			want: apps.ActionNone,
 		},
 		"installed but not checked for an hour": {
 			version: 1, opts: opts(nil),
-			state: state.AppState{Version: 1, Installed: true, LastSeenAt: now.Add(-90 * time.Minute)},
-			want:  apps.ActionDetect,
+			state: state.AppState{
+				Version: 1, Intent: install, Installed: true, LastSeenAt: now.Add(-90 * time.Minute),
+			},
+			want: apps.ActionDetect,
 		},
 		"detected missing, so put it back": {
 			version: 1, opts: opts(nil),
-			state: state.AppState{Version: 1, Installed: false, LastSeenAt: now},
+			state: state.AppState{Version: 1, Intent: install, Installed: false, LastSeenAt: now},
 			want:  apps.ActionInstall,
 		},
-		"uninstall intent with it present": {
+		"uninstall intent with it still present": {
 			version: 1, opts: uninstall(),
-			state: state.AppState{Version: 1, Installed: true, LastSeenAt: now},
+			state: state.AppState{Version: 1, Intent: remove, Installed: true, LastSeenAt: now},
 			want:  apps.ActionUninstall,
 		},
 		"uninstall intent with it already gone": {
 			version: 1, opts: uninstall(),
-			state: state.AppState{Version: 1, Installed: false, LastSeenAt: now, Intent: protocol.IntentUninstall},
+			state: state.AppState{Version: 1, Intent: remove, Installed: false, LastSeenAt: now},
 			want:  apps.ActionNone,
-		},
-		"a changed intent is acted on at once": {
-			version: 1, opts: uninstall(),
-			state: state.AppState{Version: 1, Intent: protocol.IntentInstall, Installed: true, LastSeenAt: now},
-			want:  apps.ActionUninstall,
 		},
 		"it has failed too often to keep trying": {
 			version: 1, opts: opts(nil),
 			state: state.AppState{
-				Version: 1, Installed: false, LastSeenAt: now, LastActedAt: now,
+				Version: 1, Intent: install, Installed: false, LastSeenAt: now, LastActedAt: now,
 				LastStatus: protocol.ResultFailed, Failures: 3,
 			},
 			want: apps.ActionNone,
