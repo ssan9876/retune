@@ -77,6 +77,23 @@ func TestClassify(t *testing.T) {
 	}
 }
 
+// A failed detection is not the same as an absent package. Folding a plain
+// failure exit code into "not installed" would make the agent reinstall the
+// software on every cycle during an outage that has nothing to do with the
+// package itself, so a failure must come back with an error the caller can
+// check before trusting the bool.
+func TestDetectResult(t *testing.T) {
+	if installed, err := detectResult(NotInstalledExit); installed || err != nil {
+		t.Errorf("detectResult(NotInstalledExit) = (%v, %v), want (false, nil)", installed, err)
+	}
+	if installed, err := detectResult(0); !installed || err != nil {
+		t.Errorf("detectResult(0) = (%v, %v), want (true, nil)", installed, err)
+	}
+	if installed, err := detectResult(1); installed || err == nil {
+		t.Errorf("detectResult(1) = (%v, %v), want (false, non-nil error)", installed, err)
+	}
+}
+
 // winget prints a table; the installed version is the column after the id.
 func TestInstalledVersion(t *testing.T) {
 	const out = `

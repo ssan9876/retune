@@ -5,6 +5,7 @@ package apps
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"retune/internal/protocol"
@@ -53,6 +54,24 @@ func classify(code int) Outcome {
 	}
 }
 
+// detectResult turns a `winget list` exit code into a detection outcome.
+// OutcomeNotInstalled is a successful detection whose answer is "absent", so
+// it returns a nil error; any other non-success is a failed detection, not
+// an answer, and returns an error naming the exit code. Folding the two
+// together — as if any non-zero code just meant "not installed" — would make
+// a caller reinstall the package on every cycle during an outage that has
+// nothing to do with the package itself.
+func detectResult(code int) (installed bool, err error) {
+	switch classify(code) {
+	case OutcomeSucceeded:
+		return true, nil
+	case OutcomeNotInstalled:
+		return false, nil
+	default:
+		return false, fmt.Errorf("winget list failed with exit code %d", code)
+	}
+}
+
 // Result is one winget invocation's outcome.
 type Result struct {
 	ExitCode       int
@@ -64,6 +83,13 @@ type Result struct {
 
 // Winget runs winget commands. The agent uses one; tests supply a fake.
 type Winget interface {
+	// Detect reports whether packageID is installed. A caller MUST check
+	// Result.Err before trusting installed: a failed detection (winget
+	// broken, source unreachable, network down) is not the same as an
+	// absent package. Both surface as installed == false, but only a clean
+	// "absent" leaves Err nil — treating a failure as "absent" makes the
+	// agent reinstall the software on every single cycle for as long as the
+	// outage lasts.
 	Detect(ctx context.Context, packageID string) (installed bool, version string, r Result)
 	Install(ctx context.Context, v protocol.AppVersionResponse) Result
 	Uninstall(ctx context.Context, packageID string) Result

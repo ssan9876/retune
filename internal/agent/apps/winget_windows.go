@@ -61,7 +61,17 @@ type client struct{ path string }
 
 func (c *client) Detect(ctx context.Context, packageID string) (bool, string, Result) {
 	r := c.run(ctx, detectArgs(packageID))
-	if classify(r.ExitCode) != OutcomeSucceeded {
+	installed, err := detectResult(r.ExitCode)
+	if err != nil {
+		// A process-level error (e.g. a timeout) is the more specific cause;
+		// only fall back to the exit-code-derived error when nothing else
+		// already explains the failure.
+		if r.Err == nil {
+			r.Err = err
+		}
+		return false, "", r
+	}
+	if !installed {
 		return false, "", r
 	}
 	return true, installedVersion(r.Stdout, packageID), r
