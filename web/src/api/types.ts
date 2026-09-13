@@ -119,3 +119,31 @@ export interface Group {
   updated_at: string;
   evaluated_at: string | null;
 }
+
+export interface Script {
+  id: string;
+  name: string;
+  description: string;
+  current_version: number;
+  body?: string;
+  detection_body?: string;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+}
+
+export interface ScriptRun {
+  id: string;
+  device_id: string;
+  hostname: string;
+  version: number;
+  status: string;
+  phase: string;
+  remediated: boolean;
+  exit_code: number;
+  stdout: string;
+  stderr: string;
+  error: string;
+  started_at: string;
+  finished_at: string;
+}

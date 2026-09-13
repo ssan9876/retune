@@ -8,6 +8,7 @@ import "./Shell.css";
 const LINKS = [
   { to: "/devices", label: "Devices" },
   { to: "/groups", label: "Groups" },
+  { to: "/scripts", label: "Scripts" },
   { to: "/commands", label: "Commands" },
   { to: "/tokens", label: "Enrollment" },
   { to: "/audit", label: "Audit" },

@@ -1,0 +1,57 @@
+.script__description {
+  color: var(--ink-muted);
+  font-size: var(--text-xs);
+  margin-top: 2px;
+}
+
+.script__actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+/* A script name reads as a link but is a button, because it opens a panel
+   rather than navigating. */
+.linklike {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--primary);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.linklike:hover {
+  text-decoration: underline;
+}
+
+.script__detail {
+  margin-top: var(--space-6);
+  border-top: 1px solid var(--rule);
+  padding-top: var(--space-4);
+}
+
+.script__rollup {
+  display: flex;
+  gap: var(--space-4);
+  font-size: var(--text-sm);
+}
+
+.script__none {
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+}
+
+.script__output {
+  white-space: pre-wrap;
+  background: var(--surface-sunken);
+  padding: var(--space-3);
+  border-radius: var(--radius);
+  max-height: 20rem;
+  overflow: auto;
+}
+
+.script__output--error {
+  color: var(--status-retired);
+}
