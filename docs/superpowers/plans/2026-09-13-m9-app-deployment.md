@@ -351,7 +351,7 @@ git commit -m "refactor: resolve check-in item versions through one dispatcher"
 
 **Files:**
 - Modify: `internal/agent/session/session.go` — `Config`, `New`, `Checkin`, plus two adapter types
-- Test: `internal/agent/session/session_test.go`
+- Test: `internal/agent/session/dispatch_test.go` (new; the package has no test file today)
 
 `internal/agent/runner/runner.go` needs no change here: it sets `Scripts` and
 `Policy` on the config, and `New` is what turns those into syncers. Task 11 is
