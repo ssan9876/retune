@@ -107,3 +107,15 @@ export interface SessionResponse {
   csrf_token: string;
   expires_at: string;
 }
+
+export interface Group {
+  id: string;
+  name: string;
+  description: string;
+  kind: "static" | "dynamic" | "builtin";
+  rule: string;
+  member_count: number;
+  created_at: string;
+  updated_at: string;
+  evaluated_at: string | null;
+}
