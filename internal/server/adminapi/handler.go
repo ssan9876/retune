@@ -14,6 +14,7 @@ import (
 	"retune/internal/server/devices"
 	"retune/internal/server/enroll"
 	"retune/internal/server/groups"
+	"retune/internal/server/scripts"
 	"retune/internal/server/store"
 )
 
@@ -30,6 +31,7 @@ type Handler struct {
 	Commands *commands.Service
 	Devices  *devices.Service
 	Groups   *groups.Service
+	Scripts  *scripts.Service
 	Enroll   *enroll.Service
 	Now      func() time.Time
 	Log      *slog.Logger

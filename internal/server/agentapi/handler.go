@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,6 +17,7 @@ import (
 	"retune/internal/server/commands"
 	"retune/internal/server/enroll"
 	"retune/internal/server/inventory"
+	"retune/internal/server/scripts"
 	"retune/internal/server/store"
 )
 
@@ -24,6 +26,7 @@ type Handler struct {
 	Enroll          *enroll.Service
 	Inventory       *inventory.Service
 	Commands        *commands.Service
+	Scripts         *scripts.Service
 	Store           *store.Store
 	Now             func() time.Time
 	CheckinInterval time.Duration
@@ -51,6 +54,8 @@ func (h *Handler) Routes() http.Handler {
 	mux.Handle("PUT /api/agent/v1/inventory", h.requireDevice(h.putInventory))
 	mux.Handle("POST /api/agent/v1/commands/{id}/start", h.requireDevice(h.startCommand))
 	mux.Handle("POST /api/agent/v1/commands/{id}/result", h.requireDevice(h.commandResult))
+	mux.Handle("GET /api/agent/v1/scripts/{id}/versions/{version}", h.requireDevice(h.scriptVersion))
+	mux.Handle("POST /api/agent/v1/scripts/{id}/runs", h.requireDevice(h.scriptRun))
 	return mux
 }
 
@@ -169,7 +174,19 @@ func (h *Handler) checkin(w http.ResponseWriter, r *http.Request) {
 	}
 	items := make([]protocol.Item, 0, len(assigned))
 	for _, it := range assigned {
-		items = append(items, protocol.Item{Kind: it.Kind, ID: it.ID.String()})
+		item := protocol.Item{Kind: it.Kind, ID: it.ID.String(), Options: it.Options}
+		if it.Kind == protocol.ItemKindScript {
+			// The agent needs the version to know whether its cached copy is
+			// current; it fetches the body separately, once per version.
+			sc, err := h.Store.Q().GetScript(ctx, it.ID)
+			if err != nil {
+				// A script that has gone missing is simply not offered.
+				h.Log.Warn("assigned script is missing", "script_id", it.ID, "error", err)
+				continue
+			}
+			item.Version = sc.CurrentVersion
+		}
+		items = append(items, item)
 	}
 
 	writeJSON(w, http.StatusOK, protocol.CheckinResponse{
@@ -265,4 +282,69 @@ func commandID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 		return uuid.UUID{}, false
 	}
 	return id, true
+}
+
+// scriptVersion hands a device the contents of an assigned script. A device
+// may only read what it has been given, so an unassigned script is a 404 —
+// the same answer as one that does not exist, which is all an agent needs.
+func (h *Handler) scriptVersion(w http.ResponseWriter, r *http.Request) {
+	a := auth(r)
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "script_not_found", "unknown script")
+		return
+	}
+	version, err := strconv.Atoi(r.PathValue("version"))
+	if err != nil || version < 1 {
+		writeError(w, http.StatusNotFound, "script_not_found", "unknown script version")
+		return
+	}
+	ctx := r.Context()
+	allowed, err := h.Store.Q().DeviceHasItem(ctx, a.Device.ID, protocol.ItemKindScript, id)
+	if err != nil {
+		h.Log.Error("check script assignment", "device_id", a.Device.ID, "script_id", id, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+		return
+	}
+	if !allowed {
+		writeError(w, http.StatusNotFound, "script_not_found", "unknown script")
+		return
+	}
+	v, err := h.Scripts.Version(ctx, id, version)
+	if errors.Is(err, scripts.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "script_not_found", "unknown script version")
+		return
+	}
+	if err != nil {
+		h.Log.Error("read script version", "script_id", id, "version", version, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+		return
+	}
+	writeJSON(w, http.StatusOK, protocol.ScriptVersionResponse{
+		Version: v.Version, Body: v.Body, DetectionBody: v.DetectionBody, Hash: v.Hash,
+	})
+}
+
+// scriptRun records one execution reported by a device.
+func (h *Handler) scriptRun(w http.ResponseWriter, r *http.Request) {
+	a := auth(r)
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "script_not_found", "unknown script")
+		return
+	}
+	var run protocol.ScriptRun
+	if !decode(w, r, &run, maxResultBody) {
+		return
+	}
+	err = h.Scripts.RecordRun(r.Context(), a.Device.ID, id, run)
+	switch {
+	case err == nil:
+		writeNoContent(w)
+	case errors.Is(err, scripts.ErrBadRequest):
+		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
+	default:
+		h.Log.Error("record script run", "device_id", a.Device.ID, "script_id", id, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+	}
 }

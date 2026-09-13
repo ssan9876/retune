@@ -22,6 +22,7 @@ import (
 	"retune/internal/server/enroll"
 	"retune/internal/server/groups"
 	"retune/internal/server/inventory"
+	"retune/internal/server/scripts"
 	"retune/internal/server/store"
 )
 
@@ -34,6 +35,7 @@ type App struct {
 	Enroll    *enroll.Service
 	Inventory *inventory.Service
 	Commands  *commands.Service
+	Scripts   *scripts.Service
 	Devices   *devices.Service
 	Groups    *groups.Service
 	Auth      *auth.Service
@@ -83,18 +85,19 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	grp := &groups.Service{Store: st, Now: time.Now, Log: log}
 	inv := &inventory.Service{Store: st, Now: time.Now, Groups: grp, Log: log}
 	cmd := &commands.Service{Store: st, Now: time.Now}
+	scr := &scripts.Service{Store: st, Now: time.Now}
 	dev := &devices.Service{Store: st}
 	authSvc := &auth.Service{
 		Store: st, Now: time.Now, SessionTTL: cfg.SessionTTL,
 		Limiter: auth.NewLimiter(10, 15*time.Minute, time.Now), Issuer: "Retune",
 	}
 	agent := &agentapi.Handler{
-		Enroll: svc, Inventory: inv, Commands: cmd, Store: st,
+		Enroll: svc, Inventory: inv, Commands: cmd, Scripts: scr, Store: st,
 		Now: time.Now, CheckinInterval: cfg.CheckinInterval, Log: log,
 		ClientCert: clientCert,
 	}
 	admin := &adminapi.Handler{
-		Auth: authSvc, Store: st, Commands: cmd, Devices: dev, Enroll: svc, Groups: grp,
+		Auth: authSvc, Store: st, Commands: cmd, Devices: dev, Enroll: svc, Groups: grp, Scripts: scr,
 		Now: time.Now, Log: log,
 	}
 	root := http.NewServeMux()
@@ -108,6 +111,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		Enroll:    svc,
 		Inventory: inv,
 		Commands:  cmd,
+		Scripts:   scr,
 		Devices:   dev,
 		Groups:    grp,
 		Auth:      authSvc,
