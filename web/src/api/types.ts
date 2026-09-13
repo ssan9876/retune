@@ -163,6 +163,30 @@ export interface Setting {
   path?: string;
   content_base64?: string;
   ensure?: string;
+  profile?: string;
+  direction?: string;
+  action?: string;
+  protocol?: string;
+  local_port?: string;
+  program?: string;
+  quality_deferral_days?: number;
+  feature_deferral_days?: number;
+  active_hours_start?: number;
+  active_hours_end?: number;
+  auto_restart?: boolean;
+  require_encryption?: boolean;
+  method?: string;
+  escrow_recovery_key?: boolean;
+}
+
+export interface BitLockerKey {
+  id: string;
+  device_id: string;
+  hostname: string;
+  volume_id: string;
+  method: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Profile {

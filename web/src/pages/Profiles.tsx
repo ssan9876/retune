@@ -16,6 +16,10 @@ const KINDS = [
   { value: "service", label: "Service" },
   { value: "local_group_members", label: "Local group members" },
   { value: "file", label: "File" },
+  { value: "firewall_profile", label: "Firewall profile" },
+  { value: "firewall_rule", label: "Firewall rule" },
+  { value: "windows_update", label: "Windows Update" },
+  { value: "bitlocker", label: "BitLocker" },
 ];
 
 function blankSetting(kind: string): Setting {
@@ -26,6 +30,14 @@ function blankSetting(kind: string): Setting {
       return { kind, group: "", members: [], mode: "additive" };
     case "file":
       return { kind, path: "", content_base64: "", ensure: "present" };
+    case "firewall_profile":
+      return { kind, profile: "public", state: "on" };
+    case "firewall_rule":
+      return { kind, name: "", direction: "inbound", action: "allow", protocol: "tcp", local_port: "", ensure: "present" };
+    case "windows_update":
+      return { kind, quality_deferral_days: 7 };
+    case "bitlocker":
+      return { kind, require_encryption: true, method: "XtsAes256", escrow_recovery_key: true };
     default:
       return { kind: "registry", hive: "HKLM", key: "", name: "", type: "REG_SZ", data: "" };
   }
@@ -50,6 +62,16 @@ function describe(s: Setting): string {
       return `${s.group}: ${s.mode === "exact" ? "exactly" : "at least"} ${(s.members ?? []).join(", ") || "nobody"}`;
     case "file":
       return s.ensure === "absent" ? `Remove ${s.path}` : `Write ${s.path}`;
+    case "firewall_profile":
+      return `Turn the ${s.profile} firewall ${s.state}`;
+    case "firewall_rule":
+      return s.ensure === "absent"
+        ? `Remove the rule ${s.name}`
+        : `${s.action === "block" ? "Block" : "Allow"} ${s.direction} ${s.protocol} ${s.local_port || "any port"}`;
+    case "windows_update":
+      return "Windows Update policy";
+    case "bitlocker":
+      return s.require_encryption ? "Require BitLocker on the system drive" : "BitLocker";
     default:
       return s.kind;
   }
@@ -161,6 +183,169 @@ function SettingFields({
     );
   }
 
+  if (setting.kind === "firewall_profile") {
+    return (
+      <>
+        <Field label="Firewall profile">
+          <select value={setting.profile ?? "public"} onChange={(e) => set({ profile: e.target.value })}>
+            <option value="domain">Domain</option>
+            <option value="private">Private</option>
+            <option value="public">Public</option>
+          </select>
+        </Field>
+        <Field label="It should be">
+          <select value={setting.state ?? "on"} onChange={(e) => set({ state: e.target.value })}>
+            <option value="on">On</option>
+            <option value="off">Off</option>
+          </select>
+        </Field>
+      </>
+    );
+  }
+
+  if (setting.kind === "firewall_rule") {
+    return (
+      <>
+        <Field label="Rule name" hint="Rules Retune creates are tagged, so they can be found and removed later.">
+          <input value={setting.name ?? ""} onChange={(e) => set({ name: e.target.value })} />
+        </Field>
+        <Field label="Should it exist?">
+          <select value={setting.ensure || "present"} onChange={(e) => set({ ensure: e.target.value })}>
+            <option value="present">Create this rule</option>
+            <option value="absent">Remove this rule</option>
+          </select>
+        </Field>
+        {setting.ensure !== "absent" ? (
+          <>
+            <Field label="Direction">
+              <select value={setting.direction ?? "inbound"} onChange={(e) => set({ direction: e.target.value })}>
+                <option value="inbound">Inbound</option>
+                <option value="outbound">Outbound</option>
+              </select>
+            </Field>
+            <Field label="Action">
+              <select value={setting.action ?? "allow"} onChange={(e) => set({ action: e.target.value })}>
+                <option value="allow">Allow</option>
+                <option value="block">Block</option>
+              </select>
+            </Field>
+            <Field label="Protocol">
+              <select value={setting.protocol ?? "tcp"} onChange={(e) => set({ protocol: e.target.value })}>
+                <option value="tcp">TCP</option>
+                <option value="udp">UDP</option>
+                <option value="any">Any</option>
+              </select>
+            </Field>
+            {setting.protocol !== "any" ? (
+              <Field label="Port" hint="A port, or a range such as 5000-5010. Leave empty for any.">
+                <input value={setting.local_port ?? ""} onChange={(e) => set({ local_port: e.target.value })} />
+              </Field>
+            ) : null}
+            <Field label="Program" hint="Optional path the rule applies to.">
+              <input value={setting.program ?? ""} onChange={(e) => set({ program: e.target.value })} />
+            </Field>
+          </>
+        ) : null}
+      </>
+    );
+  }
+
+  if (setting.kind === "windows_update") {
+    return (
+      <>
+        <Field label="Hold quality updates for (days)" hint="Leave empty to leave this alone.">
+          <input
+            type="number"
+            min={0}
+            max={30}
+            value={setting.quality_deferral_days ?? ""}
+            onChange={(e) => set({ quality_deferral_days: numberOrUndefined(e.target.value) })}
+          />
+        </Field>
+        <Field label="Hold feature updates for (days)">
+          <input
+            type="number"
+            min={0}
+            max={365}
+            value={setting.feature_deferral_days ?? ""}
+            onChange={(e) => set({ feature_deferral_days: numberOrUndefined(e.target.value) })}
+          />
+        </Field>
+        <Field label="Active hours start">
+          <input
+            type="number"
+            min={0}
+            max={23}
+            value={setting.active_hours_start ?? ""}
+            onChange={(e) => set({ active_hours_start: numberOrUndefined(e.target.value) })}
+          />
+        </Field>
+        <Field label="Active hours end">
+          <input
+            type="number"
+            min={0}
+            max={23}
+            value={setting.active_hours_end ?? ""}
+            onChange={(e) => set({ active_hours_end: numberOrUndefined(e.target.value) })}
+          />
+        </Field>
+        <Field label="Restart while someone is signed in">
+          <select
+            value={setting.auto_restart === undefined ? "" : String(setting.auto_restart)}
+            onChange={(e) =>
+              set({ auto_restart: e.target.value === "" ? undefined : e.target.value === "true" })
+            }
+          >
+            <option value="">Leave alone</option>
+            <option value="false">Never</option>
+            <option value="true">Allowed</option>
+          </select>
+        </Field>
+      </>
+    );
+  }
+
+  if (setting.kind === "bitlocker") {
+    return (
+      <>
+        <Field
+          label="The system drive"
+          hint="Retune never decrypts a drive, and never re-encrypts one already encrypted another way."
+        >
+          <select
+            value={setting.require_encryption ? "required" : "ignored"}
+            onChange={(e) => set({ require_encryption: e.target.value === "required" })}
+          >
+            <option value="required">Must be encrypted</option>
+            <option value="ignored">Leave alone</option>
+          </select>
+        </Field>
+        {setting.require_encryption ? (
+          <>
+            <Field label="Encryption method">
+              <select value={setting.method ?? "XtsAes256"} onChange={(e) => set({ method: e.target.value })}>
+                <option value="XtsAes256">XTS-AES 256</option>
+                <option value="XtsAes128">XTS-AES 128</option>
+              </select>
+            </Field>
+            <Field
+              label="Recovery key"
+              hint="Escrowed keys are stored encrypted, and every time one is revealed it is recorded."
+            >
+              <select
+                value={setting.escrow_recovery_key ? "escrow" : "no"}
+                onChange={(e) => set({ escrow_recovery_key: e.target.value === "escrow" })}
+              >
+                <option value="escrow">Send it to the server</option>
+                <option value="no">Leave it on the device</option>
+              </select>
+            </Field>
+          </>
+        ) : null}
+      </>
+    );
+  }
+
   return (
     <>
       <Field label="Path">
@@ -184,6 +369,10 @@ function SettingFields({
       ) : null}
     </>
   );
+}
+
+function numberOrUndefined(value: string): number | undefined {
+  return value === "" ? undefined : Number(value);
 }
 
 function encodeContent(text: string): string {
