@@ -13,8 +13,11 @@ import (
 // it. Literals are bound as placeholders and field names come from the fixed
 // allowlist, so nothing an administrator types is ever concatenated into SQL.
 func Compile(n Node, tenantID uuid.UUID, now time.Time) (string, []any, error) {
-	c := &compiler{args: []any{tenantID, now}}
-	// $1 is the tenant and $2 the clock, both referenced by the frame below.
+	// $1 is the tenant, referenced by the frame below. The clock is bound only
+	// if a field needs it: Postgres cannot infer the type of a parameter the
+	// query never mentions, so binding it unconditionally fails every rule
+	// that does not use last_seen_days.
+	c := &compiler{args: []any{tenantID}, now: now}
 	where, err := c.compile(n)
 	if err != nil {
 		return "", nil, err
@@ -28,6 +31,17 @@ func Compile(n Node, tenantID uuid.UUID, now time.Time) (string, []any, error) {
 
 type compiler struct {
 	args []any
+	now  time.Time
+	// clock is the placeholder holding now, empty until a field asks for it.
+	clock string
+}
+
+// clockPlaceholder binds the evaluation time on first use.
+func (c *compiler) clockPlaceholder() string {
+	if c.clock == "" {
+		c.clock = c.bind(c.now)
+	}
+	return c.clock
 }
 
 // bind adds a value and returns its placeholder.
@@ -80,8 +94,10 @@ func (c *compiler) compare(t Compare) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("groups: unknown operator %q", t.Op)
 	}
-	// $2 holds the evaluation time; see Compile.
-	column := strings.ReplaceAll(def.sql, clockParam, "$2")
+	column := def.sql
+	if strings.Contains(column, clockParam) {
+		column = strings.ReplaceAll(column, clockParam, c.clockPlaceholder())
+	}
 	if def.kind == numberField {
 		return "(" + column + " " + sqlOp + " " + c.bind(t.Number) + ")", nil
 	}

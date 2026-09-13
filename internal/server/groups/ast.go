@@ -68,7 +68,7 @@ var fields = map[string]fieldDef{
 	"ram_gb":        {numberField, "coalesce(i.ram_gb, 0)"},
 	// A device that has never checked in has a NULL last_seen_at, so it
 	// matches no last_seen_days comparison.
-	"last_seen_days": {numberField, "floor(extract(epoch from (" + clockParam + " - d.last_seen_at)) / 86400)"},
+	"last_seen_days": {numberField, "floor(extract(epoch from (" + clockParam + "::timestamptz - d.last_seen_at)) / 86400)"},
 }
 
 // operators is likewise fixed, so an operator can never reach the SQL as text
