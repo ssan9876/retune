@@ -45,10 +45,26 @@ type Config struct {
 	Scripts *scripts.Scheduler
 	// Policy, when set, reconciles the configuration profiles assigned to this
 	// device.
-	Policy      *policy.Syncer
+	Policy *policy.Syncer
+	// Syncers apply what is assigned to this device. New appends Scripts and
+	// Policy to whatever is set here.
+	Syncers     []ItemSyncer
 	Log         *slog.Logger
 	Now         func() time.Time
 	RenewBefore time.Duration
+}
+
+// ItemSyncer applies one kind of assigned work. The agent hands every syncer
+// the whole item list and each filters it, so a kind nobody handles is simply
+// ignored.
+type ItemSyncer interface {
+	Sync(ctx context.Context, items []protocol.Item) error
+	// RunOnEmpty reports whether Sync must be called even when nothing is
+	// assigned. Profiles say yes: an empty list is exactly when a profile that
+	// has just been unassigned must be undone.
+	RunOnEmpty() bool
+	// Name identifies the subsystem in the agent's log.
+	Name() string
 }
 
 // Session is the agent's connection to its server plus its local state.
@@ -107,7 +123,32 @@ func New(cfg Config) (*Session, error) {
 			cfg.Policy.Reconciler.Handlers = policy.DefaultHandlers(policyClient{s})
 		}
 	}
+	if cfg.Scripts != nil {
+		s.cfg.Syncers = append(s.cfg.Syncers, scriptSyncer{cfg.Scripts})
+	}
+	if cfg.Policy != nil {
+		s.cfg.Syncers = append(s.cfg.Syncers, policySyncer{cfg.Policy})
+	}
 	return s, nil
+}
+
+// dispatch starts each syncer that has something to do. It is separate from
+// Checkin so the rule about empty item lists can be tested without an enrolled
+// identity and a server to talk to.
+func dispatch(ctx context.Context, syncers []ItemSyncer, items []protocol.Item,
+	pending *sync.WaitGroup, log *slog.Logger) {
+	for _, syncer := range syncers {
+		if len(items) == 0 && !syncer.RunOnEmpty() {
+			continue
+		}
+		pending.Add(1)
+		go func() {
+			defer pending.Done()
+			if err := syncer.Sync(ctx, items); err != nil {
+				log.Warn("applying assigned work failed", "syncer", syncer.Name(), "error", err)
+			}
+		}()
+	}
 }
 
 // Start launches the command worker and prunes the old ledger.
@@ -156,32 +197,11 @@ func (s *Session) Checkin(ctx context.Context, req protocol.CheckinRequest) (pro
 	for _, cmd := range resp.Commands {
 		s.enqueue(cmd)
 	}
-	// Assigned scripts are applied in the background: a long-running
-	// deployment must not hold up check-ins, inventory or commands. The
-	// scheduler runs one script at a time, so a slow one simply means the next
-	// check-in finds it still busy.
-	if s.cfg.Scripts != nil && len(resp.Items) > 0 {
-		items := resp.Items
-		s.pending.Add(1)
-		go func() {
-			defer s.pending.Done()
-			if err := s.cfg.Scripts.Sync(ctx, items); err != nil {
-				s.cfg.Log.Warn("applying assigned scripts failed", "error", err)
-			}
-		}()
-	}
-	// Profiles reconcile even with no items, because that is exactly when a
-	// profile that has just been unassigned needs to be undone.
-	if s.cfg.Policy != nil {
-		items := resp.Items
-		s.pending.Add(1)
-		go func() {
-			defer s.pending.Done()
-			if err := s.cfg.Policy.Sync(ctx, items); err != nil {
-				s.cfg.Log.Warn("reconciling configuration profiles failed", "error", err)
-			}
-		}()
-	}
+	// Assigned work is applied in the background: a long-running deployment
+	// must not hold up check-ins, inventory or commands. Each syncer runs one
+	// job at a time internally, so a slow one only means the next check-in
+	// finds it still busy.
+	dispatch(ctx, s.cfg.Syncers, resp.Items, &s.pending, s.cfg.Log)
 	return resp, nil
 }
 
@@ -394,6 +414,26 @@ func (c scriptClient) FetchScript(ctx context.Context, id string, version int) (
 func (c scriptClient) ReportScriptRun(ctx context.Context, id string, run protocol.ScriptRun) error {
 	return c.s.currentClient().ReportScriptRun(ctx, id, run)
 }
+
+// scriptSyncer adapts the script scheduler. It is not called with an empty
+// item list: a script that is no longer assigned simply stops running.
+type scriptSyncer struct{ s *scripts.Scheduler }
+
+func (a scriptSyncer) Sync(ctx context.Context, items []protocol.Item) error {
+	return a.s.Sync(ctx, items)
+}
+func (scriptSyncer) RunOnEmpty() bool { return false }
+func (scriptSyncer) Name() string     { return "assigned scripts" }
+
+// policySyncer adapts the profile reconciler, which must run on an empty list:
+// that is exactly when a profile that has just been unassigned is undone.
+type policySyncer struct{ s *policy.Syncer }
+
+func (a policySyncer) Sync(ctx context.Context, items []protocol.Item) error {
+	return a.s.Sync(ctx, items)
+}
+func (policySyncer) RunOnEmpty() bool { return true }
+func (policySyncer) Name() string     { return "configuration profiles" }
 
 // policyClient routes the policy engine's calls through the session's current
 // client, so a certificate renewal is picked up automatically.
