@@ -32,12 +32,20 @@ type CheckinRequest struct {
 	InventoryHash string   `json:"inventory_hash"`
 }
 
+// Item is one thing assigned to this device through its groups. Kinds arrive
+// with later milestones, and an agent ignores a kind it does not recognise.
+type Item struct {
+	Kind string `json:"kind"`
+	ID   string `json:"id"`
+}
+
 // CheckinResponse tells the agent when to check in next, whether inventory
-// is due, and which commands to run.
+// is due, which commands to run, and what is assigned to it.
 type CheckinResponse struct {
 	IntervalSeconds int       `json:"interval_seconds"`
 	InventoryDue    bool      `json:"inventory_due"`
 	Commands        []Command `json:"commands"`
+	Items           []Item    `json:"items,omitempty"`
 }
 
 // Error is the JSON body of every non-2xx response.

@@ -146,6 +146,12 @@ func (s *Service) Enroll(ctx context.Context, req protocol.EnrollRequest) (proto
 		if err := q.IncrementTokenUse(ctx, tok.ID); err != nil {
 			return err
 		}
+		// Every device is in the built-in group from the moment it enrols, so
+		// a fleet-wide assignment reaches it on its very first check-in rather
+		// than after the next sweep.
+		if err := q.AddGroupMember(ctx, store.BuiltinGroupID, deviceID, now); err != nil {
+			return err
+		}
 		if err := q.InsertAudit(ctx, store.AuditEntry{
 			Actor: "token:" + tok.ID.String(), Action: "device.enrolled",
 			TargetKind: "device", TargetID: deviceID.String(), Details: details,

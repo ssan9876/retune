@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"strings"
 	"time"
@@ -25,10 +26,20 @@ const RefreshAfter = 24 * time.Hour
 // MaxSoftwareEntries caps one inventory document's package list.
 const MaxSoftwareEntries = 20000
 
+// Membership re-evaluates one device's dynamic group membership. It is an
+// interface so that ingesting inventory does not depend on the groups package.
+type Membership interface {
+	EvaluateDevice(ctx context.Context, deviceID uuid.UUID) error
+}
+
 // Service ingests inventory and decides when it is due.
 type Service struct {
 	Store *store.Store
 	Now   func() time.Time
+	// Groups, when set, is told after each ingest so that rules over inventory
+	// take effect without waiting for the next sweep.
+	Groups Membership
+	Log    *slog.Logger
 }
 
 // Due reports whether the device should collect and upload inventory.
@@ -106,7 +117,23 @@ func (s *Service) Ingest(ctx context.Context, deviceID uuid.UUID, inv protocol.I
 	if err != nil {
 		return "", err
 	}
+	// Membership is refreshed after the inventory is safely stored, and a
+	// failure here is logged rather than returned: the write succeeded, and
+	// failing the agent's request would make it retry an upload that worked.
+	// The 15-minute sweep is the backstop.
+	if s.Groups != nil {
+		if err := s.Groups.EvaluateDevice(ctx, deviceID); err != nil {
+			s.logger().Warn("re-evaluate group membership", "device_id", deviceID, "error", err)
+		}
+	}
 	return hash, nil
+}
+
+func (s *Service) logger() *slog.Logger {
+	if s.Log != nil {
+		return s.Log
+	}
+	return slog.Default()
 }
 
 func freeBytes(disks []protocol.Disk) uint64 {

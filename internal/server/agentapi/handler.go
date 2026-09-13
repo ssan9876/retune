@@ -158,10 +158,25 @@ func (h *Handler) checkin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
 		return
 	}
+	// The effective set is computed per check-in rather than cached, so a
+	// membership or assignment change takes effect on the next check-in with
+	// no invalidation to get wrong.
+	assigned, err := h.Store.Q().EffectiveItems(ctx, a.Device.ID)
+	if err != nil {
+		h.Log.Error("effective items", "device_id", a.Device.ID, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+		return
+	}
+	items := make([]protocol.Item, 0, len(assigned))
+	for _, it := range assigned {
+		items = append(items, protocol.Item{Kind: it.Kind, ID: it.ID.String()})
+	}
+
 	writeJSON(w, http.StatusOK, protocol.CheckinResponse{
 		IntervalSeconds: int(h.CheckinInterval / time.Second),
 		InventoryDue:    due,
 		Commands:        cmds,
+		Items:           items,
 	})
 }
 

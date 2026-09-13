@@ -107,7 +107,7 @@ func serve(ctx context.Context, getenv func(string) string) error {
 	// retire a command for a device that never checks in again.
 	sweep := &sweeper.Runner{
 		Store: a.Store,
-		Jobs:  sweeper.DefaultJobs(cfg.SweepInterval),
+		Jobs:  append(sweeper.DefaultJobs(cfg.SweepInterval), sweeper.GroupJob(a.Groups)),
 		Log:   log,
 		Now:   time.Now,
 	}
