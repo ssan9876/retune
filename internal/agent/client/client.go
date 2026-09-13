@@ -198,6 +198,19 @@ func (c *Client) ReportScriptRun(ctx context.Context, id string, run protocol.Sc
 	return c.do(ctx, http.MethodPost, "/api/agent/v1/scripts/"+url.PathEscape(id)+"/runs", run, nil)
 }
 
+// FetchApp downloads one version of an assigned app deployment.
+func (c *Client) FetchApp(ctx context.Context, id string, version int) (protocol.AppVersionResponse, error) {
+	var resp protocol.AppVersionResponse
+	path := "/api/agent/v1/apps/" + url.PathEscape(id) + "/versions/" + strconv.Itoa(version)
+	err := c.do(ctx, http.MethodGet, path, nil, &resp)
+	return resp, err
+}
+
+// ReportAppResult tells the server what one install or uninstall did.
+func (c *Client) ReportAppResult(ctx context.Context, id string, r protocol.AppResult) error {
+	return c.do(ctx, http.MethodPost, "/api/agent/v1/apps/"+url.PathEscape(id)+"/result", r, nil)
+}
+
 // FetchProfile downloads one version of an assigned configuration profile.
 func (c *Client) FetchProfile(ctx context.Context, id string, version int) (protocol.ProfileVersionResponse, error) {
 	var resp protocol.ProfileVersionResponse

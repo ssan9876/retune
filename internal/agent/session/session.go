@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"retune/internal/agent/apps"
 	"retune/internal/agent/checkin"
 	"retune/internal/agent/client"
 	"retune/internal/agent/enrollment"
@@ -46,6 +47,8 @@ type Config struct {
 	// Policy, when set, reconciles the configuration profiles assigned to this
 	// device.
 	Policy *policy.Syncer
+	// Apps, when set, installs and removes the apps assigned to this device.
+	Apps *apps.Syncer
 	// Syncers apply what is assigned to this device. New appends Scripts and
 	// Policy to whatever is set here.
 	Syncers     []ItemSyncer
@@ -110,6 +113,9 @@ func New(cfg Config) (*Session, error) {
 	if cfg.Scripts != nil && cfg.Scripts.Client == nil {
 		cfg.Scripts.Client = scriptClient{s}
 	}
+	if cfg.Apps != nil && cfg.Apps.Client == nil {
+		cfg.Apps.Client = appClient{s}
+	}
 	if cfg.Policy != nil {
 		if cfg.Policy.Fetcher == nil {
 			cfg.Policy.Fetcher = policyClient{s}
@@ -128,6 +134,9 @@ func New(cfg Config) (*Session, error) {
 	}
 	if cfg.Policy != nil {
 		s.cfg.Syncers = append(s.cfg.Syncers, policySyncer{cfg.Policy})
+	}
+	if cfg.Apps != nil {
+		s.cfg.Syncers = append(s.cfg.Syncers, appSyncer{cfg.Apps})
 	}
 	return s, nil
 }
@@ -424,6 +433,30 @@ func (a scriptSyncer) Sync(ctx context.Context, items []protocol.Item) error {
 }
 func (scriptSyncer) RunOnEmpty() bool { return false }
 func (scriptSyncer) Name() string     { return "assigned scripts" }
+
+// appClient routes the app syncer's calls through the session's current
+// client, so a certificate renewal is picked up without the syncer knowing
+// anything about certificates.
+type appClient struct{ s *Session }
+
+func (c appClient) FetchApp(ctx context.Context, id string, version int) (protocol.AppVersionResponse, error) {
+	return c.s.currentClient().FetchApp(ctx, id, version)
+}
+
+func (c appClient) ReportAppResult(ctx context.Context, id string, r protocol.AppResult) error {
+	return c.s.currentClient().ReportAppResult(ctx, id, r)
+}
+
+// appSyncer adapts the app syncer. Like scripts, it is not called with an
+// empty item list: an app that is no longer assigned stays installed until
+// somebody assigns it with uninstall intent.
+type appSyncer struct{ s *apps.Syncer }
+
+func (a appSyncer) Sync(ctx context.Context, items []protocol.Item) error {
+	return a.s.Sync(ctx, items)
+}
+func (appSyncer) RunOnEmpty() bool { return false }
+func (appSyncer) Name() string     { return "assigned apps" }
 
 // policySyncer adapts the profile reconciler, which must run on an empty list:
 // that is exactly when a profile that has just been unassigned is undone.
