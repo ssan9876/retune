@@ -115,49 +115,51 @@ export default function Admins() {
       {loading ? <Spinner /> : null}
 
       {items.length > 0 ? (
-        <table>
-          <thead>
-            <tr>
-              <th>Email</th>
-              <th>Role</th>
-              <th>Authenticator</th>
-              <th>Account</th>
-              <th>Last sign-in</th>
-              {canWrite ? <th></th> : null}
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((admin) => (
-              <tr key={admin.id}>
-                <td>{admin.email}</td>
-                <td>{admin.role === "admin" ? "Admin" : "Read-only"}</td>
-                <td>{admin.totp_enabled ? "On" : "Off"}</td>
-                <td>
-                  <StatusDot
-                    status={admin.disabled ? "retired" : "active"}
-                    label={admin.disabled ? "disabled" : "enabled"}
-                  />
-                </td>
-                <td>{admin.last_login_at ? new Date(admin.last_login_at).toLocaleString() : "never"}</td>
-                {canWrite ? (
-                  <td>
-                    <div className="actions" style={{ marginTop: 0 }}>
-                      <Button variant="quiet" onClick={() => void changePassword(admin)}>
-                        Change password
-                      </Button>
-                      <Button variant="quiet" onClick={() => void toggleTOTP(admin)}>
-                        {admin.totp_enabled ? "Turn off authenticator" : "Set up authenticator"}
-                      </Button>
-                      <Button variant="quiet" onClick={() => void toggleDisabled(admin)}>
-                        {admin.disabled ? "Enable account" : "Disable account"}
-                      </Button>
-                    </div>
-                  </td>
-                ) : null}
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Authenticator</th>
+                <th>Account</th>
+                <th>Last sign-in</th>
+                {canWrite ? <th></th> : null}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {items.map((admin) => (
+                <tr key={admin.id}>
+                  <td>{admin.email}</td>
+                  <td>{admin.role === "admin" ? "Admin" : "Read-only"}</td>
+                  <td>{admin.totp_enabled ? "On" : "Off"}</td>
+                  <td>
+                    <StatusDot
+                      status={admin.disabled ? "retired" : "active"}
+                      label={admin.disabled ? "disabled" : "enabled"}
+                    />
+                  </td>
+                  <td>{admin.last_login_at ? new Date(admin.last_login_at).toLocaleString() : "never"}</td>
+                  {canWrite ? (
+                    <td>
+                      <div className="actions" style={{ marginTop: 0 }}>
+                        <Button variant="quiet" onClick={() => void changePassword(admin)}>
+                          Change password
+                        </Button>
+                        <Button variant="quiet" onClick={() => void toggleTOTP(admin)}>
+                          {admin.totp_enabled ? "Turn off authenticator" : "Set up authenticator"}
+                        </Button>
+                        <Button variant="quiet" onClick={() => void toggleDisabled(admin)}>
+                          {admin.disabled ? "Enable account" : "Disable account"}
+                        </Button>
+                      </div>
+                    </td>
+                  ) : null}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : null}
 
       <Dialog title="Add an admin" open={addOpen} onClose={() => setAddOpen(false)}>

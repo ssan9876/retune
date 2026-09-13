@@ -23,30 +23,32 @@ export default function Audit() {
       {!loading && items.length === 0 ? <EmptyState title="Nothing has happened yet." /> : null}
 
       {items.length > 0 ? (
-        <table>
-          <thead>
-            <tr>
-              <th>When</th>
-              <th>Action</th>
-              <th>Who</th>
-              <th>Target</th>
-              <th>Details</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((entry) => (
-              <tr key={`${entry.at}-${entry.action}-${entry.target_id}`}>
-                <td>{new Date(entry.at).toLocaleString()}</td>
-                <td>{entry.action}</td>
-                <td>{entry.actor}</td>
-                <td className="mono">
-                  {entry.target_kind}/{entry.target_id.slice(0, 8)}
-                </td>
-                <td className="mono">{describe(entry.details)}</td>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Action</th>
+                <th>Who</th>
+                <th>Target</th>
+                <th>Details</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {items.map((entry) => (
+                <tr key={`${entry.at}-${entry.action}-${entry.target_id}`}>
+                  <td>{new Date(entry.at).toLocaleString()}</td>
+                  <td>{entry.action}</td>
+                  <td>{entry.actor}</td>
+                  <td className="mono">
+                    {entry.target_kind}/{entry.target_id.slice(0, 8)}
+                  </td>
+                  <td className="mono">{describe(entry.details)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : null}
 
       {total > items.length ? (

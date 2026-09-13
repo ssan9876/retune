@@ -75,40 +75,42 @@ export default function Commands() {
       ) : null}
 
       {items.length > 0 ? (
-        <table>
-          <thead>
-            <tr>
-              <th>Type</th>
-              <th>Status</th>
-              <th>Device</th>
-              <th>Queued</th>
-              <th>By</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((command) => (
-              <tr key={command.id}>
-                <td>{command.type.replace(/_/g, " ")}</td>
-                <td>
-                  <StatusDot status={command.status} />
-                </td>
-                <td>
-                  <Link className="mono" to={`/devices/${command.device_id}`}>
-                    {command.device_id.slice(0, 8)}
-                  </Link>
-                </td>
-                <td>{relative(command.created_at)}</td>
-                <td>{command.created_by}</td>
-                <td>
-                  <Button variant="quiet" onClick={() => void show(command.id)}>
-                    {open?.command.id === command.id ? "Hide output" : "Show output"}
-                  </Button>
-                </td>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Device</th>
+                <th>Queued</th>
+                <th>By</th>
+                <th></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {items.map((command) => (
+                <tr key={command.id}>
+                  <td>{command.type.replace(/_/g, " ")}</td>
+                  <td>
+                    <StatusDot status={command.status} />
+                  </td>
+                  <td>
+                    <Link className="mono" to={`/devices/${command.device_id}`}>
+                      {command.device_id.slice(0, 8)}
+                    </Link>
+                  </td>
+                  <td>{relative(command.created_at)}</td>
+                  <td>{command.created_by}</td>
+                  <td>
+                    <Button variant="quiet" onClick={() => void show(command.id)}>
+                      {open?.command.id === command.id ? "Hide output" : "Show output"}
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : null}
 
       {open ? (

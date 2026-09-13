@@ -116,45 +116,47 @@ export default function Tokens() {
       ) : null}
 
       {items.length > 0 ? (
-        <table>
-          <thead>
-            <tr>
-              <th>Label</th>
-              <th>State</th>
-              <th>Uses</th>
-              <th>Expires</th>
-              <th>Created by</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((token) => (
-              <tr key={token.id}>
-                <td>{token.label || "—"}</td>
-                <td>
-                  <StatusDot
-                    status={tokenState(token) === "active" ? "active" : "retired"}
-                    label={tokenState(token)}
-                  />
-                </td>
-                <td>
-                  {token.max_uses === undefined
-                    ? `${token.use_count} of unlimited`
-                    : `${token.use_count} of ${token.max_uses}`}
-                </td>
-                <td>{token.expires_at ? new Date(token.expires_at).toLocaleString() : "never"}</td>
-                <td>{token.created_by}</td>
-                <td>
-                  {canWrite && !token.revoked_at ? (
-                    <Button variant="quiet" onClick={() => void revoke(token.id)}>
-                      Revoke
-                    </Button>
-                  ) : null}
-                </td>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Label</th>
+                <th>State</th>
+                <th>Uses</th>
+                <th>Expires</th>
+                <th>Created by</th>
+                <th></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {items.map((token) => (
+                <tr key={token.id}>
+                  <td>{token.label || "—"}</td>
+                  <td>
+                    <StatusDot
+                      status={tokenState(token) === "active" ? "active" : "retired"}
+                      label={tokenState(token)}
+                    />
+                  </td>
+                  <td>
+                    {token.max_uses === undefined
+                      ? `${token.use_count} of unlimited`
+                      : `${token.use_count} of ${token.max_uses}`}
+                  </td>
+                  <td>{token.expires_at ? new Date(token.expires_at).toLocaleString() : "never"}</td>
+                  <td>{token.created_by}</td>
+                  <td>
+                    {canWrite && !token.revoked_at ? (
+                      <Button variant="quiet" onClick={() => void revoke(token.id)}>
+                        Revoke
+                      </Button>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : null}
 
       <Dialog title="Create an enrollment token" open={open} onClose={() => setOpen(false)}>
