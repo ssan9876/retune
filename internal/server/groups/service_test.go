@@ -298,7 +298,7 @@ func TestEffectiveItemsExcludeWins(t *testing.T) {
 	item := uuid.Must(uuid.NewV7())
 	assign := func(groupID uuid.UUID, mode string) {
 		t.Helper()
-		if err := st.Q().CreateAssignment(ctx, store.Assignment{
+		if _, err := st.Q().CreateAssignment(ctx, store.Assignment{
 			ID: uuid.Must(uuid.NewV7()), ItemKind: "script", ItemID: item,
 			GroupID: groupID, Mode: mode, CreatedAt: time.Now(), CreatedBy: "t",
 		}); err != nil {

@@ -151,7 +151,7 @@ func TestDeviceHasItem(t *testing.T) {
 	if err := st.Q().AddGroupMember(ctx, g.ID, d.ID, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Q().CreateAssignment(ctx, store.Assignment{
+	if _, err := st.Q().CreateAssignment(ctx, store.Assignment{
 		ID: uuid.Must(uuid.NewV7()), ItemKind: "script", ItemID: item,
 		GroupID: g.ID, Mode: store.ModeInclude, CreatedAt: time.Now(), CreatedBy: "test",
 	}); err != nil {
@@ -198,7 +198,7 @@ func TestEffectiveItemsUsesTheNewestIncludeOptions(t *testing.T) {
 			Mode: store.ModeInclude, CreatedAt: base.Add(time.Minute), CreatedBy: "t",
 			Options: []byte(`{"frequency":"recurring"}`)},
 	} {
-		if err := st.Q().CreateAssignment(ctx, a); err != nil {
+		if _, err := st.Q().CreateAssignment(ctx, a); err != nil {
 			t.Fatal(err)
 		}
 	}

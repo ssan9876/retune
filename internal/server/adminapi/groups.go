@@ -342,6 +342,12 @@ func (h *Handler) createAssignment(w http.ResponseWriter, r *http.Request) {
 		Options: options,
 	}
 	groupName := ""
+	// The id CreateAssignment returns is the row that actually exists: on a
+	// fresh insert it matches a.ID, but a conflict keeps the existing row's
+	// original id, and that's the one the response and audit entry must
+	// name. Whether it differs from a.ID is also how we tell a replacement
+	// from a genuine first assignment for the audit action.
+	var resultID uuid.UUID
 	ctx := r.Context()
 	err = h.Store.InTx(ctx, func(q *store.Queries) error {
 		g, err := q.GetGroup(ctx, groupID)
@@ -349,12 +355,17 @@ func (h *Handler) createAssignment(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		groupName = g.Name
-		if err := q.CreateAssignment(ctx, a); err != nil {
+		resultID, err = q.CreateAssignment(ctx, a)
+		if err != nil {
 			return err
 		}
+		action := "assignment.created"
+		if resultID != a.ID {
+			action = "assignment.replaced"
+		}
 		return q.InsertAudit(ctx, store.AuditEntry{
-			Actor: a.CreatedBy, Action: "assignment.created", TargetKind: "assignment",
-			TargetID: a.ID.String(),
+			Actor: a.CreatedBy, Action: action, TargetKind: "assignment",
+			TargetID: resultID.String(),
 			Details: map[string]any{
 				"item_kind": a.ItemKind, "item_id": a.ItemID.String(),
 				"group_id": a.GroupID.String(), "mode": a.Mode,
@@ -370,7 +381,7 @@ func (h *Handler) createAssignment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, assignmentJSON{
-		ID: a.ID.String(), ItemKind: a.ItemKind, ItemID: a.ItemID.String(),
+		ID: resultID.String(), ItemKind: a.ItemKind, ItemID: a.ItemID.String(),
 		GroupID: a.GroupID.String(), GroupName: groupName, Mode: a.Mode,
 		Options:   json.RawMessage(a.Options),
 		CreatedAt: a.CreatedAt, CreatedBy: a.CreatedBy,

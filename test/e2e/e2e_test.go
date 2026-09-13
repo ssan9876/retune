@@ -175,7 +175,7 @@ func TestAppDeploymentEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	installAssignment := uuid.Must(uuid.NewV7())
-	if err := a.Store.Q().CreateAssignment(ctx, store.Assignment{
+	if _, err := a.Store.Q().CreateAssignment(ctx, store.Assignment{
 		ID: installAssignment, ItemKind: protocol.ItemKindApp, ItemID: created.ID,
 		GroupID: store.BuiltinGroupID, Mode: store.ModeInclude,
 		CreatedAt: time.Now().UTC(), CreatedBy: "test",
@@ -244,7 +244,7 @@ func TestAppDeploymentEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.Store.Q().CreateAssignment(ctx, store.Assignment{
+	if _, err := a.Store.Q().CreateAssignment(ctx, store.Assignment{
 		ID: uuid.Must(uuid.NewV7()), ItemKind: protocol.ItemKindApp, ItemID: created.ID,
 		GroupID: store.BuiltinGroupID, Mode: store.ModeInclude, Options: uninstallOptions,
 		CreatedAt: time.Now().UTC(), CreatedBy: "test",

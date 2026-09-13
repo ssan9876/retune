@@ -253,7 +253,7 @@ func TestDeleteRemovesAssignmentsButKeepsRuns(t *testing.T) {
 	if err := st.Q().CreateGroup(ctx, g); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Q().CreateAssignment(ctx, store.Assignment{
+	if _, err := st.Q().CreateAssignment(ctx, store.Assignment{
 		ID: uuid.Must(uuid.NewV7()), ItemKind: protocol.ItemKindScript, ItemID: sc.ID,
 		GroupID: g.ID, Mode: store.ModeInclude, CreatedAt: time.Now(), CreatedBy: "t",
 	}); err != nil {

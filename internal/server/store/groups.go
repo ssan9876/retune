@@ -305,12 +305,28 @@ func (q *Queries) ActiveDeviceIDs(ctx context.Context) ([]uuid.UUID, error) {
 		[]any{DefaultTenantID})
 }
 
-func (q *Queries) CreateAssignment(ctx context.Context, a Assignment) error {
-	_, err := q.db.Exec(ctx, `
+// CreateAssignment stores an assignment for (item, group, mode). The unique
+// index on those columns means a second call for the same triple is not an
+// error: it is how an administrator changes the item's options after the
+// fact, including flipping an app's assignment from install to uninstall,
+// and there is no other way to do that short of deleting and recreating the
+// assignment (which would drop it — and any pending agent instruction with
+// it — for the time in between). So a conflict replaces the row's options,
+// created_at and created_by rather than failing. The row keeps its original
+// id across a replacement, which is why the id is returned rather than
+// assumed to be a.ID: a caller that echoed the generated id back after a
+// conflict would be naming a row that was never written.
+func (q *Queries) CreateAssignment(ctx context.Context, a Assignment) (uuid.UUID, error) {
+	var id uuid.UUID
+	err := q.db.QueryRow(ctx, `
 		INSERT INTO assignments (id, tenant_id, item_kind, item_id, group_id, mode, created_at, created_by, options)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, coalesce($9, '{}'::jsonb))`,
-		a.ID, DefaultTenantID, a.ItemKind, a.ItemID, a.GroupID, a.Mode, a.CreatedAt, a.CreatedBy, a.Options)
-	return err
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, coalesce($9, '{}'::jsonb))
+		ON CONFLICT (item_kind, item_id, group_id, mode)
+		DO UPDATE SET options = EXCLUDED.options, created_at = EXCLUDED.created_at, created_by = EXCLUDED.created_by
+		RETURNING id`,
+		a.ID, DefaultTenantID, a.ItemKind, a.ItemID, a.GroupID, a.Mode, a.CreatedAt, a.CreatedBy, a.Options).
+		Scan(&id)
+	return id, err
 }
 
 // DeleteAssignmentsForItem removes every assignment of one item, used when the

@@ -142,7 +142,7 @@ func TestDeleteRemovesAssignments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = st.Q().CreateAssignment(ctx, store.Assignment{
+	_, err = st.Q().CreateAssignment(ctx, store.Assignment{
 		ID: uuid.Must(uuid.NewV7()), ItemKind: protocol.ItemKindApp, ItemID: a.ID,
 		GroupID:   store.BuiltinGroupID,
 		Mode:      store.ModeInclude,

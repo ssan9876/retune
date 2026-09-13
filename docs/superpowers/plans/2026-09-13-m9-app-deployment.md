@@ -15,7 +15,7 @@
 These apply to every task. They are copied from the spec; where a task repeats one it is for emphasis, not because the others are exempt.
 
 - **winget is invoked only as:** `--exact --source winget --disable-interactivity --accept-source-agreements`, with install additionally passing `--scope machine --silent --accept-package-agreements`. Never omit `--source winget`: the `msstore` source prompts for an agreement and sends the machine's geographic region upstream.
-- **winget output is decoded as UTF-8 explicitly.** The default decoding mangles it (`©` arrives as `┬⌐`).
+- **winget's output is already valid UTF-8 on a redirected pipe; no transcode is applied.** `©` displaying as `┬⌐` on a console is CP437 rendering the correct UTF-8 bytes `0xC2 0xA9`, not a decoding bug — a redirected pipe gets no codepage translation from Windows, and applying one would corrupt data that is already correct.
 - **Exit code `-1978335212`** (`APPINSTALLER_CLI_ERROR_NO_APPLICATIONS_FOUND`) means "not installed". It is the detection signal, not a failure.
 - **Scope is `machine` only.** `user` is rejected by validation. The agent is LocalSystem, so a user-scope install would land in the SYSTEM account's profile.
 - **Retune never upgrades an app it did not install this version of.** No chasing new upstream releases.
@@ -1969,7 +1969,7 @@ func uninstallArgs(packageID string) []string {
 
 `installedVersion` scans the output for the line containing the package ID and returns the next whitespace-separated field after it, returning `""` when there is none.
 
-In `winget_windows.go`, `New()` lists `%ProgramFiles%\WindowsApps` for directories matching `Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe`, sorts descending by name, and returns the one containing `winget.exe`; with none, `ErrNoAppInstaller`. Running a command uses `exec.CommandContext`, captures stdout and stderr into `executor.NewCapped(protocol.MaxOutputBytes)`, and **decodes the bytes as UTF-8 explicitly** — winget writes UTF-8 and the default console decoding mangles it.
+In `winget_windows.go`, `New()` lists `%ProgramFiles%\WindowsApps` for directories matching `Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe`, sorts descending by name, and returns the one containing `winget.exe`; with none, `ErrNoAppInstaller`. Running a command uses `exec.CommandContext`, captures stdout and stderr into `executor.NewCapped(protocol.MaxOutputBytes)`, and **applies no transcode** — winget's output on a redirected pipe is already valid UTF-8, and the `©`-as-`┬⌐` mangling some see is CP437 rendering those correct bytes on a console, a display artifact a redirected pipe never hits.
 
 - [ ] **Step 4: Run the tests**
 

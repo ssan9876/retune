@@ -80,6 +80,67 @@ func TestAppAssignmentIntent(t *testing.T) {
 	}
 }
 
+// Reassigning an app to the same group with a different intent used to hit
+// the assignments table's unique index and come back as a 500, with no way
+// to change an install to an uninstall short of deleting the app itself --
+// which drops the assignment before any agent could act on the uninstall.
+// It must now replace the row in place: same group, same mode, new options.
+func TestReassigningAnAppChangesItsIntent(t *testing.T) {
+	a, srv := newTestApp(t)
+	admin := signedIn(t, a, srv, store.RoleAdmin)
+
+	_, body := admin.do(http.MethodPost, "/apps", map[string]any{
+		"name": "7-Zip", "package_id": "7zip.7zip",
+	})
+	app := decodeJSON[appResp](t, body)
+
+	status, body := admin.do(http.MethodPost, "/assignments", map[string]any{
+		"item_kind": "app", "item_id": app.ID,
+		"group_id": store.BuiltinGroupID.String(), "mode": "include",
+		"options": map[string]any{"intent": "install"},
+	})
+	if status != http.StatusCreated {
+		t.Fatalf("assign install: %d %s", status, body)
+	}
+	first := decodeJSON[struct {
+		ID string `json:"id"`
+	}](t, body)
+
+	status, body = admin.do(http.MethodPost, "/assignments", map[string]any{
+		"item_kind": "app", "item_id": app.ID,
+		"group_id": store.BuiltinGroupID.String(), "mode": "include",
+		"options": map[string]any{"intent": "uninstall"},
+	})
+	if status != http.StatusCreated {
+		t.Fatalf("reassign as uninstall: %d %s", status, body)
+	}
+	second := decodeJSON[struct {
+		ID string `json:"id"`
+	}](t, body)
+	if second.ID != first.ID {
+		t.Errorf("a replacement keeps the original row's id, got %q want %q", second.ID, first.ID)
+	}
+	if !strings.Contains(string(body), `"intent":"uninstall"`) {
+		t.Errorf("the stored options should now say uninstall, got %s", body)
+	}
+
+	status, body = admin.do(http.MethodGet, "/assignments?item_kind=app&item_id="+app.ID, nil)
+	if status != http.StatusOK {
+		t.Fatalf("list assignments: %d %s", status, body)
+	}
+	list := decodeJSON[struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+	}](t, body)
+	if len(list.Items) != 1 {
+		t.Fatalf("reassigning must replace the row, not add one, got %d assignments", len(list.Items))
+	}
+	if list.Items[0].ID != first.ID {
+		t.Errorf("the surviving row should be the original one, got %q", list.Items[0].ID)
+	}
+}
+
 // A device may only read what it has been given, and an app it was never
 // assigned is a 404 -- the same answer as one that does not exist, which is
 // all an agent needs to know.
