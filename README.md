@@ -16,6 +16,8 @@ Go agent runs on each machine.
   check-ins; unenrolling makes the agent delete its own identity and state.
 - **Console and admin API.** Sign-in with password and optional authenticator
   codes, roles (admin and read-only), enrollment tokens, and an audit log.
+- **Groups and assignments.** Static groups, or dynamic groups defined by a
+  rule over inventory; items assigned to groups with include and exclude.
 - **Packaging.** A container image and Compose stack for the server, and an MSI
   that installs the agent as a Windows service which enrolls itself.
 
@@ -170,6 +172,50 @@ retune-agent.exe configure --server https://mdm.example.com --token <TOKEN>
 Set-Service Retune -StartupType Automatic
 Start-Service Retune
 ```
+
+## Grouping devices
+
+A group is either a list of devices you pick, or a rule evaluated over what the
+agents report. Rules are re-evaluated when a device's inventory arrives, when it
+enrols, and for every group every 15 minutes. "All devices" is built in.
+
+```
+ram_gb >= 16 AND hostname LIKE 'DESKTOP-%'
+has_software('Google Chrome', '<', '120.0.0')
+last_seen_days > 7 AND NOT model = 'Virtual Machine'
+```
+
+Conditions combine with `AND`, `OR`, `NOT` and parentheses. Text fields compare
+with `=`, `!=` and `LIKE`; number fields with `=`, `!=`, `<`, `<=`, `>` and
+`>=`. Keywords and field names ignore case; quoted values do not. Write a
+literal quote by doubling it: `'it''s'`.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `hostname` | text | the machine's name |
+| `os_version` | text | e.g. `Microsoft Windows 11 Pro` |
+| `os_build` | text | the build number |
+| `manufacturer`, `model`, `serial` | text | from the hardware inventory |
+| `agent_version` | text | the version of the agent |
+| `ram_gb` | number | installed memory, rounded |
+| `last_seen_days` | number | whole days since the last check-in |
+
+`has_software('name')` matches an installed package, ignoring case. With a
+version — `has_software('name', '>=', '1.2.3')` — the comparison is numeric per
+component, so `1.10.0` is correctly newer than `1.9.0`. A version that is not
+made of dotted numbers takes part in no ordering comparison, though `=` and `!=`
+still work on it.
+
+A device that has never checked in matches no `last_seen_days` comparison.
+
+Rules are parsed and compiled to parameterized SQL: field names come from a
+fixed list and values are always bound, so a rule cannot reach a column it was
+not granted or inject SQL. A rule may be at most 2000 characters and 20 levels
+of nesting.
+
+Items are assigned to groups as `include` or `exclude`, and **exclude always
+wins** — if any group a device belongs to excludes an item, that device does not
+get it, whatever else includes it.
 
 ## Command-line reference
 
