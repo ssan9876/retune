@@ -53,7 +53,7 @@ describe("Profiles", () => {
 
   it("builds a profile one setting at a time", async () => {
     const posted: Record<string, unknown>[] = [];
-    fetchMock.mockImplementation((url: string, init?: { method?: string; body?: string }) => {
+    fetchMock.mockImplementation((_url: string, init?: { method?: string; body?: string }) => {
       if (init?.method === "POST") {
         posted.push(JSON.parse(init.body ?? "{}"));
         return Promise.resolve(json({ ...profile, id: "p2" }, 201));
@@ -110,7 +110,7 @@ describe("Profiles", () => {
   });
 
   it("surfaces a rejected setting with the server's reason", async () => {
-    fetchMock.mockImplementation((url: string, init?: { method?: string }) => {
+    fetchMock.mockImplementation((_url: string, init?: { method?: string }) => {
       if (init?.method === "POST") {
         return Promise.resolve(
           json({ code: "bad_request", message: "setting 1: invalid setting: HKCU settings are not supported yet" }, 400),
