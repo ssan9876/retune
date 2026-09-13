@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"retune/internal/server/auth"
+	"retune/internal/server/bitlocker"
 	"retune/internal/server/commands"
 	"retune/internal/server/devices"
 	"retune/internal/server/enroll"
@@ -27,16 +28,17 @@ const (
 
 // Handler serves /api/admin/v1.
 type Handler struct {
-	Auth     *auth.Service
-	Store    *store.Store
-	Commands *commands.Service
-	Devices  *devices.Service
-	Groups   *groups.Service
-	Scripts  *scripts.Service
-	Profiles *profiles.Service
-	Enroll   *enroll.Service
-	Now      func() time.Time
-	Log      *slog.Logger
+	Auth      *auth.Service
+	Store     *store.Store
+	Commands  *commands.Service
+	Devices   *devices.Service
+	Groups    *groups.Service
+	Scripts   *scripts.Service
+	Profiles  *profiles.Service
+	BitLocker *bitlocker.Service
+	Enroll    *enroll.Service
+	Now       func() time.Time
+	Log       *slog.Logger
 }
 
 type authKey struct{}
