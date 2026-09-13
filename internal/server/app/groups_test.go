@@ -2,7 +2,10 @@ package app_test
 
 import (
 	"net/http"
+	"strings"
 	"testing"
+
+	"github.com/google/uuid"
 
 	"retune/internal/protocol"
 	"retune/internal/server/store"
@@ -192,12 +195,18 @@ func TestEffectiveItemsReachCheckin(t *testing.T) {
 		t.Fatalf("nothing is assigned yet, got %v", items)
 	}
 
-	// A kind that is deliberately not, and will never be, a real item kind:
-	// this test is about the include and exclude rule itself. A script or
-	// profile item would be dropped at check-in unless it really existed.
-	item := "01a09983-0000-7000-8000-0000000000aa"
-	status, body := admin.do(http.MethodPost, "/assignments", map[string]string{
-		"item_kind": "widget", "item_id": item,
+	// This test is about the include and exclude rule itself, not about any
+	// one item kind, but an include assignment now names a kind the server
+	// implements, so a script stands in as the item.
+	status, body := admin.do(http.MethodPost, "/scripts", map[string]string{
+		"name": "Held item", "body": "echo hi",
+	})
+	if status != http.StatusCreated {
+		t.Fatalf("create script: %d %s", status, body)
+	}
+	item := decodeJSON[scriptResp](t, body).ID
+	status, body = admin.do(http.MethodPost, "/assignments", map[string]string{
+		"item_kind": protocol.ItemKindScript, "item_id": item,
 		"group_id": store.BuiltinGroupID.String(), "mode": "include",
 	})
 	if status != http.StatusCreated {
@@ -205,7 +214,7 @@ func TestEffectiveItemsReachCheckin(t *testing.T) {
 	}
 
 	items := checkinItems()
-	if len(items) != 1 || items[0].ID != item || items[0].Kind != "widget" {
+	if len(items) != 1 || items[0].ID != item || items[0].Kind != protocol.ItemKindScript {
 		t.Fatalf("the assigned item should reach the device, got %v", items)
 	}
 
@@ -224,7 +233,7 @@ func TestEffectiveItemsReachCheckin(t *testing.T) {
 		t.Fatalf("add member: %d %s", status, body)
 	}
 	if status, body := admin.do(http.MethodPost, "/assignments", map[string]string{
-		"item_kind": "widget", "item_id": item,
+		"item_kind": protocol.ItemKindScript, "item_id": item,
 		"group_id": held.ID, "mode": "exclude",
 	}); status != http.StatusCreated {
 		t.Fatalf("exclude: %d %s", status, body)
@@ -232,5 +241,43 @@ func TestEffectiveItemsReachCheckin(t *testing.T) {
 
 	if items := checkinItems(); len(items) != 0 {
 		t.Fatalf("exclude must win on check-in too, got %v", items)
+	}
+}
+
+// An assignment naming a kind nothing implements is refused. It used to be
+// accepted and stored with empty options, so a typo produced an assignment
+// that could never do anything and never said why.
+func TestAssignmentRejectsAnUnknownItemKind(t *testing.T) {
+	a, srv := newTestApp(t)
+	admin := signedIn(t, a, srv, store.RoleAdmin)
+
+	status, body := admin.do(http.MethodPost, "/assignments", map[string]any{
+		"item_kind": "widget",
+		"item_id":   uuid.Must(uuid.NewV7()).String(),
+		"group_id":  "00000000-0000-0000-0000-000000000002",
+		"mode":      "include",
+	})
+	if status != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d %s", status, body)
+	}
+	if !strings.Contains(string(body), "widget") {
+		t.Errorf("the error should name the kind, got %s", body)
+	}
+}
+
+// An exclude assignment carries no options, so it is accepted whatever the
+// kind: it only takes something away.
+func TestExcludeAssignmentNeedsNoOptions(t *testing.T) {
+	a, srv := newTestApp(t)
+	admin := signedIn(t, a, srv, store.RoleAdmin)
+
+	status, body := admin.do(http.MethodPost, "/assignments", map[string]any{
+		"item_kind": "widget",
+		"item_id":   uuid.Must(uuid.NewV7()).String(),
+		"group_id":  "00000000-0000-0000-0000-000000000002",
+		"mode":      "exclude",
+	})
+	if status != http.StatusCreated {
+		t.Fatalf("want 201, got %d %s", status, body)
 	}
 }

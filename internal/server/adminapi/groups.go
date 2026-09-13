@@ -3,12 +3,12 @@ package adminapi
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/google/uuid"
 
-	"retune/internal/protocol"
 	"retune/internal/server/groups"
 	"retune/internal/server/store"
 )
@@ -319,35 +319,21 @@ func (h *Handler) createAssignment(w http.ResponseWriter, r *http.Request) {
 
 	// Options are validated here so an agent never has to defend itself
 	// against nonsense. An exclude assignment carries none: it only takes
-	// something away.
+	// something away, whatever the kind.
 	var options []byte
 	if req.Mode == store.ModeInclude {
-		switch req.ItemKind {
-		case protocol.ItemKindScript:
-			opts, err := protocol.ParseDeploymentOptions(req.Options)
-			if err != nil {
-				writeError(w, http.StatusBadRequest, "bad_options", err.Error())
-				return
-			}
-			if options, err = opts.Marshal(); err != nil {
-				h.internal(w, "encode options", err)
-				return
-			}
-		case protocol.ItemKindProfile:
-			var opts protocol.ProfileOptions
-			if len(req.Options) > 0 {
-				if err := json.Unmarshal(req.Options, &opts); err != nil {
-					writeError(w, http.StatusBadRequest, "bad_options", "profile options must be an object")
-					return
-				}
-			}
-			encoded, err := json.Marshal(opts)
-			if err != nil {
-				h.internal(w, "encode options", err)
-				return
-			}
-			options = encoded
+		parse, known := optionsParsers[req.ItemKind]
+		if !known {
+			writeError(w, http.StatusBadRequest, "bad_request",
+				fmt.Sprintf("there is no such item kind as %q", req.ItemKind))
+			return
 		}
+		encoded, err := parse(req.Options)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "bad_options", err.Error())
+			return
+		}
+		options = encoded
 	}
 
 	a := store.Assignment{
