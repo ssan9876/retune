@@ -2,6 +2,7 @@ package apps_test
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -15,17 +16,28 @@ import (
 // fakeWinget answers with canned results, so installs can be tested without
 // installing anything.
 type fakeWinget struct {
-	mu         sync.Mutex
-	installed  bool
-	version    string
-	calls      []string
-	installErr int // exit code the install should produce
+	mu        sync.Mutex
+	installed bool
+	version   string
+	calls     []string
+	detects   int
+	// installErr is the exit code the install should produce.
+	installErr int
+	// detectErr, when set, is returned as Result.Err starting from the
+	// detectFailFrom'th call to Detect (1-indexed; 0 means every call), so a
+	// test can make only a later detection fail without touching the first.
+	detectErr      error
+	detectFailFrom int
 }
 
 func (f *fakeWinget) Detect(context.Context, string) (bool, string, apps.Result) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, "detect")
+	f.detects++
+	if f.detectErr != nil && (f.detectFailFrom == 0 || f.detects >= f.detectFailFrom) {
+		return false, "", apps.Result{Err: f.detectErr}
+	}
 	return f.installed, f.version, apps.Result{}
 }
 
@@ -183,6 +195,83 @@ func TestReportsAFailedInstall(t *testing.T) {
 	}
 	if local.Failures != 1 {
 		t.Errorf("failures = %d, want 1", local.Failures)
+	}
+}
+
+// A failed detection is not an answer, only a failed attempt to get one:
+// treating it as "the app is absent" would make the agent reinstall software
+// on every cycle for as long as winget or the package source is unreachable.
+// Nothing must be installed, nothing reported, and nothing remembered as
+// having changed.
+func TestFailedDetectionDoesNotInstall(t *testing.T) {
+	c := &fakeClient{version: protocol.AppVersionResponse{
+		Version: 1, PackageID: "7zip.7zip", Scope: "machine",
+	}}
+	w := &fakeWinget{detectErr: errors.New("winget list: source unreachable")}
+	s, st := newSyncer(t, c, w)
+
+	before, err := st.AppState("a1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.Sync(context.Background(), []protocol.Item{item("a1", 1, opts(nil))}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, call := range w.ran() {
+		if call == "install" {
+			t.Fatalf("a failed detection must never trigger an install, got %v", w.ran())
+		}
+	}
+	if len(c.results) != 0 {
+		t.Fatalf("a failed detection is not a result, got %+v", c.results)
+	}
+	after, err := st.AppState("a1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after != before {
+		t.Errorf("local state must not change on a failed detection: before=%+v after=%+v", before, after)
+	}
+	if after.Failures != 0 {
+		t.Errorf("failures = %d, want 0", after.Failures)
+	}
+	if after.Installed {
+		t.Error("a failed detection must not flip Installed")
+	}
+}
+
+// The confirmatory detect that runs after a successful install is only there
+// to learn the version string; if it fails, the install itself must still be
+// reported as a success, just with InstalledVersion left empty.
+func TestInstallSucceedsEvenIfTheVersionCheckFails(t *testing.T) {
+	c := &fakeClient{version: protocol.AppVersionResponse{
+		Version: 1, PackageID: "7zip.7zip", Scope: "machine",
+	}}
+	w := &fakeWinget{
+		detectErr: errors.New("winget list: source unreachable"),
+		// The first detect (before the install) must succeed and report the
+		// app absent; only the second one, right after installing, fails.
+		detectFailFrom: 2,
+	}
+	s, _ := newSyncer(t, c, w)
+
+	if err := s.Sync(context.Background(), []protocol.Item{item("a1", 1, opts(nil))}); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := w.ran(); len(got) < 2 || got[0] != "detect" || got[1] != "install" {
+		t.Fatalf("it should detect then install, got %v", got)
+	}
+	if len(c.results) != 1 {
+		t.Fatalf("one result should be reported, got %+v", c.results)
+	}
+	if c.results[0].Status != protocol.ResultSucceeded {
+		t.Errorf("a failed version check must not turn a successful install into a failure, got %+v", c.results[0])
+	}
+	if c.results[0].InstalledVersion != "" {
+		t.Errorf("installed version = %q, want empty since the version check failed", c.results[0].InstalledVersion)
 	}
 }
 
