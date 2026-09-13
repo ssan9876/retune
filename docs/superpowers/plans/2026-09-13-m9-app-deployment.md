@@ -370,43 +370,126 @@ where it gains a line.
 
 - [ ] **Step 1: Write the failing test**
 
-Read `internal/agent/session/session_test.go` first and follow however it already builds a session and waits for background work; the waiting involves the `s.pending` WaitGroup. Then add:
+There is no `internal/agent/session/session_test.go`, and building a real
+`Session` needs an enrolled identity and an mTLS connection — which is why the
+only place one is constructed in tests is `test/e2e/m2_test.go`, against a live
+server. Standing that up inside a unit test to check a dispatch rule is the
+wrong trade.
+
+So extract the loop instead of reaching around it. Add to
+`internal/agent/session/session.go`:
 
 ```go
-// A syncer that runs on empty is called with nothing assigned; one that does
-// not is left alone. That difference is the whole reason profiles can revert.
-func TestCheckinCallsSyncersByTheirEmptyRule(t *testing.T) {
-	eager := &countingSyncer{name: "eager", onEmpty: true}
-	lazy := &countingSyncer{name: "lazy"}
-
-	s := newTestSession(t, func(c *session.Config) {
-		c.Syncers = []session.ItemSyncer{eager, lazy}
-	})
-	if _, err := s.Checkin(context.Background()); err != nil {
-		t.Fatal(err)
+// dispatch starts each syncer that has something to do. It is separate from
+// Checkin so the rule about empty item lists can be tested without an enrolled
+// identity and a server to talk to.
+func dispatch(ctx context.Context, syncers []ItemSyncer, items []protocol.Item,
+	pending *sync.WaitGroup, log *slog.Logger) {
+	for _, syncer := range syncers {
+		if len(items) == 0 && !syncer.RunOnEmpty() {
+			continue
+		}
+		pending.Add(1)
+		go func() {
+			defer pending.Done()
+			if err := syncer.Sync(ctx, items); err != nil {
+				log.Warn("applying assigned work failed", "syncer", syncer.Name(), "error", err)
+			}
+		}()
 	}
-	s.Wait()
+}
+```
 
-	if eager.calls() != 1 {
-		t.Errorf("a syncer that runs on empty should have been called once, got %d", eager.calls())
+Then create `internal/agent/session/dispatch_test.go` as `package session` —
+an internal test, because `dispatch` is unexported:
+
+```go
+package session
+
+import (
+	"context"
+	"log/slog"
+	"sync"
+	"testing"
+
+	"retune/internal/protocol"
+)
+
+// A syncer that runs on empty is started with nothing assigned; one that does
+// not is left alone. That difference is the whole reason profiles can revert:
+// an empty list is exactly when an unassigned profile must be undone.
+func TestDispatchHonoursTheEmptyRule(t *testing.T) {
+	cases := map[string]struct {
+		items      []protocol.Item
+		wantEager  int
+		wantLazy   int
+	}{
+		"nothing assigned": {
+			items: nil, wantEager: 1, wantLazy: 0,
+		},
+		"something assigned": {
+			items:     []protocol.Item{{Kind: "script", ID: "s1", Version: 1}},
+			wantEager: 1, wantLazy: 1,
+		},
 	}
-	if lazy.calls() != 0 {
-		t.Errorf("a syncer that does not should have been left alone, got %d", lazy.calls())
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			eager := &countingSyncer{name: "eager", onEmpty: true}
+			lazy := &countingSyncer{name: "lazy"}
+			var pending sync.WaitGroup
+
+			dispatch(context.Background(), []ItemSyncer{eager, lazy}, tc.items,
+				&pending, slog.New(slog.DiscardHandler))
+			pending.Wait()
+
+			if eager.calls() != tc.wantEager {
+				t.Errorf("eager syncer ran %d times, want %d", eager.calls(), tc.wantEager)
+			}
+			if lazy.calls() != tc.wantLazy {
+				t.Errorf("lazy syncer ran %d times, want %d", lazy.calls(), tc.wantLazy)
+			}
+		})
 	}
 }
 
+// Every syncer gets the same item list, and one that fails does not stop the
+// others: a broken deployment must not hold up the rest of a check-in.
+func TestDispatchIsolatesFailures(t *testing.T) {
+	angry := &countingSyncer{name: "angry", err: errors.New("no")}
+	calm := &countingSyncer{name: "calm"}
+	var pending sync.WaitGroup
+
+	items := []protocol.Item{{Kind: "script", ID: "s1", Version: 1}}
+	dispatch(context.Background(), []ItemSyncer{angry, calm}, items,
+		&pending, slog.New(slog.DiscardHandler))
+	pending.Wait()
+
+	if calm.calls() != 1 {
+		t.Errorf("a failing syncer must not stop the next one, got %d", calm.calls())
+	}
+	if got := angry.sawItems(); len(got) != 1 {
+		t.Errorf("every syncer gets the whole list, got %+v", got)
+	}
+}
+
+// countingSyncer records how often it ran and what it was given.
 type countingSyncer struct {
 	name    string
 	onEmpty bool
-	mu      sync.Mutex
-	n       int
+	err     error
+
+	mu    sync.Mutex
+	n     int
+	items []protocol.Item
 }
 
-func (c *countingSyncer) Sync(context.Context, []protocol.Item) error {
+func (c *countingSyncer) Sync(_ context.Context, items []protocol.Item) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.n++
-	return nil
+	c.items = items
+	return c.err
 }
 func (c *countingSyncer) RunOnEmpty() bool { return c.onEmpty }
 func (c *countingSyncer) Name() string     { return c.name }
@@ -415,15 +498,20 @@ func (c *countingSyncer) calls() int {
 	defer c.mu.Unlock()
 	return c.n
 }
+func (c *countingSyncer) sawItems() []protocol.Item {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.items
+}
 ```
 
-If there is no `newTestSession` helper and no exported way to wait, add both: a helper that builds a `Session` against an `httptest` server the way the existing tests do, and `func (s *Session) Wait() { s.pending.Wait() }` on `Session` with the comment that it exists so tests can wait for background syncers.
+Add `"errors"` to that file's imports.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `go test ./internal/agent/session/ -run TestCheckinCallsSyncersByTheirEmptyRule -count=1`
+Run: `go test ./internal/agent/session/ -run TestDispatch -count=1`
 
-Expected: FAIL to compile — `session.ItemSyncer` and `Config.Syncers` do not exist.
+Expected: FAIL to compile — `ItemSyncer` and `dispatch` do not exist yet.
 
 - [ ] **Step 3: Add the interface, the field and the adapters**
 
@@ -491,26 +579,16 @@ Append to `s.cfg`, not `cfg`: `s` was built from a copy of the config, and the c
 
 - [ ] **Step 4: Replace the two branches in Checkin**
 
-Replace both the `if s.cfg.Scripts != nil && len(resp.Items) > 0 { ... }` block and the `if s.cfg.Policy != nil { ... }` block with:
+Replace both the `if s.cfg.Scripts != nil && len(resp.Items) > 0 { ... }` block
+and the `if s.cfg.Policy != nil { ... }` block with one call to the function
+Step 1 added:
 
 ```go
 	// Assigned work is applied in the background: a long-running deployment
 	// must not hold up check-ins, inventory or commands. Each syncer runs one
 	// job at a time internally, so a slow one only means the next check-in
 	// finds it still busy.
-	for _, syncer := range s.cfg.Syncers {
-		if len(resp.Items) == 0 && !syncer.RunOnEmpty() {
-			continue
-		}
-		items, syncer := resp.Items, syncer
-		s.pending.Add(1)
-		go func() {
-			defer s.pending.Done()
-			if err := syncer.Sync(ctx, items); err != nil {
-				s.cfg.Log.Warn("applying assigned work failed", "syncer", syncer.Name(), "error", err)
-			}
-		}()
-	}
+	dispatch(ctx, s.cfg.Syncers, resp.Items, &s.pending, s.cfg.Log)
 ```
 
 - [ ] **Step 5: Run the tests**
