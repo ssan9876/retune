@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -13,15 +14,25 @@ import (
 
 // fakeControl records what was done to the service, and lets a test decide
 // what happens when it is started.
+//
+// failStopOnCall and failStartOnCall pick which call (1-based; 0 means never)
+// to Stop or Start returns stopErr/startErr on: a rollback calls both of
+// those methods a second time, so a static "always fails" flag can only ever
+// exercise the first call and can never drive a failure inside rollback
+// itself.
 type fakeControl struct {
-	mu       sync.Mutex
-	binPath  string
-	args     []string
-	calls    []string
-	running  bool
-	recovery bool
-	stopErr  error
-	startErr error
+	mu              sync.Mutex
+	binPath         string
+	args            []string
+	calls           []string
+	running         bool
+	recovery        bool
+	stopCalls       int
+	startCalls      int
+	failStopOnCall  int
+	failStartOnCall int
+	stopErr         error
+	startErr        error
 	// onStart runs when the service is started, standing in for the new agent
 	// coming up and doing something.
 	onStart func()
@@ -51,8 +62,9 @@ func (f *fakeControl) SetRecoveryActions() error {
 func (f *fakeControl) Stop(context.Context) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.stopCalls++
 	f.calls = append(f.calls, "stop")
-	if f.stopErr != nil {
+	if f.failStopOnCall != 0 && f.stopCalls == f.failStopOnCall {
 		return f.stopErr
 	}
 	f.running = false
@@ -61,9 +73,11 @@ func (f *fakeControl) Stop(context.Context) error {
 
 func (f *fakeControl) Start() error {
 	f.mu.Lock()
+	f.startCalls++
+	fail := f.failStartOnCall != 0 && f.startCalls == f.failStartOnCall
 	start := f.onStart
 	f.calls = append(f.calls, "start")
-	if f.startErr != nil {
+	if fail {
 		f.mu.Unlock()
 		return f.startErr
 	}
@@ -214,7 +228,7 @@ func TestSuperviseDoesNotRepointIfTheServiceWillNotStop(t *testing.T) {
 	if err := selfupdate.WriteRecord(dir, rec); err != nil {
 		t.Fatal(err)
 	}
-	c := &fakeControl{binPath: rec.FromBinPath, args: rec.FromArgs, stopErr: errors.New("it will not stop")}
+	c := &fakeControl{binPath: rec.FromBinPath, args: rec.FromArgs, failStopOnCall: 1, stopErr: errors.New("it will not stop")}
 
 	if err := supervisor(dir, c).Supervise(context.Background()); err == nil {
 		t.Fatal("a service that will not stop should be an error")
@@ -227,6 +241,69 @@ func TestSuperviseDoesNotRepointIfTheServiceWillNotStop(t *testing.T) {
 			t.Fatalf("the image path must not be touched, got %v", c.did())
 		}
 	}
+}
+
+// The branch that matters most: if the rollback itself cannot finish -- the
+// device gets stopped on the old image but the restore fails partway -- the
+// record must still say so, naming which step failed, or Decide is left
+// staring at a permanently pending record with nothing to report and nothing
+// to retry.
+func TestSuperviseRecordsAFailureInsideRollback(t *testing.T) {
+	// The deadline is already past, so the very first poll drives Supervise
+	// straight into rollback.
+	past := time.Now().Add(-time.Minute)
+
+	t.Run("stop fails during rollback", func(t *testing.T) {
+		dir := t.TempDir()
+		rec := pending(dir, past)
+		if err := selfupdate.WriteRecord(dir, rec); err != nil {
+			t.Fatal(err)
+		}
+		// Call 1 is step 2's Stop, which must succeed so rollback is even
+		// reached. Call 2 is the Stop inside rollback's restore.
+		c := &fakeControl{
+			binPath: rec.FromBinPath, args: rec.FromArgs,
+			failStopOnCall: 2, stopErr: errors.New("stuck stopping the new build"),
+		}
+
+		err := supervisor(dir, c).Supervise(context.Background())
+		if err == nil {
+			t.Fatal("a rollback that cannot stop the service should be an error")
+		}
+		got, found, _ := selfupdate.ReadRecord(dir)
+		if !found || got.Status != selfupdate.StatusRolledBack {
+			t.Fatalf("a failed rollback must still be recorded, got %+v (found=%v)", got, found)
+		}
+		if !strings.Contains(got.Detail, "stop") {
+			t.Errorf("detail should name the stop step that failed, got %q", got.Detail)
+		}
+	})
+
+	t.Run("start fails during rollback", func(t *testing.T) {
+		dir := t.TempDir()
+		rec := pending(dir, past)
+		if err := selfupdate.WriteRecord(dir, rec); err != nil {
+			t.Fatal(err)
+		}
+		// Call 1 is step 5's Start (the new build), which must succeed.
+		// Call 2 is the Start inside rollback's restore, which fails.
+		c := &fakeControl{
+			binPath: rec.FromBinPath, args: rec.FromArgs,
+			failStartOnCall: 2, startErr: errors.New("the previous build will not come back up"),
+		}
+
+		err := supervisor(dir, c).Supervise(context.Background())
+		if err == nil {
+			t.Fatal("a rollback that cannot start the previous build should be an error")
+		}
+		got, found, _ := selfupdate.ReadRecord(dir)
+		if !found || got.Status != selfupdate.StatusRolledBack {
+			t.Fatalf("a failed rollback must still be recorded, got %+v (found=%v)", got, found)
+		}
+		if !strings.Contains(got.Detail, "start") {
+			t.Errorf("detail should name the start step that failed, got %q", got.Detail)
+		}
+	})
 }
 
 // With no record there is nothing to do, and that is not an error: the
