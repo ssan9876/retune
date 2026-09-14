@@ -77,6 +77,27 @@ func TestClassify(t *testing.T) {
 	}
 }
 
+// classify must treat the signed constant and the unsigned DWORD Go's
+// exec package actually returns on Windows as the same status: they are
+// bit-for-bit the same exit code, just read as different Go integer types.
+// This is the exact case the old tests never exercised — they only ever
+// passed the signed constant in, never the value a real run on Windows
+// produces — which is how the "not installed" detection silently stopped
+// working on every device while every unit test kept passing.
+func TestClassifyNormalizesUnsignedExitCodes(t *testing.T) {
+	cases := map[int]Outcome{
+		NotInstalledExit:         OutcomeNotInstalled,
+		2316632084:               OutcomeNotInstalled, // NotInstalledExit as an unsigned DWORD
+		WingetRebootRequiredExit: OutcomeRebootRequired,
+		2316632329:               OutcomeRebootRequired, // WingetRebootRequiredExit as an unsigned DWORD
+	}
+	for code, want := range cases {
+		if got := classify(code); got != want {
+			t.Errorf("classify(%d) = %v, want %v", code, got, want)
+		}
+	}
+}
+
 // A failed detection is not the same as an absent package. Folding a plain
 // failure exit code into "not installed" would make the agent reinstall the
 // software on every cycle during an outage that has nothing to do with the
@@ -91,6 +112,17 @@ func TestDetectResult(t *testing.T) {
 	}
 	if installed, err := detectResult(1); installed || err == nil {
 		t.Errorf("detectResult(1) = (%v, %v), want (false, non-nil error)", installed, err)
+	}
+}
+
+// detectResult is what Winget.Detect actually calls with the exit code
+// exitErr.ExitCode() hands back on Windows: an unsigned DWORD, not the
+// signed constant. This proves the "absent, cleanly" path — the exact path
+// that shipped broken — against that real value, not just against
+// NotInstalledExit itself.
+func TestDetectResultUnsignedNotInstalled(t *testing.T) {
+	if installed, err := detectResult(2316632084); installed || err != nil {
+		t.Errorf("detectResult(2316632084) = (%v, %v), want (false, nil)", installed, err)
 	}
 }
 

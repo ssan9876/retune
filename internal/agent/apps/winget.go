@@ -22,8 +22,18 @@ const (
 	NotInstalledExit = -1978335212
 	// RebootRequiredExit means the install worked and Windows wants a restart.
 	// It is Windows Installer's own ERROR_SUCCESS_REBOOT_REQUIRED, which winget
-	// passes straight through from the underlying MSI.
+	// passes straight through from the underlying MSI. Unlike the two
+	// constants below, this one is a small positive number, not a DWORD with
+	// its high bit set, so it round-trips through int32(uint32(x)) unchanged
+	// and was never affected by the bug normalizeExitCode fixes.
 	RebootRequiredExit = 3010
+	// WingetRebootRequiredExit is winget's own
+	// APPINSTALLER_CLI_ERROR_INSTALL_REBOOT_REQUIRED_TO_FINISH, returned by
+	// winget itself (rather than passed through from the MSI) when a reboot
+	// is needed to finish. It lives in the same high-bit HRESULT-derived
+	// range as NotInstalledExit and so has exactly the same signed/unsigned
+	// mismatch if compared without normalizing first.
+	WingetRebootRequiredExit = -1978334967
 )
 
 // Outcome is what an exit code means for a deployment, once the handful of
@@ -37,17 +47,40 @@ const (
 	OutcomeFailed
 )
 
+// normalizeExitCode converts a raw process exit code to the signed 32-bit
+// value that Microsoft's documentation, winget's own source, and PowerShell's
+// $LASTEXITCODE all use.
+//
+// Windows exit statuses are DWORDs (unsigned 32-bit values). Go's
+// (*os.ProcessState).ExitCode() surfaces that DWORD as a positive int on
+// Windows, but the named constants above are written in signed form, because
+// that is how Windows documents and displays them. -1978335212 and
+// 2316632084 are bit-for-bit the same DWORD; a raw `==` between the signed
+// constant and the value Go actually returns silently never matches. That
+// is precisely how this package shipped broken: every unit test compared
+// classify against the signed constant directly and never against the value
+// a real run produces, so all of them passed while every real detection was
+// misclassified as a failure and the agent installed nothing, on every
+// device, forever.
+//
+// Do not remove this conversion because it "looks redundant" with the
+// constants already being int-typed — the whole bug was that the types lined
+// up while the values didn't.
+func normalizeExitCode(code int) int32 {
+	return int32(uint32(code))
+}
+
 // classify turns a winget exit code into what it means for a deployment. Any
 // code not named above falls through to OutcomeFailed: guessing at an
 // undocumented code risks calling a real failure a success, which is worse
 // than the reverse.
 func classify(code int) Outcome {
-	switch code {
+	switch normalizeExitCode(code) {
 	case 0:
 		return OutcomeSucceeded
 	case NotInstalledExit:
 		return OutcomeNotInstalled
-	case RebootRequiredExit:
+	case RebootRequiredExit, WingetRebootRequiredExit:
 		return OutcomeRebootRequired
 	default:
 		return OutcomeFailed
@@ -68,12 +101,22 @@ func detectResult(code int) (installed bool, err error) {
 	case OutcomeNotInstalled:
 		return false, nil
 	default:
-		return false, fmt.Errorf("winget list failed with exit code %d", code)
+		// Reported in normalized (signed) form, matching NotInstalledExit and
+		// friends above, so a code that shows up here can be looked up
+		// directly against the documented constant instead of needing a
+		// mental (or actual) unsigned-to-signed conversion first.
+		return false, fmt.Errorf("winget list failed with exit code %d", normalizeExitCode(code))
 	}
 }
 
 // Result is one winget invocation's outcome.
 type Result struct {
+	// ExitCode is always normalized (see normalizeExitCode): the signed
+	// 32-bit form, matching NotInstalledExit and the other named constants,
+	// not the raw positive DWORD Go's exec package hands back on Windows.
+	// Keeping one representation everywhere means a code logged here, or
+	// reported to the server, can be compared against the documented
+	// constants by eye instead of silently being the wrong sign.
 	ExitCode       int
 	Stdout, Stderr string
 	OutCut, ErrCut bool

@@ -107,7 +107,12 @@ func (c *client) run(ctx context.Context, args []string) Result {
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
 		res.TimedOut, res.Err, res.ExitCode = true, ctx.Err(), -1
 	case errors.As(err, &exitErr):
-		res.ExitCode = exitErr.ExitCode()
+		// exitErr.ExitCode() is the raw DWORD, surfaced as a positive int;
+		// normalize immediately so every value this package stores, logs, or
+		// reports is in the same (signed) form as the named constants in
+		// winget.go. See normalizeExitCode for why the two forms otherwise
+		// never compare equal.
+		res.ExitCode = int(normalizeExitCode(exitErr.ExitCode()))
 	case err != nil:
 		res.Err, res.ExitCode = err, -1
 	default:
