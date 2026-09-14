@@ -1,0 +1,52 @@
+/* Agent versions has the same list/detail/actions idiom as Apps, but its own
+   rules: duplicated rather than shared, so an edit to Apps.css can never
+   change this page underneath it. */
+
+.agent-versions__notes {
+  color: var(--ink-muted);
+  font-size: var(--text-xs);
+  margin-top: 2px;
+}
+
+.agent-versions__actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.agent-versions__notice {
+  background: var(--surface-sunken);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  font-size: var(--text-sm);
+  margin: 0 0 var(--space-4);
+}
+
+.agent-versions__detail {
+  margin-top: var(--space-6);
+  border-top: 1px solid var(--rule);
+  padding-top: var(--space-4);
+}
+
+.agent-versions__sha {
+  color: var(--ink-muted);
+  font-size: var(--text-xs);
+  word-break: break-all;
+}
+
+.agent-versions__rollup {
+  display: flex;
+  gap: var(--space-4);
+  font-size: var(--text-sm);
+}
+
+.agent-versions__none {
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+}
+
+/* The uploader column can be a long email, so let it wrap rather than force
+   horizontal scroll on a phone. */
+.agent-versions-table td {
+  word-break: break-word;
+}

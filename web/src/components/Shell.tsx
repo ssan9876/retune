@@ -10,6 +10,7 @@ const LINKS = [
   { to: "/groups", label: "Groups" },
   { to: "/scripts", label: "Scripts" },
   { to: "/apps", label: "Apps" },
+  { to: "/agent-versions", label: "Agent versions" },
   { to: "/profiles", label: "Profiles" },
   { to: "/commands", label: "Commands" },
   { to: "/tokens", label: "Enrollment" },

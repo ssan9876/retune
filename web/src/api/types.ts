@@ -179,6 +179,16 @@ export interface AppInstall {
   finished_at: string;
 }
 
+export interface AgentVersion {
+  id: string;
+  version: string;
+  sha256: string;
+  size_bytes: number;
+  notes: string;
+  created_at: string;
+  created_by: string;
+}
+
 export interface Setting {
   kind: string;
   hive?: string;

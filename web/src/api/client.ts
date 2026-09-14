@@ -56,8 +56,37 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return payload as T;
 }
 
+/**
+ * postBinary uploads a raw body rather than JSON, for payloads — such as an
+ * agent build — where base64 in a JSON object would inflate a multi-megabyte
+ * binary by a third for no benefit. It follows the same CSRF and credentials
+ * handling as `request`, since it bypasses `request` to avoid JSON-encoding
+ * the body.
+ */
+async function postBinary<T>(path: string, body: Blob | ArrayBuffer): Promise<T> {
+  const headers: Record<string, string> = { "Content-Type": "application/octet-stream" };
+  if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
+  const response = await fetch(BASE + path, {
+    method: "POST",
+    headers,
+    body,
+    credentials: "same-origin",
+  });
+  const text = await response.text();
+  const payload: unknown = text ? JSON.parse(text) : {};
+  if (!response.ok) {
+    const { code, message } = payload as { code?: string; message?: string };
+    if (response.status === 401) {
+      unauthenticatedHandler?.();
+    }
+    throw new ApiError(response.status, code ?? "error", message ?? response.statusText);
+  }
+  return payload as T;
+}
+
 export const api = {
   get: <T>(path: string) => request<T>("GET", path),
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
+  postBinary: <T>(path: string, body: Blob | ArrayBuffer) => postBinary<T>(path, body),
   del: <T>(path: string) => request<T>("DELETE", path),
 };
