@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"retune/internal/release"
 )
 
 // Server is the retune-server configuration.
@@ -28,6 +30,9 @@ type Server struct {
 	TrustedProxies []netip.Prefix
 	CAKeySource    string // "file" | "env"
 	SweepInterval  time.Duration
+	// AgentReleaseKeys are the public keys agent builds must be signed by.
+	// Optional at startup; an upload with none configured is refused.
+	AgentReleaseKeys []release.PublicKey
 }
 
 // LoadServer reads configuration from environment variables via getenv.
@@ -77,6 +82,13 @@ func LoadServer(getenv func(string) string) (Server, error) {
 			return Server{}, errors.New("SWEEP_INTERVAL_SECONDS must be an integer >= 10")
 		}
 		c.SweepInterval = time.Duration(n) * time.Second
+	}
+	if v := lookup("AGENT_RELEASE_KEYS"); v != "" {
+		keys, err := release.ParseTrustList(v)
+		if err != nil {
+			return Server{}, fmt.Errorf("AGENT_RELEASE_KEYS: %w", err)
+		}
+		c.AgentReleaseKeys = keys
 	}
 	if v := lookup("TRUSTED_PROXIES"); v != "" {
 		proxies, err := parsePrefixes(v)

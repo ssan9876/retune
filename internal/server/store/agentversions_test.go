@@ -63,3 +63,26 @@ func TestAgentVersionRoundTrip(t *testing.T) {
 		t.Errorf("after deletion it should be gone, got %v", err)
 	}
 }
+
+func TestAgentVersionSignatureRoundTrips(t *testing.T) {
+	st := storetest.New(t)
+	ctx := context.Background()
+	v := store.AgentVersion{
+		ID: uuid.Must(uuid.NewV7()), Version: "1.0.0", SHA256: "ab", SizeBytes: 1,
+		CreatedAt: time.Now(), CreatedBy: "t", KeyID: "0123456789abcdef", Signature: "c2ln",
+	}
+	if err := st.Q().CreateAgentVersion(ctx, v); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.Q().GetAgentVersion(ctx, v.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.KeyID != v.KeyID || got.Signature != v.Signature {
+		t.Fatalf("got %+v", got)
+	}
+	rows, _, err := st.Q().ListAgentVersions(ctx, store.Page{})
+	if err != nil || len(rows) != 1 || rows[0].Signature != "c2ln" {
+		t.Fatalf("list: %v %+v", err, rows)
+	}
+}

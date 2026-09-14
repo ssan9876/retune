@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"retune/internal/release"
 )
 
 func env(m map[string]string) func(string) string {
@@ -167,5 +169,28 @@ func TestSweepInterval(t *testing.T) {
 	}
 	if _, err := LoadServer(with("5")); err == nil {
 		t.Error("want an error below the 10 second minimum")
+	}
+}
+
+func TestAgentReleaseKeysParse(t *testing.T) {
+	priv, _ := release.GenerateKey()
+	env := map[string]string{
+		"DATABASE_URL": "postgres://x", "PUBLIC_URL": "https://mdm.example.com",
+		"AGENT_RELEASE_KEYS": priv.Public().Encode(),
+	}
+	cfg, err := LoadServer(func(k string) string { return env[k] })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.AgentReleaseKeys) != 1 || cfg.AgentReleaseKeys[0].ID() != priv.Public().ID() {
+		t.Fatalf("keys = %+v", cfg.AgentReleaseKeys)
+	}
+	env["AGENT_RELEASE_KEYS"] = "junk"
+	if _, err := LoadServer(func(k string) string { return env[k] }); err == nil {
+		t.Error("a malformed key list must refuse to start the server")
+	}
+	delete(env, "AGENT_RELEASE_KEYS")
+	if cfg, err := LoadServer(func(k string) string { return env[k] }); err != nil || len(cfg.AgentReleaseKeys) != 0 {
+		t.Error("no keys is allowed at startup; uploads are what refuse")
 	}
 }

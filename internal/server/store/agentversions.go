@@ -19,13 +19,15 @@ type AgentVersion struct {
 	Notes     string
 	CreatedAt time.Time
 	CreatedBy string
+	KeyID     string
+	Signature string
 }
 
-const agentVersionCols = `id, version, sha256, size_bytes, notes, created_at, created_by`
+const agentVersionCols = `id, version, sha256, size_bytes, notes, created_at, created_by, key_id, signature`
 
 func scanAgentVersion(row pgx.Row) (AgentVersion, error) {
 	var v AgentVersion
-	err := row.Scan(&v.ID, &v.Version, &v.SHA256, &v.SizeBytes, &v.Notes, &v.CreatedAt, &v.CreatedBy)
+	err := row.Scan(&v.ID, &v.Version, &v.SHA256, &v.SizeBytes, &v.Notes, &v.CreatedAt, &v.CreatedBy, &v.KeyID, &v.Signature)
 	return v, notFound(err)
 }
 
@@ -35,9 +37,9 @@ func scanAgentVersion(row pgx.Row) (AgentVersion, error) {
 // translated to ErrDuplicate rather than left as a raw pgx error.
 func (q *Queries) CreateAgentVersion(ctx context.Context, v AgentVersion) error {
 	_, err := q.db.Exec(ctx, `
-		INSERT INTO agent_versions (id, tenant_id, version, sha256, size_bytes, notes, created_at, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		v.ID, DefaultTenantID, v.Version, v.SHA256, v.SizeBytes, v.Notes, v.CreatedAt, v.CreatedBy)
+		INSERT INTO agent_versions (id, tenant_id, version, sha256, size_bytes, notes, created_at, created_by, key_id, signature)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		v.ID, DefaultTenantID, v.Version, v.SHA256, v.SizeBytes, v.Notes, v.CreatedAt, v.CreatedBy, v.KeyID, v.Signature)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return ErrDuplicate
@@ -76,7 +78,7 @@ func (q *Queries) ListAgentVersions(ctx context.Context, page Page) ([]AgentVers
 	for rows.Next() {
 		var v AgentVersion
 		if err := rows.Scan(&v.ID, &v.Version, &v.SHA256, &v.SizeBytes, &v.Notes,
-			&v.CreatedAt, &v.CreatedBy, &total); err != nil {
+			&v.CreatedAt, &v.CreatedBy, &v.KeyID, &v.Signature, &total); err != nil {
 			return nil, 0, err
 		}
 		out = append(out, v)
