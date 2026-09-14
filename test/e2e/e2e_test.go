@@ -2,10 +2,17 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"crypto/tls"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -19,8 +26,10 @@ import (
 	"retune/internal/config"
 	"retune/internal/pki"
 	"retune/internal/protocol"
+	"retune/internal/server/adminapi"
 	"retune/internal/server/app"
 	"retune/internal/server/apps"
+	"retune/internal/server/auth"
 	"retune/internal/server/enroll"
 	"retune/internal/server/store"
 	"retune/internal/server/store/storetest"
@@ -293,4 +302,229 @@ func TestAppDeploymentEndToEnd(t *testing.T) {
 	if !strings.Contains(afterRemoval, "removed") {
 		t.Errorf("the detail should say it went, got %q", afterRemoval)
 	}
+}
+
+// TestAgentSelfUpdateEndToEnd proves the whole agent self-update path: an
+// administrator uploads a build and assigns it to a group, an enrolled device
+// in that group is offered it at check-in, fetches its definition, and
+// downloads bytes that hash to what the definition promised; a second device
+// that was never assigned the build cannot download it; and a result the
+// device reports settles the console's rollup.
+func TestAgentSelfUpdateEndToEnd(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.Server{
+		DatabaseURL: storetest.DatabaseURL(t), PublicURL: "https://127.0.0.1",
+		TLSMode: "self-signed", DataDir: t.TempDir(), CheckinInterval: 2 * time.Minute,
+		SessionTTL: 12 * time.Hour,
+	}
+	a, err := app.New(ctx, cfg, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	srv := httptest.NewUnstartedServer(a.Handler)
+	srv.TLS = a.TLSConfig
+	srv.StartTLS()
+	defer srv.Close()
+
+	// An administrator signs in exactly as the console would: a session
+	// cookie plus the CSRF token it returns, kept across requests by a jar.
+	if _, err := a.Auth.CreateAdmin(ctx, auth.CreateAdminOptions{
+		Email: "ops@example.com", Password: "correct horse battery", Role: store.RoleAdmin, Actor: "test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminHTTP := &http.Client{
+		Jar:       jar,
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: a.CA.Pool()}},
+	}
+	status, body := send(t, adminHTTP, http.MethodPost, srv.URL+"/api/admin/v1/session", map[string]string{
+		"email": "ops@example.com", "password": "correct horse battery", "totp_code": "",
+	})
+	if status != http.StatusOK {
+		t.Fatalf("admin login: %d %s", status, body)
+	}
+	var loginResp struct {
+		CSRFToken string `json:"csrf_token"`
+	}
+	if err := json.Unmarshal(body, &loginResp); err != nil {
+		t.Fatal(err)
+	}
+
+	// The build is uploaded as a raw body, not JSON: the version and notes
+	// travel as query parameters instead.
+	const buildBytes = "a pretend agent binary, self-update end to end"
+	uploadReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		srv.URL+"/api/admin/v1/agent-versions?version=1.2.3&notes=e2e", strings.NewReader(buildBytes))
+	if err != nil {
+		t.Fatal(err)
+	}
+	uploadReq.Header.Set("Content-Type", "application/octet-stream")
+	uploadReq.Header.Set(adminapi.CSRFHeader, loginResp.CSRFToken)
+	uploadRes, err := adminHTTP.Do(uploadReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer uploadRes.Body.Close()
+	uploadBody, err := io.ReadAll(uploadRes.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if uploadRes.StatusCode != http.StatusCreated {
+		t.Fatalf("upload agent version: %d %s", uploadRes.StatusCode, uploadBody)
+	}
+	uploaded := decodeJSON[struct {
+		ID     string `json:"id"`
+		SHA256 string `json:"sha256"`
+	}](t, uploadBody)
+	versionID := uuid.MustParse(uploaded.ID)
+
+	// Two devices enroll on the same token. Only one of them will end up
+	// assigned the build.
+	maxUses := 2
+	token, _, err := a.Enroll.CreateToken(ctx, enroll.TokenOptions{
+		Label: "self-update-e2e", MaxUses: &maxUses, CreatedBy: "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pin := pki.Fingerprint(a.CA.Cert().Raw)
+	enrollWithRawClient := func(hostname, serial string) (uuid.UUID, *http.Client) {
+		t.Helper()
+		facts := protocol.DeviceFacts{Hostname: hostname, Serial: serial, SMBIOSUUID: "UUID-" + serial, OSVersion: "Windows 11 Pro"}
+		id, err := enrollment.Enroll(ctx, enrollment.Options{
+			ServerURL: srv.URL, Token: token, Pin: pin, Facts: facts,
+			Store: identity.Store{Dir: t.TempDir(), Keys: identity.PlainKeys{}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		cert, err := id.TLSCertificate()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return uuid.MustParse(id.DeviceID), &http.Client{
+			Transport: &http.Transport{TLSClientConfig: &tls.Config{
+				RootCAs: a.CA.Pool(), Certificates: []tls.Certificate{cert},
+			}},
+		}
+	}
+	deviceID, device := enrollWithRawClient("PC-UPDATING", "SN-UPDATING")
+	_, other := enrollWithRawClient("PC-UNASSIGNED", "SN-UNASSIGNED")
+
+	// Every enrolled device already belongs to the builtin "All devices"
+	// group, so keeping the second device unassigned needs a group of its
+	// own with only the first device as a member.
+	pilot := store.Group{
+		ID: uuid.Must(uuid.NewV7()), Name: "Pilot", Kind: store.GroupStatic,
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}
+	if err := a.Store.Q().CreateGroup(ctx, pilot); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Store.Q().AddGroupMember(ctx, pilot.ID, deviceID, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Store.Q().CreateAssignment(ctx, store.Assignment{
+		ID: uuid.Must(uuid.NewV7()), ItemKind: protocol.ItemKindAgent, ItemID: versionID,
+		GroupID: pilot.ID, Mode: store.ModeInclude,
+		CreatedAt: time.Now().UTC(), CreatedBy: "test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The assigned device checks in and is offered the build.
+	status, body = send(t, device, http.MethodPost, srv.URL+"/api/agent/v1/checkin",
+		protocol.CheckinRequest{AgentVersion: "1.0.0"})
+	if status != http.StatusOK {
+		t.Fatalf("checkin: %d %s", status, body)
+	}
+	// The build reaches the agent.
+	items := decodeJSON[protocol.CheckinResponse](t, body).Items
+	if len(items) != 1 || items[0].Kind != protocol.ItemKindAgent {
+		t.Fatalf("the build should be offered once, got %+v", items)
+	}
+
+	// It fetches the definition, then the bytes.
+	defURL := srv.URL + "/api/agent/v1/agent-versions/" + versionID.String()
+	binaryURL := defURL + "/binary"
+	status, defBody := send(t, device, http.MethodGet, defURL, nil)
+	if status != http.StatusOK {
+		t.Fatalf("definition: %d %s", status, defBody)
+	}
+	status, binaryBody := send(t, device, http.MethodGet, binaryURL, nil)
+	if status != http.StatusOK {
+		t.Fatalf("binary: %d", status)
+	}
+
+	// The definition promises a hash, and the bytes honour it.
+	def := decodeJSON[protocol.AgentVersionResponse](t, defBody)
+	sum := sha256.Sum256(binaryBody)
+	if hex.EncodeToString(sum[:]) != def.SHA256 {
+		t.Fatalf("the downloaded bytes do not match the promised hash")
+	}
+	if def.SizeBytes != int64(len(binaryBody)) {
+		t.Errorf("size = %d, downloaded %d", def.SizeBytes, len(binaryBody))
+	}
+
+	// A device that was never assigned the build cannot fetch it.
+	if status, _ := send(t, other, http.MethodGet, binaryURL, nil); status != http.StatusNotFound {
+		t.Errorf("an unassigned device must not download a build, got %d", status)
+	}
+
+	// The device reports how the update went, as if it had swapped itself in
+	// and checked in cleanly on the new build.
+	status, body = send(t, device, http.MethodPost, defURL+"/result", protocol.AgentUpdateResult{
+		Version: "1.2.3", Status: protocol.ResultSucceeded, Detail: "updated cleanly", ReportedAt: time.Now().UTC(),
+	})
+	if status != http.StatusNoContent {
+		t.Fatalf("report result: %d %s", status, body)
+	}
+
+	// What it reports settles the console's rollup.
+	rollup, err := a.Store.Q().ItemStatusRollup(ctx, protocol.ItemKindAgent, versionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rollup[store.ItemSucceeded] != 1 {
+		t.Fatalf("want one succeeded, got %v", rollup)
+	}
+}
+
+// send performs a JSON request and returns the status and raw body.
+func send(t *testing.T, c *http.Client, method, url string, body any) (int, []byte) {
+	t.Helper()
+	var r io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r = bytes.NewReader(b)
+	}
+	req, err := http.NewRequestWithContext(context.Background(), method, url, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	out, _ := io.ReadAll(res.Body)
+	return res.StatusCode, out
+}
+
+func decodeJSON[T any](t *testing.T, body []byte) T {
+	t.Helper()
+	var v T
+	if err := json.Unmarshal(body, &v); err != nil {
+		t.Fatalf("decode %s: %v", body, err)
+	}
+	return v
 }

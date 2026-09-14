@@ -25,6 +25,9 @@ Go agent runs on each machine.
   keeps true, with conflict detection and optional revert.
 - **Application deployment.** winget packages assigned to groups, installed by
   the agent and removed on request, with per-device history.
+- **Agent self-update.** Agent builds assigned to groups, verified by hash,
+  swapped under supervision, and rolled back automatically if the new build
+  cannot check in.
 - **Packaging.** A container image and Compose stack for the server, and an MSI
   that installs the agent as a Windows service which enrolls itself.
 
@@ -306,6 +309,33 @@ that group.
 Installs run as the system account, machine-wide. There is no per-user scope:
 the agent is LocalSystem, so a user-scope install would land in the system
 account's profile rather than anyone's.
+
+## Updating the agent
+
+Agent builds live under **Agent versions**. Upload a build, assign it to a
+group, and the agents in that group replace themselves with it.
+
+A build is stamped with its version at compile time. An agent built without
+that stamp refuses to self-update and says so, because it would otherwise
+report the same version after updating, be told to update again, and do that
+on every check-in for ever.
+
+**A bad build costs one check-in cycle, not a truck roll.** After swapping, the
+new agent must check in successfully within the assignment's deadline (ten
+minutes by default). If it does not, the previous build is put back and the
+device reports which version failed — so a pilot group tells you something
+before a wider one is assigned.
+
+The managed binary lives in `C:\ProgramData\Retune\bin\<version>\`, and the
+service points at it. The copy the MSI installed in `Program Files` is a
+bootstrap and is never modified, so a repair or an upgrade cannot disturb a
+running agent. Only the current and previous versions are kept.
+
+Assigning an older build is a deliberate downgrade and works — it is how a
+fleet is recovered from a bad build without touching every machine.
+
+Uploaded builds are stored in `DATA_DIR/agents`, so **back that directory up
+with the CA**, and size the volume for it.
 
 A machine with no App Installer reports that plainly and installs nothing.
 
