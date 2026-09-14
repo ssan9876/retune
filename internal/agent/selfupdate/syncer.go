@@ -275,16 +275,16 @@ func (s *Syncer) stage(ctx context.Context, item protocol.Item, opts protocol.Ag
 	// A copy, because the service image is locked and about to be stopped.
 	supervisorPath := filepath.Join(s.Dir, supervisorName)
 	if err := copyRunningExecutable(supervisorPath); err != nil {
-		return s.abandon(ctx, item.ID, def.Version, versionDir, fmt.Sprintf("copying the supervisor: %v", err))
+		return s.abandon(ctx, item.ID, def.Version, versionDir, fmt.Sprintf("copying the supervisor: %v", err), err)
 	}
 	if s.Spawn == nil {
 		// Treated exactly like a Spawn error, not a panic, and this all
 		// happens with s.mu held: a nil Spawn must fail the update, not the
 		// whole syncer.
-		return s.abandon(ctx, item.ID, def.Version, versionDir, "no Spawn function was configured")
+		return s.abandon(ctx, item.ID, def.Version, versionDir, "no Spawn function was configured", nil)
 	}
 	if err := s.Spawn(supervisorPath); err != nil {
-		return s.abandon(ctx, item.ID, def.Version, versionDir, fmt.Sprintf("spawning the supervisor: %v", err))
+		return s.abandon(ctx, item.ID, def.Version, versionDir, fmt.Sprintf("spawning the supervisor: %v", err), err)
 	}
 	return nil
 }
@@ -293,7 +293,12 @@ func (s *Syncer) stage(ctx context.Context, item protocol.Item, opts protocol.Ag
 // broken copy or Spawn would leave the record pending forever: Decide would
 // answer "already under way" on every future check-in, with no supervisor
 // left to ever resolve it -- a silently dead device.
-func (s *Syncer) abandon(ctx context.Context, id, version, versionDir, detail string) error {
+//
+// detail is what the server is told, in the words an administrator reads;
+// cause, where there is one, is what the returned error wraps, so a caller
+// can still reach the original failure rather than a string that only looks
+// like it.
+func (s *Syncer) abandon(ctx context.Context, id, version, versionDir, detail string, cause error) error {
 	if err := RemoveRecord(s.Dir); err != nil {
 		s.log().Error("failed to remove abandoned update record", "error", err)
 	}
@@ -302,6 +307,9 @@ func (s *Syncer) abandon(ctx context.Context, id, version, versionDir, detail st
 	}
 	if err := s.report(ctx, id, version, protocol.ResultFailed, "", detail); err != nil {
 		s.log().Error("failed to report abandoned update", "error", err)
+	}
+	if cause != nil {
+		return fmt.Errorf("%s: %w", detail, cause)
 	}
 	return errors.New(detail)
 }

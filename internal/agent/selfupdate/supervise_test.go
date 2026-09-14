@@ -192,7 +192,13 @@ func TestSuperviseKeepsAnUpdateThatChecksInAfterSeveralPolls(t *testing.T) {
 		}()
 	}
 
-	if err := supervisor(dir, c).Supervise(context.Background()); err != nil {
+	// A frozen clock an hour short of the deadline: the check-in lands a few
+	// polls in, and on a loaded machine a real clock could reach the deadline
+	// first and roll back an update this test says succeeded.
+	s := supervisor(dir, c)
+	s.Now = func() time.Time { return rec.Deadline.Add(-time.Hour) }
+
+	if err := s.Supervise(context.Background()); err != nil {
 		t.Fatalf("a successful update should not error: %v", err)
 	}
 	if _, found, _ := selfupdate.ReadRecord(dir); found {

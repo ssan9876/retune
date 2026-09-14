@@ -278,6 +278,11 @@ func (c *Client) DownloadTimeout() time.Duration { return downloadTimeout }
 // anything whose SHA-256 is not what the definition promised. It does not use
 // the JSON client: that one decodes bodies and would cut a large download off
 // at its own timeout.
+//
+// The hash can only be checked once the last byte has been written, so on a
+// mismatch dst already holds the wrong bytes. Discarding them is the caller's
+// job, and not an optional one: a wrong binary left on disk is worse than no
+// binary at all.
 func (c *Client) DownloadAgentBinary(ctx context.Context, id, wantSHA256 string, dst io.Writer) error {
 	ctx, cancel := context.WithTimeout(ctx, downloadTimeout)
 	defer cancel()

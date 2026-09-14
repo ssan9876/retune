@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -392,6 +393,49 @@ func TestSyncRefusesWithNoController(t *testing.T) {
 	}
 	if _, found, _ := selfupdate.ReadRecord(dir); found {
 		t.Error("nothing should have been recorded")
+	}
+}
+
+// The session starts every syncer on its own goroutine once per check-in and
+// does not wait for the previous cycle to finish, so two Sync calls really can
+// overlap on a slow download. The lock inside Sync is what keeps that from
+// staging and handing off the same build twice: the second call finds the
+// pending record the first one wrote, and Decide answers "already under way".
+func TestSyncSerialisesConcurrentCalls(t *testing.T) {
+	dir := t.TempDir()
+	c := &fakeClient{version: "2.0.0", payload: []byte("new agent bytes")}
+	control := &fakeControl{binPath: `C:\Program Files\Retune\retune-agent.exe`, args: []string{"--data-dir", dir}}
+
+	var mu sync.Mutex
+	var spawns int
+	s := &selfupdate.Syncer{
+		Dir: dir, Client: c, Control: control, Running: "1.0.0", Injected: true,
+		Log: slog.New(slog.DiscardHandler), Now: time.Now,
+		Spawn: func(string) error {
+			mu.Lock()
+			defer mu.Unlock()
+			spawns++
+			return nil
+		},
+	}
+
+	items := []protocol.Item{agentItem("v1", nil)}
+	var wg sync.WaitGroup
+	for range 2 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := s.Sync(context.Background(), items); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	mu.Lock()
+	defer mu.Unlock()
+	if spawns != 1 {
+		t.Errorf("overlapping check-ins must hand off exactly once, got %d", spawns)
 	}
 }
 
