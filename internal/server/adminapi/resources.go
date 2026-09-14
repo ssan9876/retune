@@ -66,6 +66,11 @@ func (h *Handler) mountResources(mux *http.ServeMux, base string) {
 	mux.Handle("GET "+base+"/apps/{id}/versions", h.read(h.listAppVersions))
 	mux.Handle("GET "+base+"/apps/{id}/installs", h.read(h.listAppInstalls))
 
+	mux.Handle("GET "+base+"/agent-versions", h.read(h.listAgentVersions))
+	mux.Handle("POST "+base+"/agent-versions", h.write(h.uploadAgentVersion))
+	mux.Handle("GET "+base+"/agent-versions/{id}", h.read(h.getAgentVersion))
+	mux.Handle("DELETE "+base+"/agent-versions/{id}", h.write(h.deleteAgentVersion))
+
 	mux.Handle("GET "+base+"/assignments", h.read(h.listAssignments))
 	mux.Handle("POST "+base+"/assignments", h.write(h.createAssignment))
 	mux.Handle("DELETE "+base+"/assignments/{id}", h.write(h.deleteAssignment))

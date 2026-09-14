@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	"retune/internal/protocol"
+	"retune/internal/server/agentversions"
 	"retune/internal/server/apps"
 	"retune/internal/server/bitlocker"
 	"retune/internal/server/ca"
@@ -27,12 +28,15 @@ import (
 
 // Handler serves /api/agent/v1.
 type Handler struct {
-	Enroll          *enroll.Service
-	Inventory       *inventory.Service
-	Commands        *commands.Service
-	Scripts         *scripts.Service
-	Profiles        *profiles.Service
-	Apps            *apps.Service
+	Enroll    *enroll.Service
+	Inventory *inventory.Service
+	Commands  *commands.Service
+	Scripts   *scripts.Service
+	Profiles  *profiles.Service
+	Apps      *apps.Service
+	// AgentVersions is not used until self-update lands; keeping the field
+	// here now means every app.go edit for that feature happens in one task.
+	AgentVersions   *agentversions.Service
 	BitLocker       *bitlocker.Service
 	Store           *store.Store
 	Now             func() time.Time

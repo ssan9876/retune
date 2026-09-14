@@ -35,4 +35,11 @@ var optionsParsers = map[string]func(json.RawMessage) ([]byte, error){
 		}
 		return opts.Marshal()
 	},
+	protocol.ItemKindAgent: func(raw json.RawMessage) ([]byte, error) {
+		opts, err := protocol.ParseAgentOptions(raw)
+		if err != nil {
+			return nil, err
+		}
+		return opts.Marshal()
+	},
 }

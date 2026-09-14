@@ -74,6 +74,28 @@ func (c *adminClient) do(method, path string, body any) (int, []byte) {
 	return res.StatusCode, out
 }
 
+// doRaw sends a non-JSON body, for endpoints that take bytes rather than an
+// object. It keeps do's cookie and CSRF handling.
+func (c *adminClient) doRaw(method, path, contentType string, body io.Reader) (int, []byte) {
+	c.t.Helper()
+	req, err := http.NewRequestWithContext(context.Background(), method, c.base+path, body)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", contentType)
+	if c.csrf != "" {
+		req.Header.Set(adminapi.CSRFHeader, c.csrf)
+	}
+	res, err := c.http.Do(req)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	defer res.Body.Close()
+	c.setCookies = res.Cookies()
+	out, _ := io.ReadAll(res.Body)
+	return res.StatusCode, out
+}
+
 // login signs in and remembers the CSRF token.
 func (c *adminClient) login(email, password, code string) (int, []byte) {
 	c.t.Helper()
