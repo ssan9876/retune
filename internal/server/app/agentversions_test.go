@@ -32,7 +32,7 @@ func TestAgentVersionLifecycle(t *testing.T) {
 	a, srv := newTestApp(t)
 	admin := signedIn(t, a, srv, store.RoleAdmin)
 
-	status, body := uploadAgentVersion(t, admin, "1.2.3", "a pretend agent binary")
+	status, body := uploadAgentVersion(t, admin, "1.2.3", "a pretend agent binary stamped 1.2.3")
 	if status != http.StatusCreated {
 		t.Fatalf("upload: %d %s", status, body)
 	}
@@ -78,7 +78,7 @@ func TestAgentAssignmentDeadline(t *testing.T) {
 	a, srv := newTestApp(t)
 	admin := signedIn(t, a, srv, store.RoleAdmin)
 
-	_, body := uploadAgentVersion(t, admin, "1.2.3", "bytes")
+	_, body := uploadAgentVersion(t, admin, "1.2.3", "bytes stamped 1.2.3")
 	v := decodeJSON[agentVersionResp](t, body)
 
 	status, body := admin.do(http.MethodPost, "/assignments", map[string]any{
@@ -111,7 +111,7 @@ func TestAgentDownloadsOnlyAssignedBuilds(t *testing.T) {
 	admin := signedIn(t, a, srv, store.RoleAdmin)
 	_, agent := enrollDevice(t, a, srv, "DESKTOP-UPDATING")
 
-	const payload = "a pretend agent binary"
+	const payload = "a pretend agent binary stamped 1.2.3"
 	_, body := uploadAgentVersion(t, admin, "1.2.3", payload)
 	v := decodeJSON[agentVersionResp](t, body)
 
@@ -159,7 +159,7 @@ func TestAgentUpdateResultIsRecorded(t *testing.T) {
 	admin := signedIn(t, a, srv, store.RoleAdmin)
 	_, agent := enrollDevice(t, a, srv, "DESKTOP-UPDATING")
 
-	_, body := uploadAgentVersion(t, admin, "2.0.0", "bytes")
+	_, body := uploadAgentVersion(t, admin, "2.0.0", "bytes stamped 2.0.0")
 	v := decodeJSON[agentVersionResp](t, body)
 	admin.do(http.MethodPost, "/assignments", map[string]any{
 		"item_kind": "agent", "item_id": v.ID,
@@ -195,7 +195,7 @@ func TestAgentBuildReachesTheAgent(t *testing.T) {
 	admin := signedIn(t, a, srv, store.RoleAdmin)
 	_, agent := enrollDevice(t, a, srv, "DESKTOP-UPDATING")
 
-	_, body := uploadAgentVersion(t, admin, "1.2.3", "bytes")
+	_, body := uploadAgentVersion(t, admin, "1.2.3", "bytes stamped 1.2.3")
 	v := decodeJSON[agentVersionResp](t, body)
 	admin.do(http.MethodPost, "/assignments", map[string]any{
 		"item_kind": "agent", "item_id": v.ID,

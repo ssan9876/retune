@@ -3,6 +3,7 @@
 package agentversions
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -76,6 +77,25 @@ func (s *Service) Upload(ctx context.Context, in NewVersion, body io.Reader) (st
 		return store.AgentVersion{}, fmt.Errorf("%w: %v", ErrBadRequest, err)
 	}
 
+	// A build whose version was never stamped in reports the placeholder for
+	// ever, and the agent refuses to install one, so accepting it would only
+	// produce a build that can be assigned to a whole fleet and can never
+	// succeed anywhere. This is the last moment there is somebody at a console
+	// to tell about it. The scan is for the declared version and nothing else:
+	// the placeholder string is in every binary's rodata whether the stamp
+	// happened or not, so its presence proves nothing either way.
+	stamped, err := s.stampedWith(version)
+	if err != nil {
+		_ = s.Artifacts.Remove(version)
+		return store.AgentVersion{}, err
+	}
+	if !stamped {
+		_ = s.Artifacts.Remove(version)
+		return store.AgentVersion{}, fmt.Errorf(
+			"%w: the uploaded binary does not contain version %q; was it built with the version stamp?",
+			ErrBadRequest, version)
+	}
+
 	v := store.AgentVersion{
 		ID: uuid.Must(uuid.NewV7()), Version: version, SHA256: sum, SizeBytes: size,
 		Notes: in.Notes, CreatedAt: s.now(), CreatedBy: in.Actor,
@@ -98,6 +118,54 @@ func (s *Service) Upload(ctx context.Context, in NewVersion, body io.Reader) (st
 		return store.AgentVersion{}, uploadError(err)
 	}
 	return v, nil
+}
+
+// scanChunk is how much of a stored build is held in memory at a time while
+// looking for the version string. The cap on an upload is 128 MiB and a
+// server may be handling several at once, so the file is read in pieces
+// rather than whole.
+const scanChunk = 1 << 20
+
+// stampedWith reports whether the stored bytes for version contain that
+// version string anywhere.
+func (s *Service) stampedWith(version string) (bool, error) {
+	r, _, err := s.Artifacts.Open(version)
+	if err != nil {
+		return false, err
+	}
+	defer r.Close()
+	return containsVersion(r, version)
+}
+
+// containsVersion streams r looking for version. Each chunk keeps the last
+// len(version)-1 bytes of the one before it, so a match that straddles the
+// boundary between two reads is still found -- otherwise a perfectly well
+// stamped build would be rejected depending on where its version happened to
+// land in the file.
+func containsVersion(r io.Reader, version string) (bool, error) {
+	needle := []byte(version)
+	if len(needle) == 0 || len(needle) > scanChunk {
+		return false, nil
+	}
+	buf := make([]byte, scanChunk)
+	carried := 0
+	for {
+		n, err := io.ReadFull(r, buf[carried:])
+		have := carried + n
+		if bytes.Contains(buf[:have], needle) {
+			return true, nil
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+				return false, nil
+			}
+			return false, err
+		}
+		// Carry the tail forward: a match can be at most len(needle)-1 bytes
+		// into the next chunk before it is wholly inside it.
+		carried = len(needle) - 1
+		copy(buf, buf[have-carried:have])
+	}
 }
 
 // uploadError translates what CreateAgentVersion's transaction can fail with

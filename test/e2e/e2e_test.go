@@ -357,7 +357,10 @@ func TestAgentSelfUpdateEndToEnd(t *testing.T) {
 
 	// The build is uploaded as a raw body, not JSON: the version and notes
 	// travel as query parameters instead.
-	const buildBytes = "a pretend agent binary, self-update end to end"
+	// The version string has to be in there: the server refuses a build that
+	// does not carry the version it was declared as, because a build with no
+	// stamp reports the placeholder for ever and can never succeed anywhere.
+	const buildBytes = "a pretend agent binary 1.2.3, self-update end to end"
 	uploadReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		srv.URL+"/api/admin/v1/agent-versions?version=1.2.3&notes=e2e", strings.NewReader(buildBytes))
 	if err != nil {

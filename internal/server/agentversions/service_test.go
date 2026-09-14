@@ -28,11 +28,11 @@ func TestUploadRecordsTheHashItComputed(t *testing.T) {
 	svc := service(t, st)
 
 	v, err := svc.Upload(ctx, agentversions.NewVersion{Version: "1.2.3", Actor: "ops"},
-		strings.NewReader("a pretend agent"))
+		strings.NewReader("a pretend agent 1.2.3"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v.SHA256 == "" || v.SizeBytes != int64(len("a pretend agent")) {
+	if v.SHA256 == "" || v.SizeBytes != int64(len("a pretend agent 1.2.3")) {
 		t.Fatalf("version = %+v", v)
 	}
 
@@ -44,7 +44,7 @@ func TestUploadRecordsTheHashItComputed(t *testing.T) {
 	if size != v.SizeBytes {
 		t.Errorf("Open reported %d bytes, metadata says %d", size, v.SizeBytes)
 	}
-	if body, _ := io.ReadAll(r); string(body) != "a pretend agent" {
+	if body, _ := io.ReadAll(r); string(body) != "a pretend agent 1.2.3" {
 		t.Errorf("read back %q", body)
 	}
 }
@@ -57,13 +57,41 @@ func TestUploadRefusesADuplicateVersion(t *testing.T) {
 	svc := service(t, st)
 
 	if _, err := svc.Upload(ctx, agentversions.NewVersion{Version: "1.0.0", Actor: "ops"},
-		strings.NewReader("first")); err != nil {
+		strings.NewReader("first 1.0.0")); err != nil {
 		t.Fatal(err)
 	}
 	_, err := svc.Upload(ctx, agentversions.NewVersion{Version: "1.0.0", Actor: "ops"},
-		strings.NewReader("second"))
+		strings.NewReader("second 1.0.0"))
 	if !errors.Is(err, agentversions.ErrVersionTaken) {
 		t.Fatalf("want ErrVersionTaken, got %v", err)
+	}
+}
+
+// A build whose version was never stamped in reports the placeholder for
+// ever: it would be told to update, report a version that is not the one
+// assigned, and be told to update again, on every check-in on every machine
+// it reached. The agent refuses to install such a build, so accepting the
+// upload only produces a build that can be assigned and can never succeed.
+// Catching it here, while there is still somebody at a console to tell, is
+// the only moment it can be fixed cheaply.
+func TestUploadRefusesABinaryThatDoesNotContainItsVersion(t *testing.T) {
+	st := storetest.New(t)
+	ctx := context.Background()
+	svc := service(t, st)
+
+	_, err := svc.Upload(ctx, agentversions.NewVersion{Version: "5.0.0", Actor: "ops"},
+		strings.NewReader("a binary built without -ldflags"))
+	if !errors.Is(err, agentversions.ErrBadRequest) {
+		t.Fatalf("want ErrBadRequest, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "version stamp") {
+		t.Errorf("the message should say what to do about it, got %q", err)
+	}
+	// The bytes go too: a stored artifact with no row behind it is
+	// indistinguishable from a completed upload once somebody looks at disk,
+	// and it would block a corrected upload of the same version.
+	if _, _, err := svc.Artifacts.Open("5.0.0"); err == nil {
+		t.Error("a refused upload must not leave its bytes behind")
 	}
 }
 
@@ -92,7 +120,7 @@ func TestDeleteRemovesBytesAndAssignments(t *testing.T) {
 	svc := service(t, st)
 
 	v, err := svc.Upload(ctx, agentversions.NewVersion{Version: "2.0.0", Actor: "ops"},
-		strings.NewReader("bytes"))
+		strings.NewReader("bytes 2.0.0"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +168,7 @@ func TestRecordResultSetsItemStatus(t *testing.T) {
 	svc := service(t, st)
 
 	v, err := svc.Upload(ctx, agentversions.NewVersion{Version: "4.0.0", Actor: "ops"},
-		strings.NewReader("bytes"))
+		strings.NewReader("bytes 4.0.0"))
 	if err != nil {
 		t.Fatal(err)
 	}
