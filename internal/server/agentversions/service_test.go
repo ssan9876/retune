@@ -118,3 +118,49 @@ func TestDeleteRemovesBytesAndAssignments(t *testing.T) {
 		t.Errorf("assignments should have gone too, got %+v", rows)
 	}
 }
+
+func newDevice(t *testing.T, q *store.Queries, hostname string) store.Device {
+	t.Helper()
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	d := store.Device{
+		ID: uuid.Must(uuid.NewV7()), Hostname: hostname, Serial: "SN-" + hostname, SMBIOSUUID: "U-" + hostname,
+		Status: store.DeviceActive, CertSerial: "c-" + hostname, CertExpiresAt: now.Add(time.Hour), EnrolledAt: now,
+	}
+	if err := q.CreateDevice(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
+// RecordResult is what the console's per-device status comes from, so what it
+// writes has to be readable back through the same query the console uses.
+func TestRecordResultSetsItemStatus(t *testing.T) {
+	st := storetest.New(t)
+	ctx := context.Background()
+	svc := service(t, st)
+
+	v, err := svc.Upload(ctx, agentversions.NewVersion{Version: "4.0.0", Actor: "ops"},
+		strings.NewReader("bytes"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := newDevice(t, st.Q(), "PC-RESULT")
+
+	if err := svc.RecordResult(ctx, d.ID, v.ID, protocol.AgentUpdateResult{
+		Version: "4.0.0", Status: protocol.ResultSucceeded, Detail: "running 4.0.0",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, _, err := st.Q().ListItemStatus(ctx, protocol.ItemKindAgent, v.ID, "", store.Page{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("want one status row, got %+v", rows)
+	}
+	got := rows[0]
+	if got.Status != store.ItemSucceeded || got.Detail != "running 4.0.0" || got.Version != 1 {
+		t.Errorf("status = %+v, want succeeded, detail %q, version 1", got, "running 4.0.0")
+	}
+}

@@ -95,16 +95,21 @@ func (s *Service) Upload(ctx context.Context, in NewVersion, body io.Reader) (st
 		// an artifact with no metadata pointing at it, indistinguishable from
 		// a completed upload once someone looks at the disk.
 		_ = s.Artifacts.Remove(version)
-		// The pre-check above is racy against a concurrent upload of the same
-		// version: both can pass it before either writes a row. The unique
-		// index is what actually catches that, and its violation must read
-		// like the pre-check's, not like an internal error.
-		if errors.Is(err, store.ErrDuplicate) {
-			return store.AgentVersion{}, ErrVersionTaken
-		}
-		return store.AgentVersion{}, err
+		return store.AgentVersion{}, uploadError(err)
 	}
 	return v, nil
+}
+
+// uploadError translates what CreateAgentVersion's transaction can fail with
+// into what a caller of Upload should see. The pre-check above is racy
+// against a concurrent upload of the same version: both can pass it before
+// either writes a row. The unique index is what actually catches that, and
+// its violation must read like the pre-check's, not like an internal error.
+func uploadError(err error) error {
+	if errors.Is(err, store.ErrDuplicate) {
+		return ErrVersionTaken
+	}
+	return err
 }
 
 // Get looks up a build by id.
