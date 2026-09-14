@@ -160,6 +160,67 @@ func TestUnassignedProfileIsNotReadable(t *testing.T) {
 	}
 }
 
+// The write side needs the same gate as the read side: an agent must not be
+// able to forge a compliance status for a profile it was never given, even
+// though the profile genuinely exists at the time it tries.
+func TestAgentCannotReportStatusForUnassignedProfiles(t *testing.T) {
+	a, srv := newTestApp(t)
+	admin := signedIn(t, a, srv, store.RoleAdmin)
+	_, agent := enrollDevice(t, a, srv, "DESKTOP-FORGER")
+
+	status, body := admin.do(http.MethodPost, "/profiles", map[string]any{
+		"name": "Baseline", "settings": profileSettings(),
+	})
+	if status != http.StatusCreated {
+		t.Fatalf("create: %d %s", status, body)
+	}
+	profile := decodeJSON[profileResp](t, body)
+
+	url := fmt.Sprintf("%s/api/agent/v1/profiles/%s/status", srv.URL, profile.ID)
+	status, _ = send(t, agent, http.MethodPost, url, protocol.ProfileStatus{
+		Version: 1, Settings: []protocol.SettingResult{
+			{Identity: "service:spooler", Status: protocol.SettingRemediated},
+		},
+	})
+	if status != http.StatusNotFound {
+		t.Fatalf("a status for an unassigned profile must not be accepted, got %d", status)
+	}
+	status, body = admin.do(http.MethodGet, "/items/profile/"+profile.ID+"/status", nil)
+	if status != http.StatusOK {
+		t.Fatalf("item status: %d %s", status, body)
+	}
+	item := decodeJSON[struct {
+		Items []struct {
+			Status string `json:"status"`
+		} `json:"items"`
+	}](t, body)
+	if len(item.Items) != 0 {
+		t.Fatalf("a rejected status must not be recorded, got %+v", item.Items)
+	}
+
+	assignProfile(t, admin, profile.ID, false)
+	status, body = send(t, agent, http.MethodPost, url, protocol.ProfileStatus{
+		Version: 1, Settings: []protocol.SettingResult{
+			{Identity: "service:spooler", Status: protocol.SettingRemediated},
+		},
+	})
+	if status != http.StatusNoContent {
+		t.Fatalf("once assigned, the same status should be accepted: %d %s", status, body)
+	}
+	status, body = admin.do(http.MethodGet, "/items/profile/"+profile.ID+"/status", nil)
+	if status != http.StatusOK {
+		t.Fatalf("item status: %d %s", status, body)
+	}
+	item = decodeJSON[struct {
+		Items []struct {
+			Status string `json:"status"`
+		} `json:"items"`
+	}](t, body)
+	if len(item.Items) != 1 {
+		t.Fatalf("the accepted status should be recorded, got %+v", item.Items)
+	}
+}
+
 func TestBadSettingsAreRefusedWithTheReason(t *testing.T) {
 	a, srv := newTestApp(t)
 	admin := signedIn(t, a, srv, store.RoleAdmin)
