@@ -39,6 +39,7 @@ type fakeControl struct {
 	startErr             error
 	setBinPathErr        error
 	recoveryErr          error
+	configErr            error
 	// onStart runs when the service is started, standing in for the new agent
 	// coming up and doing something.
 	onStart func()
@@ -47,6 +48,9 @@ type fakeControl struct {
 func (f *fakeControl) Config() (string, []string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.configErr != nil {
+		return "", nil, f.configErr
+	}
 	return f.binPath, f.args, nil
 }
 
@@ -381,7 +385,13 @@ func TestSuperviseRecordsAFailureInsideRollback(t *testing.T) {
 	// straight into rollback.
 	past := time.Now().Add(-time.Minute)
 
-	t.Run("stop fails during rollback", func(t *testing.T) {
+	// The restore never got as far as repointing, so the service is still
+	// wired to the new build. Writing rolled_back there would be a lie: if
+	// the recovery actions bring the new build up, it would check in and
+	// report "rolled back" while running the version it supposedly rolled
+	// back from. Pending is the honest word -- CheckedIn settles it if the
+	// new build ever reaches the server, and a starting old build expires it.
+	t.Run("stop fails during rollback, leaving the new build wired in", func(t *testing.T) {
 		dir := t.TempDir()
 		rec := pending(dir, past)
 		if err := selfupdate.WriteRecord(dir, rec); err != nil {
@@ -399,11 +409,39 @@ func TestSuperviseRecordsAFailureInsideRollback(t *testing.T) {
 			t.Fatal("a rollback that cannot stop the service should be an error")
 		}
 		got, found, _ := selfupdate.ReadRecord(dir)
-		if !found || got.Status != selfupdate.StatusRolledBack {
-			t.Fatalf("a failed rollback must still be recorded, got %+v (found=%v)", got, found)
+		if !found || got.Status != selfupdate.StatusPending {
+			t.Fatalf("a restore that left the new build wired in must not claim a rollback, got %+v (found=%v)", got, found)
 		}
 		if !strings.Contains(got.Detail, "stop") {
 			t.Errorf("detail should name the stop step that failed, got %q", got.Detail)
+		}
+		if !strings.Contains(got.Detail, "still wired to the new build") {
+			t.Errorf("detail should say where the service actually points, got %q", got.Detail)
+		}
+	})
+
+	// If the service cannot even be asked where it points, there is nothing
+	// to weigh against the record, and the rollback verdict stands.
+	t.Run("the service cannot be read after a failed restore", func(t *testing.T) {
+		dir := t.TempDir()
+		rec := pending(dir, past)
+		if err := selfupdate.WriteRecord(dir, rec); err != nil {
+			t.Fatal(err)
+		}
+		c := &fakeControl{
+			binPath: rec.FromBinPath, args: rec.FromArgs,
+			failStopOnCall: 2, stopErr: errors.New("stuck stopping the new build"),
+		}
+		// Step 2 and step 3 both read nothing from Config, so failing it only
+		// affects the check inside rollback.
+		c.configErr = errors.New("the service control manager will not answer")
+
+		if err := supervisor(dir, c).Supervise(context.Background()); err == nil {
+			t.Fatal("a rollback that cannot stop the service should be an error")
+		}
+		got, found, _ := selfupdate.ReadRecord(dir)
+		if !found || got.Status != selfupdate.StatusRolledBack {
+			t.Fatalf("with nothing to contradict it, the rollback stands, got %+v (found=%v)", got, found)
 		}
 	})
 

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -186,6 +187,19 @@ func (s *Supervisor) pruneOldBuilds(rec Record) {
 	}
 }
 
+// stillOnNewBuild reports whether the service is, right now, pointed at the
+// build an update staged. It is asked only after a restore failed, to decide
+// what the record is allowed to claim. A controller that cannot answer leaves
+// the rollback verdict standing: there is nothing to contradict it with.
+func (s *Supervisor) stillOnNewBuild(rec Record) bool {
+	binPath, _, err := s.Control.Config()
+	if err != nil {
+		s.Log.Error("failed to read the service configuration after a failed restore", "err", err)
+		return false
+	}
+	return strings.EqualFold(filepath.Clean(binPath), filepath.Clean(rec.ToBinPath))
+}
+
 // stopService stops the service under stopTimeout, so a service that hangs on
 // the way down cannot hold the whole update open indefinitely.
 func (s *Supervisor) stopService(ctx context.Context) error {
@@ -232,6 +246,19 @@ func (s *Supervisor) rollback(ctx context.Context, rec Record, detail string) er
 	if err := s.restoreBuild(ctx, rec); err != nil {
 		s.Log.Error("failed to restore previous build during rollback", "err", err)
 		rolled.Detail = fmt.Sprintf("%s; restoring the previous build also failed: %v", detail, err)
+		// A restore can fail before it repoints anything, which leaves the
+		// service wired to the build this rollback was meant to undo. Calling
+		// that rolled_back would be a lie the new build then tells the server
+		// about itself, if the recovery actions ever bring it up: it would
+		// check in and report a rollback while running the very version that
+		// supposedly failed. Pending is the honest word for a device nobody
+		// has decided about yet -- CheckedIn settles it if the new build does
+		// reach the server, and a starting old build expires it.
+		if s.stillOnNewBuild(rec) {
+			rolled.Status = StatusPending
+			rolled.Detail = fmt.Sprintf("%s; restoring the previous build failed: %v; "+
+				"the service is still wired to the new build", detail, err)
+		}
 		if werr := WriteRecord(s.Dir, rolled); werr != nil {
 			s.Log.Error("failed to record rollback after a failed restore", "err", werr)
 			return fmt.Errorf("restoring previous build: %w (and recording the rollback also failed: %v)", err, werr)
