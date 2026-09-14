@@ -43,11 +43,13 @@ func TestAgentVersionRoundTrip(t *testing.T) {
 		t.Errorf("lookup by version found %v, want %v", byVersion.ID, v.ID)
 	}
 
-	// The same version twice is a mistake, not a new build.
+	// The same version twice is a mistake, not a new build. The unique index
+	// is the backstop behind any racy pre-check a caller does first, so its
+	// violation must come back as the sentinel, not a raw pgx error.
 	dup := v
 	dup.ID = uuid.Must(uuid.NewV7())
-	if err := q.CreateAgentVersion(ctx, dup); err == nil {
-		t.Error("a duplicate version should be refused")
+	if err := q.CreateAgentVersion(ctx, dup); !errors.Is(err, store.ErrDuplicate) {
+		t.Errorf("want ErrDuplicate, got %v", err)
 	}
 
 	if _, err := q.GetAgentVersion(ctx, uuid.Must(uuid.NewV7())); !errors.Is(err, store.ErrNotFound) {

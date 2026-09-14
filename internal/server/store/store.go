@@ -16,6 +16,9 @@ import (
 // ErrNotFound is returned when a looked-up row does not exist.
 var ErrNotFound = errors.New("not found")
 
+// ErrDuplicate is returned when an insert violates a unique constraint.
+var ErrDuplicate = errors.New("duplicate")
+
 // DefaultTenantID is the single tenant used until multi-tenancy ships.
 var DefaultTenantID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
 

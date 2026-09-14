@@ -95,6 +95,13 @@ func (s *Service) Upload(ctx context.Context, in NewVersion, body io.Reader) (st
 		// an artifact with no metadata pointing at it, indistinguishable from
 		// a completed upload once someone looks at the disk.
 		_ = s.Artifacts.Remove(version)
+		// The pre-check above is racy against a concurrent upload of the same
+		// version: both can pass it before either writes a row. The unique
+		// index is what actually catches that, and its violation must read
+		// like the pre-check's, not like an internal error.
+		if errors.Is(err, store.ErrDuplicate) {
+			return store.AgentVersion{}, ErrVersionTaken
+		}
 		return store.AgentVersion{}, err
 	}
 	return v, nil
@@ -178,20 +185,16 @@ func (s *Service) RecordResult(ctx context.Context, deviceID, id uuid.UUID, r pr
 		detail = fmt.Sprintf("rolled back from %s to %s", r.RolledBackFrom, r.Version)
 	}
 
-	// ReportedAt is when the agent observed the outcome, which predates
-	// whenever this request happens to arrive at the server. Fall back to
-	// now only for a caller that left it unset.
-	updatedAt := r.ReportedAt
-	if updatedAt.IsZero() {
-		updatedAt = s.now()
-	}
-
+	// UpdatedAt is server time, not r.ReportedAt: endpoint clocks skew, and
+	// this column means "when did the server learn this", same as apps and
+	// scripts. ReportedAt still travels on the wire for the agent's own log.
 	return s.Store.Q().SetItemStatus(ctx, store.ItemStatus{
 		DeviceID: deviceID, ItemKind: protocol.ItemKindAgent, ItemID: id,
 		Status: status, Detail: detail,
-		// Agent builds are identified by a version string, not the integer
-		// version this field was built for, so it is left at its zero value.
-		Version:   0,
-		UpdatedAt: updatedAt,
+		// An agent build is immutable, so its item version is always 1 - the
+		// same version check-in offers the device - never the integer this
+		// field would carry for a script or app that can change under one id.
+		Version:   1,
+		UpdatedAt: s.now(),
 	})
 }
