@@ -2,14 +2,17 @@ package selfupdate
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
+	"retune/internal/agent/client"
 	"retune/internal/protocol"
 )
 
@@ -80,15 +83,27 @@ func (s *Syncer) Sync(ctx context.Context, items []protocol.Item) error {
 	// report it, since the agent that decided to roll back is gone.
 	if s.Rollback != nil {
 		rec := *s.Rollback
-		if err := s.report(ctx, rec.ItemID, rec.FromVersion, protocol.ResultFailed, rec.ToVersion, rec.Detail); err != nil {
-			// Left set, so the next cycle tries again instead of losing the
-			// only record of what happened.
-			s.log().Error("failed to report rollback", "error", err)
-		} else {
+		err := s.report(ctx, rec.ItemID, rec.FromVersion, protocol.ResultFailed, rec.ToVersion, rec.Detail)
+		switch {
+		case err == nil:
 			if err := RemoveRecord(s.Dir); err != nil {
 				s.log().Error("failed to remove reported rollback record", "error", err)
 			}
 			s.Rollback = nil
+		case isGone(err):
+			// Ruling: a 404 here means the build was deleted or unassigned
+			// server-side, so nothing will ever accept this report. Retrying
+			// it on every check-in forever is worse than giving up on it, so
+			// this is treated as resolved rather than transient.
+			s.log().Warn("rollback report was rejected as gone; giving up on it", "error", err)
+			if err := RemoveRecord(s.Dir); err != nil {
+				s.log().Error("failed to remove abandoned rollback record", "error", err)
+			}
+			s.Rollback = nil
+		default:
+			// Left set, so the next cycle tries again instead of losing the
+			// only record of what happened.
+			s.log().Error("failed to report rollback", "error", err)
 		}
 	}
 
@@ -145,6 +160,19 @@ func (s *Syncer) syncOne(ctx context.Context, item protocol.Item) error {
 // way is reported: an update merely under way is not, since the supervisor
 // owns that report.
 func (s *Syncer) stage(ctx context.Context, item protocol.Item, opts protocol.AgentOptions, def protocol.AgentVersionResponse) error {
+	if s.Control == nil {
+		// Refuse before touching anything. A record written with an empty
+		// FromBinPath/FromArgs would strip --data-dir from a hand-installed
+		// service on repoint -- it would boot against the wrong data
+		// directory and never check in -- and a rollback would then feed an
+		// empty path into SetBinPath, bricking the service one way or the
+		// other. Pretending to act here is worse than refusing.
+		if repErr := s.report(ctx, item.ID, def.Version, protocol.ResultFailed, "", ErrWindowsOnly.Error()); repErr != nil {
+			return fmt.Errorf("report refusal: %w", repErr)
+		}
+		return nil
+	}
+
 	versionDir := filepath.Join(s.Dir, "bin", def.Version)
 	if err := os.MkdirAll(versionDir, 0o755); err != nil {
 		return fmt.Errorf("create version dir: %w", err)
@@ -178,20 +206,15 @@ func (s *Syncer) stage(ctx context.Context, item protocol.Item, opts protocol.Ag
 
 	// Only the live service knows whether this device was installed by the
 	// MSI (no arguments) or by hand (--data-dir); nothing else can tell.
-	var fromBinPath string
-	var fromArgs []string
-	if s.Control != nil {
-		var err error
-		fromBinPath, fromArgs, err = s.Control.Config()
-		if err != nil {
-			if rmErr := os.RemoveAll(versionDir); rmErr != nil {
-				s.log().Error("failed to remove staged build", "error", rmErr)
-			}
-			if repErr := s.report(ctx, item.ID, def.Version, protocol.ResultFailed, "", err.Error()); repErr != nil {
-				s.log().Error("failed to report controller failure", "error", repErr)
-			}
-			return fmt.Errorf("read service config: %w", err)
+	fromBinPath, fromArgs, err := s.Control.Config()
+	if err != nil {
+		if rmErr := os.RemoveAll(versionDir); rmErr != nil {
+			s.log().Error("failed to remove staged build", "error", rmErr)
 		}
+		if repErr := s.report(ctx, item.ID, def.Version, protocol.ResultFailed, "", err.Error()); repErr != nil {
+			s.log().Error("failed to report controller failure", "error", repErr)
+		}
+		return fmt.Errorf("read service config: %w", err)
 	}
 
 	now := s.now()
@@ -210,18 +233,52 @@ func (s *Syncer) stage(ctx context.Context, item protocol.Item, opts protocol.Ag
 		if rmErr := os.RemoveAll(versionDir); rmErr != nil {
 			s.log().Error("failed to remove staged build", "error", rmErr)
 		}
+		if repErr := s.report(ctx, item.ID, def.Version, protocol.ResultFailed, "", err.Error()); repErr != nil {
+			s.log().Error("failed to report record failure", "error", repErr)
+		}
 		return fmt.Errorf("write record: %w", err)
 	}
 
 	// A copy, because the service image is locked and about to be stopped.
 	supervisorPath := filepath.Join(s.Dir, supervisorName)
 	if err := copyRunningExecutable(supervisorPath); err != nil {
-		return fmt.Errorf("copy supervisor: %w", err)
+		return s.abandon(ctx, item.ID, def.Version, versionDir, fmt.Sprintf("copying the supervisor: %v", err))
+	}
+	if s.Spawn == nil {
+		// Treated exactly like a Spawn error, not a panic, and this all
+		// happens with s.mu held: a nil Spawn must fail the update, not the
+		// whole syncer.
+		return s.abandon(ctx, item.ID, def.Version, versionDir, "no Spawn function was configured")
 	}
 	if err := s.Spawn(supervisorPath); err != nil {
-		return fmt.Errorf("spawn supervisor: %w", err)
+		return s.abandon(ctx, item.ID, def.Version, versionDir, fmt.Sprintf("spawning the supervisor: %v", err))
 	}
 	return nil
+}
+
+// abandon undoes a staged update that failed at hand-off. Without this, a
+// broken copy or Spawn would leave the record pending forever: Decide would
+// answer "already under way" on every future check-in, with no supervisor
+// left to ever resolve it -- a silently dead device.
+func (s *Syncer) abandon(ctx context.Context, id, version, versionDir, detail string) error {
+	if err := RemoveRecord(s.Dir); err != nil {
+		s.log().Error("failed to remove abandoned update record", "error", err)
+	}
+	if err := os.RemoveAll(versionDir); err != nil {
+		s.log().Error("failed to remove abandoned staged build", "error", err)
+	}
+	if err := s.report(ctx, id, version, protocol.ResultFailed, "", detail); err != nil {
+		s.log().Error("failed to report abandoned update", "error", err)
+	}
+	return errors.New(detail)
+}
+
+// isGone reports whether err is the server telling us, definitively, that
+// there is nothing to report against any more -- a build that was deleted or
+// unassigned. Any other error is treated as transient.
+func isGone(err error) bool {
+	var he *client.HTTPError
+	return errors.As(err, &he) && he.Status == http.StatusNotFound
 }
 
 func (s *Syncer) download(ctx context.Context, id, wantSHA256, partPath string) error {

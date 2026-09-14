@@ -67,13 +67,16 @@ func agentItem(id string, opts *protocol.AgentOptions) protocol.Item {
 }
 
 // A clean update: the build is downloaded, verified, staged, and the
-// supervisor is handed off to.
+// supervisor is handed off to. The record's FromBinPath/FromArgs must come
+// from the live service, not be left empty -- an empty FromArgs would strip
+// --data-dir from a hand-installed service on repoint.
 func TestSyncStagesAndHandsOff(t *testing.T) {
 	dir := t.TempDir()
 	c := &fakeClient{version: "2.0.0", payload: []byte("new agent bytes")}
+	control := &fakeControl{binPath: `C:\Program Files\Retune\retune-agent.exe`, args: []string{"--data-dir", dir}}
 	var spawned string
 	s := &selfupdate.Syncer{
-		Dir: dir, Client: c, Running: "1.0.0", Injected: true,
+		Dir: dir, Client: c, Control: control, Running: "1.0.0", Injected: true,
 		Log: slog.New(slog.DiscardHandler), Now: time.Now,
 		Spawn: func(p string) error { spawned = p; return nil },
 	}
@@ -94,6 +97,13 @@ func TestSyncStagesAndHandsOff(t *testing.T) {
 	if rec.FromVersion != "1.0.0" {
 		t.Errorf("the record must remember what to go back to, got %q", rec.FromVersion)
 	}
+	wantBinPath, wantArgs, _ := control.Config()
+	if rec.FromBinPath != wantBinPath {
+		t.Errorf("FromBinPath must come from the live service, got %q want %q", rec.FromBinPath, wantBinPath)
+	}
+	if len(rec.FromArgs) != len(wantArgs) || rec.FromArgs[0] != wantArgs[0] || rec.FromArgs[1] != wantArgs[1] {
+		t.Errorf("FromArgs must come from the live service, got %v want %v", rec.FromArgs, wantArgs)
+	}
 }
 
 // A payload whose hash does not match is refused, nothing is staged, and the
@@ -101,9 +111,10 @@ func TestSyncStagesAndHandsOff(t *testing.T) {
 func TestSyncRefusesAMismatchedHash(t *testing.T) {
 	dir := t.TempDir()
 	c := &fakeClient{version: "2.0.0", payload: []byte("bytes"), downloadErr: errors.New("sha256 mismatch")}
+	control := &fakeControl{binPath: `C:\Program Files\Retune\retune-agent.exe`}
 	var spawned bool
 	s := &selfupdate.Syncer{
-		Dir: dir, Client: c, Running: "1.0.0", Injected: true,
+		Dir: dir, Client: c, Control: control, Running: "1.0.0", Injected: true,
 		Log: slog.New(slog.DiscardHandler), Now: time.Now,
 		Spawn: func(string) error { spawned = true; return nil },
 	}
@@ -201,7 +212,7 @@ func TestSyncIgnoresOtherKinds(t *testing.T) {
 		Spawn: func(string) error { t.Fatal("nothing should be handed off"); return nil },
 	}
 
-	item := protocol.Item{Kind: protocol.ItemKindApp, ID: "some-script", Version: 1}
+	item := protocol.Item{Kind: protocol.ItemKindScript, ID: "some-script", Version: 1}
 	if err := s.Sync(context.Background(), []protocol.Item{item}); err != nil {
 		t.Fatal(err)
 	}
@@ -210,5 +221,63 @@ func TestSyncIgnoresOtherKinds(t *testing.T) {
 	}
 	if len(c.reports) != 0 {
 		t.Errorf("nothing should have been reported, got %+v", c.reports)
+	}
+	if _, found, _ := selfupdate.ReadRecord(dir); found {
+		t.Error("nothing should have been recorded")
+	}
+}
+
+// Control is nil on a platform where NewController returned ErrWindowsOnly.
+// Pretending to act would be worse than refusing: without a live service to
+// read, the record it would write strips --data-dir on repoint and can brick
+// a hand-installed service on rollback. So it refuses outright, before any
+// download.
+func TestSyncRefusesWithNoController(t *testing.T) {
+	dir := t.TempDir()
+	c := &fakeClient{version: "2.0.0", payload: []byte("bytes")}
+	s := &selfupdate.Syncer{
+		Dir: dir, Client: c, Control: nil, Running: "1.0.0", Injected: true,
+		Log: slog.New(slog.DiscardHandler), Now: time.Now,
+		Spawn: func(string) error { t.Fatal("nothing should be handed off"); return nil },
+	}
+
+	if err := s.Sync(context.Background(), []protocol.Item{agentItem("v1", nil)}); err != nil {
+		t.Fatal(err)
+	}
+	if c.downloads != 0 {
+		t.Errorf("it must not download without a controller, got %d downloads", c.downloads)
+	}
+	if len(c.reports) != 1 || c.reports[0].Status != protocol.ResultFailed {
+		t.Fatalf("the refusal should be reported, got %+v", c.reports)
+	}
+	if _, found, _ := selfupdate.ReadRecord(dir); found {
+		t.Error("nothing should have been recorded")
+	}
+}
+
+// A hand-off that fails after the build is staged and the record written
+// must not wedge the device: without this cleanup, Decide would answer
+// "already under way" forever, with no supervisor left to ever resolve it.
+func TestSyncAbandonsAFailedHandOff(t *testing.T) {
+	dir := t.TempDir()
+	c := &fakeClient{version: "2.0.0", payload: []byte("new agent bytes")}
+	control := &fakeControl{binPath: `C:\Program Files\Retune\retune-agent.exe`}
+	s := &selfupdate.Syncer{
+		Dir: dir, Client: c, Control: control, Running: "1.0.0", Injected: true,
+		Log: slog.New(slog.DiscardHandler), Now: time.Now,
+		Spawn: func(string) error { return errors.New("could not start the supervisor process") },
+	}
+
+	if err := s.Sync(context.Background(), []protocol.Item{agentItem("v1", nil)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, _ := selfupdate.ReadRecord(dir); found {
+		t.Error("a failed hand-off must not leave a pending record behind")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "bin", "2.0.0")); err == nil {
+		t.Error("a failed hand-off must not leave the staged build behind")
+	}
+	if len(c.reports) != 1 || c.reports[0].Status != protocol.ResultFailed {
+		t.Fatalf("the failed hand-off should be reported, got %+v", c.reports)
 	}
 }
