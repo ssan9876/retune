@@ -11,6 +11,12 @@ import (
 // when the caller does not set one.
 const defaultPoll = 2 * time.Second
 
+// restoreTimeout bounds how long restoring the previous build may take when
+// it is carried out on a context derived from one that is already done (a
+// deadline or a cancellation): the restore must not inherit that doneness, or
+// Stop would return immediately and the unproven build would stay wired in.
+const restoreTimeout = 30 * time.Second
+
 // Supervisor carries out an update recorded in Dir and puts the previous
 // build back if the new one does not check in. It runs from a copy of the
 // outgoing agent, detached, so the code deciding whether the update worked is
@@ -86,7 +92,13 @@ func (s *Supervisor) Supervise(ctx context.Context) error {
 
 	for {
 		cur, found, err := ReadRecord(s.Dir)
-		if err == nil && found && cur.Status == StatusSucceeded {
+		switch {
+		case err != nil:
+			// A transient read failure is not proof of anything either way;
+			// log it (the log is the only witness this runs with) and keep
+			// polling rather than treating it as either success or failure.
+			s.Log.Error("failed to read update record while polling", "err", err)
+		case found && cur.Status == StatusSucceeded:
 			// Step 7: the update stood.
 			s.Log.Info("update checked in, keeping it", "to", rec.ToVersion)
 			if err := RemoveRecord(s.Dir); err != nil {
@@ -101,32 +113,74 @@ func (s *Supervisor) Supervise(ctx context.Context) error {
 
 		select {
 		case <-ctx.Done():
-			return s.rollback(ctx, rec, "supervision was cancelled before the new build checked in")
+			// A cancelled supervisor (SIGTERM, machine shutdown) is not the
+			// build's fault: recording rolled_back would make Decide refuse
+			// this version on this device forever, which is worse than the
+			// unproven binary it would be refusing in its place — recovery
+			// actions plus the next check-in can still resolve that. So we
+			// keep the safety act (restore the previous build) but leave no
+			// verdict behind: remove the record so the next run retries
+			// cleanly instead of finding either pending or rolled_back.
+			s.Log.Warn("supervision cancelled before check-in; restoring previous build without penalizing it", "err", ctx.Err())
+			if err := s.restoreBuild(ctx, rec); err != nil {
+				s.Log.Error("failed to restore previous build after cancellation", "err", err)
+				return fmt.Errorf("restoring previous build after cancellation: %w", err)
+			}
+			if err := RemoveRecord(s.Dir); err != nil {
+				s.Log.Error("failed to remove update record after cancellation", "err", err)
+				return fmt.Errorf("removing update record after cancellation: %w", err)
+			}
+			return ctx.Err()
 		case <-ticker.C:
 		}
 	}
 }
 
-// rollback puts the previous build back. It is step 8: a rollback is an
-// outcome, not an error, so it always returns nil unless recording it fails.
-func (s *Supervisor) rollback(ctx context.Context, rec Record, detail string) error {
-	s.Log.Warn("rolling back update", "detail", detail)
+// restoreBuild stops the service, repoints it at the previous build with its
+// previous arguments, and starts it. It is used both by rollback and by
+// cancellation handling, and always runs Stop against a fresh context: the
+// context in play when a restore becomes necessary is, by construction,
+// already done (deadline exceeded or cancelled), and Stop on a done context
+// returns immediately without actually stopping anything.
+func (s *Supervisor) restoreBuild(ctx context.Context, rec Record) error {
+	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), restoreTimeout)
+	defer cancel()
 
-	if err := s.Control.Stop(ctx); err != nil {
-		s.Log.Error("failed to stop failed new build during rollback", "err", err)
-		return fmt.Errorf("stopping failed new build: %w", err)
+	if err := s.Control.Stop(rctx); err != nil {
+		return fmt.Errorf("stopping new build: %w", err)
 	}
 	if err := s.Control.SetBinPath(rec.FromBinPath, rec.FromArgs); err != nil {
-		s.Log.Error("failed to repoint service back at previous build", "err", err)
 		return fmt.Errorf("setting bin path back to previous build: %w", err)
 	}
 	if err := s.Control.Start(); err != nil {
-		s.Log.Error("failed to start previous build during rollback", "err", err)
 		return fmt.Errorf("starting previous build: %w", err)
 	}
+	return nil
+}
+
+// rollback puts the previous build back. It is step 8: a rollback is an
+// outcome, not an error, so it returns nil once the restore and the record
+// both succeed. If the restore itself fails partway — most dangerously, the
+// service stopped on the old image but never restarted — the record is still
+// written as rolled_back, naming what failed, before returning the error:
+// without that, Decide would see a permanently pending record and neither
+// report the device nor ever retry it.
+func (s *Supervisor) rollback(ctx context.Context, rec Record, detail string) error {
+	s.Log.Warn("rolling back update", "detail", detail)
 
 	rolled := rec
 	rolled.Status = StatusRolledBack
+
+	if err := s.restoreBuild(ctx, rec); err != nil {
+		s.Log.Error("failed to restore previous build during rollback", "err", err)
+		rolled.Detail = fmt.Sprintf("%s; restoring the previous build also failed: %v", detail, err)
+		if werr := WriteRecord(s.Dir, rolled); werr != nil {
+			s.Log.Error("failed to record rollback after a failed restore", "err", werr)
+			return fmt.Errorf("restoring previous build: %w (and recording the rollback also failed: %v)", err, werr)
+		}
+		return fmt.Errorf("restoring previous build: %w", err)
+	}
+
 	rolled.Detail = detail
 	if err := WriteRecord(s.Dir, rolled); err != nil {
 		s.Log.Error("failed to record rollback", "err", err)

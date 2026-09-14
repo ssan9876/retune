@@ -138,6 +138,36 @@ func TestSuperviseKeepsAnUpdateThatChecksIn(t *testing.T) {
 	}
 }
 
+// The happy-path test above would pass even for an implementation that only
+// checked the record once, right after Start, since onStart writes success
+// synchronously before Start returns. This proves Supervise actually keeps
+// re-reading the record on each tick: the check-in lands several polls later,
+// on its own goroutine, the way a real agent taking a moment to reach the
+// server would.
+func TestSuperviseKeepsAnUpdateThatChecksInAfterSeveralPolls(t *testing.T) {
+	dir := t.TempDir()
+	rec := pending(dir, time.Now().Add(time.Minute))
+	if err := selfupdate.WriteRecord(dir, rec); err != nil {
+		t.Fatal(err)
+	}
+	c := &fakeControl{binPath: rec.FromBinPath, args: rec.FromArgs}
+	c.onStart = func() {
+		go func() {
+			time.Sleep(5 * time.Millisecond)
+			done := rec
+			done.Status = selfupdate.StatusSucceeded
+			_ = selfupdate.WriteRecord(dir, done)
+		}()
+	}
+
+	if err := supervisor(dir, c).Supervise(context.Background()); err != nil {
+		t.Fatalf("a successful update should not error: %v", err)
+	}
+	if _, found, _ := selfupdate.ReadRecord(dir); found {
+		t.Error("a settled update should leave no record behind")
+	}
+}
+
 // The failure this milestone exists to prevent: the new build starts but never
 // reaches the server. The previous one must come back.
 func TestSuperviseRollsBackWhenTheNewAgentNeverChecksIn(t *testing.T) {
