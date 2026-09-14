@@ -1446,7 +1446,11 @@ func (c *Client) ReportAgentUpdate(ctx context.Context, id string, r protocol.Ag
 
 - [ ] **Step 1: Write the failing test**
 
-Create `internal/agent/client/client_agentversion_test.go`. Follow the existing tests in that package for how they stand up an `httptest` server and build a `Client` against it.
+Create `internal/agent/client/client_agentversion_test.go`. **Read
+`internal/agent/client/client_test.go` first** and use whatever helper it
+already has for standing up an `httptest` server and building a `Client`
+against it. The sketch below calls `clientFor(t, srv)`; if that helper does not
+exist under that name, use the real one rather than adding a duplicate.
 
 ```go
 // The download is verified against the hash the definition promised, so a
@@ -2344,7 +2348,11 @@ following the shape of the others: a single `script`-kind item, and assertions
 that nothing was fetched, downloaded, reported or handed off.
 
 `fakeClient` needs `fetches`, `downloads` and `reports []protocol.AgentUpdateResult`
-counters, and a `downloadErr` to simulate a hash mismatch.
+counters, and a `downloadErr` to simulate a hash mismatch. `agentItem(id, opts)`
+is a helper you write in the same file, returning
+`protocol.Item{Kind: protocol.ItemKindAgent, ID: id, Version: 1, Options: raw}`
+with the options marshalled from `protocol.DefaultAgentOptions()` when `opts`
+is nil — an agent build is immutable, so its item version is always 1.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -2399,6 +2407,10 @@ git commit -m "feat(agent): stage an assigned build and hand off to the supervis
 - Modify: `internal/agent/session/session.go` — a `SelfUpdate` field, a client adapter, an `ItemSyncer` adapter
 - Modify: `internal/agent/runner/runner.go` — construct it, and report a rollback at startup
 - Modify: `cmd/retune-agent/main.go` — the `supervise-update` subcommand and the usage text
+- Modify: `internal/agent/selfupdate/controller.go` — add `const ServiceName = "Retune"`
+- Create: `internal/agent/selfupdate/spawn.go` — `SpawnSupervisor`, no build tag
+- Create: `internal/agent/selfupdate/spawn_windows.go` — `detachedAttr` for Windows
+- Create: `internal/agent/selfupdate/spawn_other.go` — `detachedAttr` returning nil elsewhere
 - Test: `internal/agent/session/dispatch_test.go` (extend)
 
 **Interfaces:**
@@ -2425,6 +2437,10 @@ func (c selfUpdateClient) FetchAgentVersion(ctx context.Context, id string) (pro
 
 func (c selfUpdateClient) DownloadAgentBinary(ctx context.Context, id, sha string, dst io.Writer) error {
 	return c.s.currentClient().DownloadAgentBinary(ctx, id, sha, dst)
+}
+
+func (c selfUpdateClient) ReportAgentUpdate(ctx context.Context, id string, r protocol.AgentUpdateResult) error {
+	return c.s.currentClient().ReportAgentUpdate(ctx, id, r)
 }
 
 // selfUpdateSyncer adapts the self-update syncer. It is not called with an
