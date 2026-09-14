@@ -2231,9 +2231,14 @@ Create `internal/agent/selfupdate/syncer_test.go` with a fake client and a `Spaw
 func TestSyncStagesAndHandsOff(t *testing.T) {
 	dir := t.TempDir()
 	c := &fakeClient{version: "2.0.0", payload: []byte("new agent bytes")}
+	// The live service is what knows whether this device was installed by
+	// the MSI (no arguments) or by hand (--data-dir); the record must carry
+	// exactly what it reports, or the supervisor cannot put it back.
+	control := &fakeControl{binPath: `C:\Program Files\Retuneetune-agent.exe`,
+		args: []string{"--data-dir", dir}}
 	var spawned string
 	s := &selfupdate.Syncer{
-		Dir: dir, Client: c, Running: "1.0.0", Injected: true,
+		Dir: dir, Client: c, Control: control, Running: "1.0.0", Injected: true,
 		Log: slog.New(slog.DiscardHandler), Now: time.Now,
 		Spawn: func(p string) error { spawned = p; return nil },
 	}
@@ -2253,6 +2258,10 @@ func TestSyncStagesAndHandsOff(t *testing.T) {
 	}
 	if rec.FromVersion != "1.0.0" {
 		t.Errorf("the record must remember what to go back to, got %q", rec.FromVersion)
+	}
+	if rec.FromBinPath != control.binPath || len(rec.FromArgs) != 2 || rec.FromArgs[0] != "--data-dir" {
+		t.Errorf("the record must carry the live service's path and arguments, got %q %v",
+			rec.FromBinPath, rec.FromArgs)
 	}
 }
 
