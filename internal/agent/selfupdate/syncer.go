@@ -54,7 +54,18 @@ type Syncer struct {
 	// hand-off without launching a process.
 	Spawn func(supervisorPath string) error
 
+	// mu serialises whole Sync cycles against each other: the session starts
+	// one per check-in without waiting for the last, and two of them staging
+	// the same build would hand off twice.
 	mu sync.Mutex
+
+	// recordMu guards update.json alone, and deliberately is not mu. Sync
+	// holds mu across a download that can run for as long as the download
+	// timeout, while CheckedIn runs inline on the check-in path: one lock for
+	// both would mean a device in the middle of an update stops checking in
+	// altogether, which is precisely what dispatching syncers in the
+	// background exists to prevent.
+	recordMu sync.Mutex
 }
 
 func (s *Syncer) now() time.Time {
@@ -69,6 +80,28 @@ func (s *Syncer) log() *slog.Logger {
 		return s.Log
 	}
 	return slog.New(slog.DiscardHandler)
+}
+
+// readRecord, writeRecord and removeRecord are every touch this type makes on
+// update.json, all of them under recordMu. Anything that has to read and then
+// write one state -- CheckedIn, markReported -- takes recordMu itself and holds
+// it across both, so no other goroutine can slip a different record in between.
+func (s *Syncer) readRecord() (Record, bool, error) {
+	s.recordMu.Lock()
+	defer s.recordMu.Unlock()
+	return ReadRecord(s.Dir)
+}
+
+func (s *Syncer) writeRecord(rec Record) error {
+	s.recordMu.Lock()
+	defer s.recordMu.Unlock()
+	return WriteRecord(s.Dir, rec)
+}
+
+func (s *Syncer) removeRecord() error {
+	s.recordMu.Lock()
+	defer s.recordMu.Unlock()
+	return RemoveRecord(s.Dir)
 }
 
 // Sync processes the items from one check-in, staging whatever agent build
@@ -123,9 +156,28 @@ func (s *Syncer) Sync(ctx context.Context, items []protocol.Item) error {
 // record stays: it is what stops Decide from installing the same failed
 // version again, possibly within this very check-in, and only a stage of a
 // different version clears it.
+//
+// The record is re-read rather than rewritten from the copy being reported. A
+// report can fail for several check-ins before it gets through, and a different
+// build can be assigned and staged in the meantime; writing the old rollback
+// back over that pending attempt would destroy the only thing its supervisor
+// and any rollback of it have to go on.
 func (s *Syncer) markReported(rec Record) {
-	rec.Reported = true
-	if err := WriteRecord(s.Dir, rec); err != nil {
+	s.recordMu.Lock()
+	defer s.recordMu.Unlock()
+
+	cur, found, err := ReadRecord(s.Dir)
+	if err != nil {
+		s.log().Error("failed to re-read the update record before marking it reported", "error", err)
+		return
+	}
+	if !found || cur.ToVersion != rec.ToVersion || cur.Status != rec.Status {
+		s.log().Info("the update record has moved on since this rollback; leaving it alone",
+			"reported", rec.ToVersion)
+		return
+	}
+	cur.Reported = true
+	if err := WriteRecord(s.Dir, cur); err != nil {
 		s.log().Error("failed to record that a rollback was reported", "error", err)
 	}
 }
@@ -137,9 +189,13 @@ func (s *Syncer) markReported(rec Record) {
 // It is deliberately not gated on Injected. A build that got this far is by
 // definition the one that was staged, and if it somehow was not stamped,
 // Running is the placeholder and will not match the record's ToVersion.
+//
+// It takes recordMu and not mu: the session calls this on the check-in path, and
+// waiting on a Sync that is halfway through a download would stop the device
+// checking in at all.
 func (s *Syncer) CheckedIn() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.recordMu.Lock()
+	defer s.recordMu.Unlock()
 
 	rec, found, err := ReadRecord(s.Dir)
 	if err != nil {
@@ -161,7 +217,7 @@ func (s *Syncer) syncOne(ctx context.Context, item protocol.Item) error {
 	if err != nil {
 		return fmt.Errorf("options: %w", err)
 	}
-	rec, _, err := ReadRecord(s.Dir)
+	rec, _, err := s.readRecord()
 	if err != nil {
 		return fmt.Errorf("read record: %w", err)
 	}
@@ -262,7 +318,7 @@ func (s *Syncer) stage(ctx context.Context, item protocol.Item, opts protocol.Ag
 		Deadline:    now.Add(opts.Deadline()),
 		Status:      StatusPending,
 	}
-	if err := WriteRecord(s.Dir, rec); err != nil {
+	if err := s.writeRecord(rec); err != nil {
 		if rmErr := os.RemoveAll(versionDir); rmErr != nil {
 			s.log().Error("failed to remove staged build", "error", rmErr)
 		}
@@ -299,7 +355,7 @@ func (s *Syncer) stage(ctx context.Context, item protocol.Item, opts protocol.Ag
 // can still reach the original failure rather than a string that only looks
 // like it.
 func (s *Syncer) abandon(ctx context.Context, id, version, versionDir, detail string, cause error) error {
-	if err := RemoveRecord(s.Dir); err != nil {
+	if err := s.removeRecord(); err != nil {
 		s.log().Error("failed to remove abandoned update record", "error", err)
 	}
 	if err := os.RemoveAll(versionDir); err != nil {

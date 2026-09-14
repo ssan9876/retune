@@ -26,6 +26,10 @@ type fakeClient struct {
 	version     string
 	payload     []byte
 	downloadErr error
+	// onDownload, when set, runs inside DownloadAgentBinary, which is how a
+	// test holds a Sync open in the middle of staging a build and watches what
+	// else can still happen meanwhile.
+	onDownload func()
 
 	fetches   int
 	downloads int
@@ -45,6 +49,9 @@ func (c *fakeClient) FetchAgentVersion(ctx context.Context, id string) (protocol
 func (c *fakeClient) DownloadAgentBinary(ctx context.Context, id, wantSHA256 string, dst io.Writer) error {
 	c.downloads++
 	_, _ = dst.Write(c.payload)
+	if c.onDownload != nil {
+		c.onDownload()
+	}
 	return c.downloadErr
 }
 
@@ -399,11 +406,18 @@ func TestSyncRefusesWithNoController(t *testing.T) {
 // The session starts every syncer on its own goroutine once per check-in and
 // does not wait for the previous cycle to finish, so two Sync calls really can
 // overlap on a slow download. The lock inside Sync is what keeps that from
-// staging and handing off the same build twice: the second call finds the
-// pending record the first one wrote, and Decide answers "already under way".
+// staging and handing off the same build twice: the second call waits, finds
+// the pending record the first one wrote, and Decide answers "already under
+// way". The second call is started while the first is demonstrably inside its
+// download, so the overlap is the test's doing and not a matter of timing.
 func TestSyncSerialisesConcurrentCalls(t *testing.T) {
 	dir := t.TempDir()
+	downloading, release := make(chan struct{}), make(chan struct{})
 	c := &fakeClient{version: "2.0.0", payload: []byte("new agent bytes")}
+	c.onDownload = func() {
+		close(downloading)
+		<-release
+	}
 	control := &fakeControl{binPath: `C:\Program Files\Retune\retune-agent.exe`, args: []string{"--data-dir", dir}}
 
 	var mu sync.Mutex
@@ -420,16 +434,19 @@ func TestSyncSerialisesConcurrentCalls(t *testing.T) {
 	}
 
 	items := []protocol.Item{agentItem("v1", nil)}
-	var wg sync.WaitGroup
-	for range 2 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if err := s.Sync(context.Background(), items); err != nil {
-				t.Error(err)
-			}
-		}()
+	sync1 := func() {
+		if err := s.Sync(context.Background(), items); err != nil {
+			t.Error(err)
+		}
 	}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() { defer wg.Done(); sync1() }()
+
+	<-downloading
+	wg.Add(1)
+	go func() { defer wg.Done(); sync1() }()
+	close(release)
 	wg.Wait()
 
 	mu.Lock()
@@ -437,6 +454,113 @@ func TestSyncSerialisesConcurrentCalls(t *testing.T) {
 	if spawns != 1 {
 		t.Errorf("overlapping check-ins must hand off exactly once, got %d", spawns)
 	}
+	if c.fetches != 2 {
+		t.Errorf("both cycles should have run, the second one after the first let go, got %d fetches", c.fetches)
+	}
+}
+
+// A rollback report can fail for several check-ins before it gets through, and
+// in the meantime a different build can be assigned and staged. Marking the
+// report done must not write the old rollback back over that live pending
+// attempt -- which is what rewriting the startup copy of the record whole would
+// do, losing the only thing a supervisor and a rollback have to go on.
+func TestReportingARollbackDoesNotClobberANewerAttempt(t *testing.T) {
+	dir := t.TempDir()
+	rolledBack := selfupdate.Record{
+		ItemID: "v1", FromVersion: "1.0.0", ToVersion: "2.0.0",
+		Status: selfupdate.StatusRolledBack, Detail: "the new agent never checked in",
+	}
+	// What is actually on disk by the time the report succeeds: a newer build,
+	// staged and under way.
+	staged := selfupdate.Record{
+		ItemID: "v2", FromVersion: "1.0.0", ToVersion: "3.0.0",
+		Deadline: time.Now().Add(time.Minute), Status: selfupdate.StatusPending,
+	}
+	if err := selfupdate.WriteRecord(dir, staged); err != nil {
+		t.Fatal(err)
+	}
+	c := &fakeClient{version: "1.0.0"}
+	s := &selfupdate.Syncer{
+		Dir: dir, Client: c, Running: "1.0.0", Injected: true, Rollback: &rolledBack,
+		Log: slog.New(slog.DiscardHandler), Now: time.Now,
+		Spawn: func(string) error { return nil },
+	}
+
+	if err := s.Sync(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.reports) != 1 {
+		t.Fatalf("the rollback should still be reported, got %+v", c.reports)
+	}
+	got, found, _ := selfupdate.ReadRecord(dir)
+	if !found || got.Status != selfupdate.StatusPending || got.ToVersion != "3.0.0" {
+		t.Fatalf("the live attempt must survive the report, got %+v (found=%v)", got, found)
+	}
+}
+
+// A check-in must not wait on a download. Sync holds its lock across the whole
+// staging of a build, which can take as long as the download timeout, and the
+// session calls CheckedIn inline on the check-in path: sharing one lock would
+// mean a device mid-download stops checking in altogether -- no inventory, no
+// commands, nothing -- which is the very thing dispatching syncers in the
+// background exists to prevent. The record has its own lock for that reason.
+func TestCheckedInIsNotBlockedByASyncThatIsDownloading(t *testing.T) {
+	dir := t.TempDir()
+	// A previous update to the build now running, whose proof of life has not
+	// landed yet, while a newer build is already assigned.
+	rec := selfupdate.Record{
+		ItemID: "v0", FromVersion: "0.9.0", ToVersion: "1.0.0",
+		Deadline: time.Now().Add(time.Minute), Status: selfupdate.StatusPending,
+	}
+	if err := selfupdate.WriteRecord(dir, rec); err != nil {
+		t.Fatal(err)
+	}
+
+	downloading, release := make(chan struct{}), make(chan struct{})
+	c := &fakeClient{version: "2.0.0", payload: []byte("new agent bytes")}
+	c.onDownload = func() {
+		close(downloading)
+		<-release
+	}
+	control := &fakeControl{binPath: `C:\Program Files\Retune\retune-agent.exe`, args: []string{"--data-dir", dir}}
+	s := &selfupdate.Syncer{
+		Dir: dir, Client: c, Control: control, Running: "1.0.0", Injected: true,
+		Log: slog.New(slog.DiscardHandler), Now: time.Now,
+		Spawn: func(string) error { return nil },
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := s.Sync(context.Background(), []protocol.Item{agentItem("v1", nil)}); err != nil {
+			t.Error(err)
+		}
+	}()
+	<-downloading
+
+	done := make(chan error, 1)
+	go func() { done <- s.CheckedIn() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		// Only ever reached by an implementation that shares one lock; it
+		// bounds the failure instead of hanging the suite until the harness
+		// gives up.
+		t.Fatal("CheckedIn waited on a download; a device mid-update would stop checking in")
+	}
+
+	// And the proof actually landed, before the download was let go.
+	got, found, _ := selfupdate.ReadRecord(dir)
+	if !found || got.Status != selfupdate.StatusSucceeded || got.ToVersion != "1.0.0" {
+		t.Fatalf("the pending attempt for the running build should be succeeded, got %+v", got)
+	}
+
+	close(release)
+	wg.Wait()
 }
 
 // A hand-off that fails after the build is staged and the record written
