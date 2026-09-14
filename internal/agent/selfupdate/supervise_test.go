@@ -21,18 +21,22 @@ import (
 // exercise the first call and can never drive a failure inside rollback
 // itself.
 type fakeControl struct {
-	mu              sync.Mutex
-	binPath         string
-	args            []string
-	calls           []string
-	running         bool
-	recovery        bool
-	stopCalls       int
-	startCalls      int
-	failStopOnCall  int
-	failStartOnCall int
-	stopErr         error
-	startErr        error
+	mu                   sync.Mutex
+	binPath              string
+	args                 []string
+	calls                []string
+	running              bool
+	recovery             bool
+	stopCalls            int
+	startCalls           int
+	setBinPathCalls      int
+	failStopOnCall       int
+	failStartOnCall      int
+	failSetBinPathOnCall int
+	stopErr              error
+	startErr             error
+	setBinPathErr        error
+	recoveryErr          error
 	// onStart runs when the service is started, standing in for the new agent
 	// coming up and doing something.
 	onStart func()
@@ -47,7 +51,11 @@ func (f *fakeControl) Config() (string, []string, error) {
 func (f *fakeControl) SetBinPath(p string, args []string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.setBinPathCalls++
 	f.calls = append(f.calls, "setbinpath:"+p)
+	if f.failSetBinPathOnCall != 0 && f.setBinPathCalls == f.failSetBinPathOnCall {
+		return f.setBinPathErr
+	}
 	f.binPath, f.args = p, args
 	return nil
 }
@@ -55,7 +63,11 @@ func (f *fakeControl) SetBinPath(p string, args []string) error {
 func (f *fakeControl) SetRecoveryActions() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.calls, f.recovery = append(f.calls, "recovery"), true
+	f.calls = append(f.calls, "recovery")
+	if f.recoveryErr != nil {
+		return f.recoveryErr
+	}
+	f.recovery = true
 	return nil
 }
 
@@ -240,6 +252,76 @@ func TestSuperviseDoesNotRepointIfTheServiceWillNotStop(t *testing.T) {
 		if len(call) > 11 && call[:11] == "setbinpath:" {
 			t.Fatalf("the image path must not be touched, got %v", c.did())
 		}
+	}
+	// Nothing was touched, so the old build is still wired in and still
+	// running: this attempt is over, and saying so is what lets the agent
+	// report it. Left pending, it would wedge the device instead -- Decide
+	// answers "already under way" forever with no supervisor left to resolve
+	// it.
+	got, found, _ := selfupdate.ReadRecord(dir)
+	if !found || got.Status != selfupdate.StatusRolledBack {
+		t.Fatalf("a service that would not stop must still be recorded, got %+v (found=%v)", got, found)
+	}
+	if !strings.Contains(got.Detail, "would not stop") {
+		t.Errorf("detail should say the service would not stop, got %q", got.Detail)
+	}
+}
+
+// Every step after the service is stopped leaves the device somewhere it
+// cannot stay: stopped, or pointed at a build that has not been proven. Each
+// one must put the previous build back and record the attempt, rather than
+// returning and abandoning the machine mid-update.
+func TestSuperviseRestoresWhenAStepAfterStopFails(t *testing.T) {
+	cases := map[string]func(c *fakeControl){
+		"repointing at the new build fails": func(c *fakeControl) {
+			c.failSetBinPathOnCall, c.setBinPathErr = 1, errors.New("access denied")
+		},
+		"setting recovery actions fails": func(c *fakeControl) {
+			c.recoveryErr = errors.New("access denied")
+		},
+		"the new build will not start": func(c *fakeControl) {
+			c.failStartOnCall, c.startErr = 1, errors.New("it will not come up")
+		},
+	}
+
+	for name, fail := range cases {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			rec := pending(dir, time.Now().Add(time.Minute))
+			if err := selfupdate.WriteRecord(dir, rec); err != nil {
+				t.Fatal(err)
+			}
+			c := &fakeControl{binPath: rec.FromBinPath, args: rec.FromArgs}
+			fail(c)
+
+			// The restore worked, so the outcome is recorded rather than lost:
+			// a rollback is an outcome, not an error.
+			if err := supervisor(dir, c).Supervise(context.Background()); err != nil {
+				t.Fatalf("a completed restore should not error: %v", err)
+			}
+			if c.binPath != rec.FromBinPath {
+				t.Errorf("binPath = %q, want the previous build restored", c.binPath)
+			}
+			var starts, stops int
+			for _, call := range c.did() {
+				switch call {
+				case "start":
+					starts++
+				case "stop":
+					stops++
+				}
+			}
+			if stops < 2 || starts < 1 {
+				t.Errorf("the previous build must be stopped and started again, got %v", c.did())
+			}
+			got, found, _ := selfupdate.ReadRecord(dir)
+			if !found || got.Status != selfupdate.StatusRolledBack {
+				t.Fatalf("the failed attempt must be recorded, got %+v (found=%v)", got, found)
+			}
+			if got.Detail == "" {
+				t.Error("the record should say which step failed")
+			}
+		})
 	}
 }
 

@@ -17,6 +17,12 @@ const defaultPoll = 2 * time.Second
 // Stop would return immediately and the unproven build would stay wired in.
 const restoreTimeout = 30 * time.Second
 
+// stopTimeout bounds the stop that begins an update. A service stuck in
+// STOP_PENDING would otherwise hold the supervisor for as long as the service
+// control manager is prepared to wait, and the supervisor is the only thing
+// standing between this device and a half-applied update.
+const stopTimeout = 60 * time.Second
+
 // Supervisor carries out an update recorded in Dir and puts the previous
 // build back if the new one does not check in. It runs from a copy of the
 // outgoing agent, detached, so the code deciding whether the update worked is
@@ -56,31 +62,46 @@ func (s *Supervisor) Supervise(ctx context.Context) error {
 	s.Log.Info("supervising update", "from", rec.FromVersion, "to", rec.ToVersion, "deadline", rec.Deadline)
 
 	// Step 2: if the service will not even stop, touching the image path
-	// would leave it pointed at a build that never ran. Leave it alone.
-	if err := s.Control.Stop(ctx); err != nil {
+	// would leave it pointed at a build that never ran. Leave it alone — but
+	// the attempt is still over, and a record left pending is a wedged
+	// device: Decide answers "already under way" for ever, with no supervisor
+	// left to resolve it. Nothing was touched, so the old build is still
+	// wired in and still running; rolled_back is the honest word for that,
+	// and the agent that is already there reports it on its next check-in.
+	if err := s.stopService(ctx); err != nil {
 		s.Log.Error("service would not stop; update abandoned", "err", err)
+		rolled := rec
+		rolled.Status = StatusRolledBack
+		rolled.Detail = fmt.Sprintf("the service would not stop: %v", err)
+		if werr := WriteRecord(s.Dir, rolled); werr != nil {
+			s.Log.Error("failed to record an update abandoned before it began", "err", werr)
+		}
 		return fmt.Errorf("stopping service: %w", err)
 	}
+
+	// From here on the device is somewhere it cannot be left: stopped, or
+	// pointed at a build nothing has proven. Every failure goes through
+	// rollback, which puts the previous build back and records the outcome.
 
 	// Step 3: the new binary, the arguments the service already had —
 	// losing --data-dir would send the new agent looking for its identity
 	// in the wrong place.
 	if err := s.Control.SetBinPath(rec.ToBinPath, rec.FromArgs); err != nil {
 		s.Log.Error("failed to repoint service at new build", "err", err)
-		return fmt.Errorf("setting bin path to new build: %w", err)
+		return s.rollback(ctx, rec, fmt.Sprintf("repointing the service at the new build failed: %v", err))
 	}
 
 	// Step 4: so a crash-on-start is retried by the SCM rather than leaving
 	// the device dead; a WiX-installed service has none of these.
 	if err := s.Control.SetRecoveryActions(); err != nil {
 		s.Log.Error("failed to set recovery actions", "err", err)
-		return fmt.Errorf("setting recovery actions: %w", err)
+		return s.rollback(ctx, rec, fmt.Sprintf("setting recovery actions failed: %v", err))
 	}
 
 	// Step 5.
 	if err := s.Control.Start(); err != nil {
 		s.Log.Error("failed to start new build", "err", err)
-		return fmt.Errorf("starting new build: %w", err)
+		return s.rollback(ctx, rec, fmt.Sprintf("starting the new build failed: %v", err))
 	}
 	s.Log.Info("new build started, waiting for it to check in", "poll", poll)
 
@@ -134,6 +155,14 @@ func (s *Supervisor) Supervise(ctx context.Context) error {
 		case <-ticker.C:
 		}
 	}
+}
+
+// stopService stops the service under stopTimeout, so a service that hangs on
+// the way down cannot hold the whole update open indefinitely.
+func (s *Supervisor) stopService(ctx context.Context) error {
+	sctx, cancel := context.WithTimeout(ctx, stopTimeout)
+	defer cancel()
+	return s.Control.Stop(sctx)
 }
 
 // restoreBuild stops the service, repoints it at the previous build with its
