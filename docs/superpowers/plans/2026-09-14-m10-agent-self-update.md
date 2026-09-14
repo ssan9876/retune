@@ -2234,7 +2234,7 @@ func TestSyncStagesAndHandsOff(t *testing.T) {
 	// The live service is what knows whether this device was installed by
 	// the MSI (no arguments) or by hand (--data-dir); the record must carry
 	// exactly what it reports, or the supervisor cannot put it back.
-	control := &fakeControl{binPath: `C:\Program Files\Retuneetune-agent.exe`,
+	control := &fakeControl{binPath: `C:\Program Files\Retune\retune-agent.exe`,
 		args: []string{"--data-dir", dir}}
 	var spawned string
 	s := &selfupdate.Syncer{
