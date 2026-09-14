@@ -34,6 +34,12 @@ type Record struct {
 	Deadline    time.Time `json:"deadline"`
 	Status      string    `json:"status"`
 	Detail      string    `json:"detail"`
+	// Reported says the server has been told about this outcome. It is what
+	// lets a resolved record stay on disk instead of being deleted: the record
+	// is also the only memory that this version failed on this device, and
+	// deleting it on report would let the very next item of the very same
+	// check-in decide to install the same broken build again.
+	Reported bool `json:"reported"`
 }
 
 const (

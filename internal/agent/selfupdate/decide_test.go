@@ -83,6 +83,13 @@ func TestReconcile(t *testing.T) {
 			rec:   selfupdate.Record{FromVersion: "1.0.0", ToVersion: "2.0.0", Status: selfupdate.StatusRolledBack},
 			found: true, running: "1.0.0", want: selfupdate.ReconcileReport,
 		},
+		"a rollback that has already been reported": {
+			rec: selfupdate.Record{
+				FromVersion: "1.0.0", ToVersion: "2.0.0",
+				Status: selfupdate.StatusRolledBack, Reported: true,
+			},
+			found: true, running: "1.0.0", want: selfupdate.ReconcileNone,
+		},
 		"a pending attempt whose supervisor is gone and whose build never came up": {
 			rec: selfupdate.Record{
 				FromVersion: "1.0.0", ToVersion: "2.0.0",

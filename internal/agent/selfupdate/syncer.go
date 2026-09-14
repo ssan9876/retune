@@ -86,9 +86,7 @@ func (s *Syncer) Sync(ctx context.Context, items []protocol.Item) error {
 		err := s.report(ctx, rec.ItemID, rec.FromVersion, protocol.ResultFailed, rec.ToVersion, rec.Detail)
 		switch {
 		case err == nil:
-			if err := RemoveRecord(s.Dir); err != nil {
-				s.log().Error("failed to remove reported rollback record", "error", err)
-			}
+			s.markReported(rec)
 			s.Rollback = nil
 		case isGone(err):
 			// Ruling: a 404 here means the build was deleted or unassigned
@@ -96,9 +94,7 @@ func (s *Syncer) Sync(ctx context.Context, items []protocol.Item) error {
 			// it on every check-in forever is worse than giving up on it, so
 			// this is treated as resolved rather than transient.
 			s.log().Warn("rollback report was rejected as gone; giving up on it", "error", err)
-			if err := RemoveRecord(s.Dir); err != nil {
-				s.log().Error("failed to remove abandoned rollback record", "error", err)
-			}
+			s.markReported(rec)
 			s.Rollback = nil
 		default:
 			// Left set, so the next cycle tries again instead of losing the
@@ -121,6 +117,17 @@ func (s *Syncer) Sync(ctx context.Context, items []protocol.Item) error {
 		}
 	}
 	return nil
+}
+
+// markReported records that a rollback has been told to the server. The
+// record stays: it is what stops Decide from installing the same failed
+// version again, possibly within this very check-in, and only a stage of a
+// different version clears it.
+func (s *Syncer) markReported(rec Record) {
+	rec.Reported = true
+	if err := WriteRecord(s.Dir, rec); err != nil {
+		s.log().Error("failed to record that a rollback was reported", "error", err)
+	}
 }
 
 // CheckedIn is called by the session after every check-in that reached the

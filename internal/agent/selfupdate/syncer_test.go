@@ -239,8 +239,12 @@ func TestSyncReportsAPendingRollback(t *testing.T) {
 	if c.reports[0].RolledBackFrom != "2.0.0" || c.reports[0].Status != protocol.ResultFailed {
 		t.Errorf("report = %+v", c.reports[0])
 	}
-	if _, found, _ := selfupdate.ReadRecord(dir); found {
-		t.Error("a reported rollback should leave no record behind")
+	// The record stays, marked as reported. It is the only memory that this
+	// version failed here, and removing it would let the very next item in
+	// the very same check-in decide to install it all over again.
+	got, found, _ := selfupdate.ReadRecord(dir)
+	if !found || got.Status != selfupdate.StatusRolledBack || !got.Reported {
+		t.Fatalf("a reported rollback should stay on disk, marked reported, got %+v (found=%v)", got, found)
 	}
 
 	// A second cycle must not report it again.
@@ -250,6 +254,66 @@ func TestSyncReportsAPendingRollback(t *testing.T) {
 	if len(c.reports) != 1 {
 		t.Errorf("it must not be reported twice, got %d", len(c.reports))
 	}
+}
+
+// The loop this prevents: reporting a rollback used to delete the record, so
+// the same check-in's item list found no memory of the failure, decided to
+// update, and stopped, swapped, waited and rolled back the same broken build
+// again -- on every device in the group, for ever.
+func TestSyncDoesNotRetryAVersionItJustReportedRolledBack(t *testing.T) {
+	newSyncer := func(t *testing.T, dir string, c *fakeClient, rec *selfupdate.Record, spawned *int) *selfupdate.Syncer {
+		t.Helper()
+		return &selfupdate.Syncer{
+			Dir: dir, Client: c, Control: &fakeControl{binPath: `C:\Program Files\Retune\retune-agent.exe`},
+			Running: "1.0.0", Injected: true,
+			Log: slog.New(slog.DiscardHandler), Now: time.Now, Rollback: rec,
+			Spawn: func(string) error { *spawned++; return nil },
+		}
+	}
+	rolledBack := selfupdate.Record{
+		ItemID: "v1", FromVersion: "1.0.0", ToVersion: "2.0.0",
+		Status: selfupdate.StatusRolledBack, Detail: "the new agent never checked in",
+	}
+
+	t.Run("the same version is refused", func(t *testing.T) {
+		dir := t.TempDir()
+		rec := rolledBack
+		if err := selfupdate.WriteRecord(dir, rec); err != nil {
+			t.Fatal(err)
+		}
+		var spawned int
+		c := &fakeClient{version: "2.0.0", payload: []byte("the build that failed")}
+		s := newSyncer(t, dir, c, &rec, &spawned)
+
+		if err := s.Sync(context.Background(), []protocol.Item{agentItem("v1", nil)}); err != nil {
+			t.Fatal(err)
+		}
+		if spawned != 0 {
+			t.Errorf("the version that was just reported rolled back must not be installed again, got %d hand-offs", spawned)
+		}
+		got, found, _ := selfupdate.ReadRecord(dir)
+		if !found || got.Status != selfupdate.StatusRolledBack || !got.Reported {
+			t.Fatalf("the refusal must stay on disk, got %+v (found=%v)", got, found)
+		}
+	})
+
+	t.Run("a different version still gets through", func(t *testing.T) {
+		dir := t.TempDir()
+		rec := rolledBack
+		if err := selfupdate.WriteRecord(dir, rec); err != nil {
+			t.Fatal(err)
+		}
+		var spawned int
+		c := &fakeClient{version: "3.0.0", payload: []byte("a build worth trying")}
+		s := newSyncer(t, dir, c, &rec, &spawned)
+
+		if err := s.Sync(context.Background(), []protocol.Item{agentItem("v2", nil)}); err != nil {
+			t.Fatal(err)
+		}
+		if spawned != 1 {
+			t.Errorf("a version that has not failed here must still be attempted, got %d hand-offs", spawned)
+		}
+	})
 }
 
 // An unstamped build refuses outright, does not download, and says why -- so

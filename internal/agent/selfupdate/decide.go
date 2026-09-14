@@ -73,6 +73,11 @@ func Reconcile(rec Record, found bool, running string, now time.Time) ReconcileA
 	}
 	switch rec.Status {
 	case StatusRolledBack:
+		// An already reported rollback stays on disk as the memory that this
+		// version failed here, but there is nothing left to tell the server.
+		if rec.Reported {
+			return ReconcileNone
+		}
 		return ReconcileReport
 	case StatusPending:
 		// The staged build is the one running, so the attempt is still alive
