@@ -8,8 +8,10 @@ import (
 	"time"
 )
 
-// ErrBadOptions is returned when deployment options do not make sense.
-var ErrBadOptions = errors.New("invalid deployment options")
+// ErrBadOptions is returned when assignment options do not make sense. It is
+// shared by every item kind's options parser (scripts, profiles, apps), so
+// its wording must not name one of them.
+var ErrBadOptions = errors.New("invalid assignment options")
 
 // Frequencies a deployment can run at.
 const (

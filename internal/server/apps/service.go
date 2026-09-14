@@ -242,16 +242,29 @@ func (s *Service) RecordInstall(ctx context.Context, deviceID, appID uuid.UUID, 
 	if r.Status != protocol.ResultSucceeded {
 		status = store.ItemFailed
 	}
-	if detail == "" {
+	if detail == "" && r.Status == protocol.ResultSucceeded {
 		switch {
-		case errText != "":
-			detail = errText
-		case r.Status != protocol.ResultSucceeded:
-			detail = fmt.Sprintf("winget exited %d", r.ExitCode)
 		case r.Intent == protocol.IntentUninstall:
 			detail = "removed"
 		case r.InstalledVersion != "":
 			detail = "installed " + r.InstalledVersion
+		}
+	} else if detail == "" {
+		// Naming the package lets an administrator tell two failing apps
+		// apart from the rollup alone, without opening the install history
+		// first. The version is immutable, so this lookup can never disagree
+		// with what actually ran.
+		packageID := "?"
+		if v, err := s.Store.Q().GetAppVersion(ctx, appID, r.Version); err == nil {
+			packageID = v.PackageID
+		}
+		switch {
+		case strings.HasPrefix(errText, "timed out after"):
+			detail = fmt.Sprintf("%s: %s, and the install may still be running", packageID, errText)
+		case errText != "":
+			detail = fmt.Sprintf("%s: %s", packageID, errText)
+		default:
+			detail = fmt.Sprintf("%s: winget exited %d", packageID, r.ExitCode)
 		}
 	}
 

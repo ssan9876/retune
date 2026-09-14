@@ -122,8 +122,11 @@ func TestInstallsWhatIsMissing(t *testing.T) {
 	}
 }
 
-// Something already installed is not installed again, and nothing is reported:
-// there is no news.
+// Something already installed is not installed again. The first cycle to
+// confirm that reports it once, as a succeeded "already installed" — the
+// rollup and history must show something for a preinstalled package, not
+// silence forever (spec §7-8). A second cycle immediately afterwards neither
+// detects again nor reports again: there is no news.
 func TestLeavesAnInstalledAppAlone(t *testing.T) {
 	c := &fakeClient{version: protocol.AppVersionResponse{
 		Version: 1, PackageID: "7zip.7zip", Scope: "machine",
@@ -135,6 +138,13 @@ func TestLeavesAnInstalledAppAlone(t *testing.T) {
 	if err := s.Sync(context.Background(), []protocol.Item{it}); err != nil {
 		t.Fatal(err)
 	}
+	if len(c.results) != 1 || c.results[0].Status != protocol.ResultSucceeded {
+		t.Fatalf("the first confirmation should report once as succeeded, got %+v", c.results)
+	}
+	if c.results[0].Detail != "already installed" {
+		t.Errorf("detail = %q, want %q", c.results[0].Detail, "already installed")
+	}
+
 	// A second cycle immediately afterwards does not even detect again.
 	if err := s.Sync(context.Background(), []protocol.Item{it}); err != nil {
 		t.Fatal(err)
@@ -146,6 +156,75 @@ func TestLeavesAnInstalledAppAlone(t *testing.T) {
 	}
 	if len(w.ran()) != 1 {
 		t.Errorf("the second cycle should not detect again within the hour, got %v", w.ran())
+	}
+	if len(c.results) != 1 {
+		t.Errorf("the second cycle must not report again: there is no news, got %+v", c.results)
+	}
+}
+
+// A later hourly recheck that reconfirms the same settled state still does
+// not report again, even though it does detect: only the transition into the
+// settled state is news.
+func TestSettledAppIsNotReportedAgainOnTheNextDetect(t *testing.T) {
+	c := &fakeClient{version: protocol.AppVersionResponse{
+		Version: 1, PackageID: "7zip.7zip", Scope: "machine",
+	}}
+	w := &fakeWinget{installed: true, version: "26.03"}
+	clock := now
+	s, _ := newSyncer(t, c, w)
+	s.Now = func() time.Time { return clock }
+
+	it := item("a1", 1, opts(nil))
+	if err := s.Sync(context.Background(), []protocol.Item{it}); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.results) != 1 {
+		t.Fatalf("the first confirmation should report once, got %+v", c.results)
+	}
+
+	clock = clock.Add(2 * time.Hour)
+	if err := s.Sync(context.Background(), []protocol.Item{it}); err != nil {
+		t.Fatal(err)
+	}
+	if got := w.ran(); len(got) != 2 || got[1] != "detect" {
+		t.Fatalf("the hourly recheck should still detect, got %v", got)
+	}
+	if len(c.results) != 1 {
+		t.Errorf("reconfirming the same settled state must not report again, got %+v", c.results)
+	}
+}
+
+// An uninstall of something already absent is reported succeeded, matching
+// spec §8 row 6 exactly, once.
+func TestUninstallAlreadyAbsentIsReportedOnce(t *testing.T) {
+	c := &fakeClient{version: protocol.AppVersionResponse{
+		Version: 1, PackageID: "7zip.7zip", Scope: "machine",
+	}}
+	w := &fakeWinget{installed: false}
+	s, _ := newSyncer(t, c, w)
+
+	it := item("a1", 1, uninstall())
+	if err := s.Sync(context.Background(), []protocol.Item{it}); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.results) != 1 || c.results[0].Status != protocol.ResultSucceeded {
+		t.Fatalf("already-absent under uninstall intent should report succeeded once, got %+v", c.results)
+	}
+	if c.results[0].Detail != "already absent" {
+		t.Errorf("detail = %q, want %q", c.results[0].Detail, "already absent")
+	}
+	for _, call := range w.ran() {
+		if call == "uninstall" {
+			t.Fatalf("nothing already absent should be uninstalled, got %v", w.ran())
+		}
+	}
+
+	// A second cycle reports nothing further.
+	if err := s.Sync(context.Background(), []protocol.Item{it}); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.results) != 1 {
+		t.Errorf("no further report once settled, got %+v", c.results)
 	}
 }
 
@@ -288,5 +367,52 @@ func TestIgnoresOtherKinds(t *testing.T) {
 	}
 	if len(w.ran()) != 0 {
 		t.Fatalf("nothing should have happened, got %v", w.ran())
+	}
+}
+
+// A machine with no App Installer must not go silent: every assigned app is
+// reported failed, naming that reason, without ever touching winget. This is
+// the Important-1 fix — such a device used to report nothing at all.
+func TestUnavailableReportsFailedOnce(t *testing.T) {
+	c := &fakeClient{version: protocol.AppVersionResponse{
+		Version: 1, PackageID: "7zip.7zip", Scope: "machine",
+	}}
+	st, err := state.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	s := &apps.Syncer{
+		State: st, Client: c, Unavailable: apps.ErrNoAppInstaller,
+		Now: func() time.Time { return now },
+	}
+
+	it := item("a1", 1, opts(nil))
+	if err := s.Sync(context.Background(), []protocol.Item{it}); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.results) != 1 || c.results[0].Status != protocol.ResultFailed {
+		t.Fatalf("it should report failed once, got %+v", c.results)
+	}
+	if c.results[0].Detail != apps.ErrNoAppInstaller.Error() {
+		t.Errorf("detail = %q, want the ErrNoAppInstaller text", c.results[0].Detail)
+	}
+
+	// An hourly check-in on the same version must not fill the history with
+	// the same failure over and over.
+	if err := s.Sync(context.Background(), []protocol.Item{it}); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.results) != 1 {
+		t.Errorf("it must report once per version, not every check-in, got %+v", c.results)
+	}
+
+	// A new version is a fresh instruction, so it gets reported too.
+	it2 := item("a1", 2, opts(nil))
+	if err := s.Sync(context.Background(), []protocol.Item{it2}); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.results) != 2 {
+		t.Errorf("a new version should be reported again, got %+v", c.results)
 	}
 }

@@ -287,6 +287,10 @@ Assign one to a group and choose what to do:
 | What to do | install | `install`, or `uninstall` to remove it |
 | Timeout | 900 seconds | per winget invocation, 60 to 14400 |
 
+While winget or the network is unavailable on a device, its apps keep their
+last reported status rather than flipping to some new "unknown" state; the
+agent log on that machine is where the failure actually shows.
+
 **Removal is deliberate.** A device that drops out of a group keeps the
 software. To take something away, assign the app with uninstall intent — so a
 dynamic group whose rule stops matching never quietly wipes software off

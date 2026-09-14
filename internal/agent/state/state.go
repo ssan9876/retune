@@ -250,6 +250,14 @@ type AppState struct {
 	Installed  bool      `json:"installed"`
 	// Failures counts consecutive failures of this version under this intent.
 	Failures int `json:"failures"`
+	// Settled records that the current Version/Intent has already been
+	// reported once as having reached its desired state — whether by an
+	// install/uninstall that succeeded, or by a detection that found it
+	// already correct. It is what keeps an hourly recheck of an
+	// already-compliant app from reporting the same "succeeded" over and
+	// over, while still letting a new version or a changed intent report
+	// fresh.
+	Settled bool `json:"settled"`
 }
 
 // AppState returns what is remembered about an app. An app never seen before

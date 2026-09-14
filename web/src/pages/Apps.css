@@ -56,6 +56,10 @@
   overflow: auto;
 }
 
+.app__output--error {
+  color: var(--status-retired);
+}
+
 /* The package ID column can be long, so let it wrap rather than force
    horizontal scroll on a phone. */
 .apps-table td.mono {

@@ -87,7 +87,10 @@ function AppEditor({
       >
         <input className="mono" value={pinnedVersion} onChange={(e) => setPinnedVersion(e.target.value)} />
       </Field>
-      <Field label="Extra install arguments" hint="Optional. Passed to the installer as-is.">
+      <Field
+        label="Extra install arguments"
+        hint="Optional. Arguments are separated by spaces; a value containing spaces of its own is not supported."
+      >
         <input className="mono" value={installArgs} onChange={(e) => setInstallArgs(e.target.value)} />
       </Field>
       <ErrorNote error={error} />
@@ -119,7 +122,7 @@ function AssignDialog({
   const [groupID, setGroupID] = useState("");
   const [mode, setMode] = useState("include");
   const [intent, setIntent] = useState("install");
-  const [timeoutSeconds, setTimeoutSeconds] = useState(600);
+  const [timeoutSeconds, setTimeoutSeconds] = useState(900);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -188,11 +191,11 @@ function AssignDialog({
               <option value="uninstall">Uninstall</option>
             </select>
           </Field>
-          <Field label="Timeout in seconds">
+          <Field label="Timeout in seconds" hint="Installs are far slower than scripts: 60 to 14400 seconds.">
             <input
               type="number"
-              min={1}
-              max={86400}
+              min={60}
+              max={14400}
               value={timeoutSeconds}
               onChange={(e) => setTimeoutSeconds(Number(e.target.value))}
             />
@@ -277,6 +280,11 @@ function AppDetail({ app }: { app: App }) {
       ) : null}
 
       {installs[0]?.detail ? <pre className="mono app__output">{installs[0].detail}</pre> : null}
+      {installs[0]?.error ? <pre className="mono app__output app__output--error">{installs[0].error}</pre> : null}
+      {installs[0]?.stdout ? <pre className="mono app__output">{installs[0].stdout}</pre> : null}
+      {installs[0]?.stderr ? (
+        <pre className="mono app__output app__output--error">{installs[0].stderr}</pre>
+      ) : null}
     </section>
   );
 }

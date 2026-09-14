@@ -64,11 +64,14 @@ func Run(ctx context.Context, opts Options) error {
 
 	// A machine with no App Installer simply cannot deploy apps; every other
 	// part of the agent still works, so this must not stop it from starting.
-	var appSyncer *apps.Syncer
+	// The syncer is still built, though: an assigned app must be reported
+	// failed, plainly, rather than the device just going silent about it.
+	appSyncer := &apps.Syncer{State: st, Log: opts.Log, Now: time.Now}
 	if wg, err := apps.New(); err != nil {
 		opts.Log.Info("app deployments are unavailable on this machine", "error", err)
+		appSyncer.Unavailable = err
 	} else {
-		appSyncer = &apps.Syncer{State: st, Winget: wg, Log: opts.Log, Now: time.Now}
+		appSyncer.Winget = wg
 	}
 
 	sess, err := session.New(session.Config{

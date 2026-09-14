@@ -3,6 +3,7 @@ package apps_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -128,6 +129,50 @@ func TestRecordInstallWritesHistoryAndStatus(t *testing.T) {
 	}
 	if len(rows) != 1 || rows[0].InstalledVersion != "26.03" {
 		t.Fatalf("the install should be in the history, got %+v", rows)
+	}
+}
+
+// A failure with no detail of its own gets one that names the package, so an
+// administrator can tell two failing apps apart from the rollup alone; a
+// timeout additionally says the install may still be running (spec §8 rows
+// 2-3).
+func TestRecordInstallNamesThePackageInAFailureDetail(t *testing.T) {
+	st := storetest.New(t)
+	ctx := context.Background()
+	svc := service(st)
+	device := newDevice(t, st, "DESKTOP-FAIL")
+
+	a, err := svc.Create(ctx, apps.NewApp{Name: "7-Zip", PackageID: "7zip.7zip", Actor: "ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.RecordInstall(ctx, device, a.ID, protocol.AppResult{
+		Version: 1, Intent: protocol.IntentInstall, Status: protocol.ResultFailed, ExitCode: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RecordInstall(ctx, device, a.ID, protocol.AppResult{
+		Version: 1, Intent: protocol.IntentInstall, Status: protocol.ResultFailed, ExitCode: -1,
+		Error: "timed out after 15m0s",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, _, err := st.Q().ListAppInstalls(ctx, a.ID, nil, store.Page{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("want 2 installs, got %d", len(rows))
+	}
+	// ListAppInstalls orders newest first, so rows[1] is the plain failure and
+	// rows[0] is the timeout.
+	if !strings.Contains(rows[1].Detail, "7zip.7zip") {
+		t.Errorf("a plain failure's detail should name the package, got %q", rows[1].Detail)
+	}
+	if !strings.Contains(rows[0].Detail, "7zip.7zip") || !strings.Contains(rows[0].Detail, "may still be running") {
+		t.Errorf("a timeout's detail should name the package and say it may still be running, got %q", rows[0].Detail)
 	}
 }
 

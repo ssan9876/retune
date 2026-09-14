@@ -322,6 +322,10 @@ func (q *Queries) CreateAssignment(ctx context.Context, a Assignment) (uuid.UUID
 		INSERT INTO assignments (id, tenant_id, item_kind, item_id, group_id, mode, created_at, created_by, options)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, coalesce($9, '{}'::jsonb))
 		ON CONFLICT (item_kind, item_id, group_id, mode)
+		-- Overwriting created_at here is intended, not a wart: EffectiveItems
+		-- picks the newest include's options by created_at, so a re-assignment
+		-- must become the newest row or its changed options would never win
+		-- over an older, stale include of the same item.
 		DO UPDATE SET options = EXCLUDED.options, created_at = EXCLUDED.created_at, created_by = EXCLUDED.created_by
 		RETURNING id`,
 		a.ID, DefaultTenantID, a.ItemKind, a.ItemID, a.GroupID, a.Mode, a.CreatedAt, a.CreatedBy, a.Options).
