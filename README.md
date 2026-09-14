@@ -395,5 +395,5 @@ npm --prefix web run test
 ## Design and plans
 
 `docs/superpowers/specs` holds the design; `docs/superpowers/plans` holds the
-milestone plans, including what is still to come: app deployment, compliance
-rules, the native Windows MDM channel, and macOS and Linux agents.
+milestone plans, including what is still to come: agent self-update,
+compliance rules, the native Windows MDM channel, and macOS and Linux agents.
