@@ -20,6 +20,11 @@ const RecordName = "update.json"
 // does, and losing that argument on a repoint sends the restored agent
 // looking for its identity in the wrong directory.
 type Record struct {
+	// ItemID is the server-side identifier of the build this record concerns
+	// (protocol.Item.ID). A rollback is reported long after the check-in item
+	// that requested it is gone -- possibly on the very next cycle -- so this
+	// is the only place left to remember which endpoint to report against.
+	ItemID      string    `json:"item_id"`
 	FromVersion string    `json:"from_version"`
 	FromBinPath string    `json:"from_bin_path"`
 	FromArgs    []string  `json:"from_args"`

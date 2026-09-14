@@ -1,0 +1,276 @@
+package selfupdate
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+
+	"retune/internal/protocol"
+)
+
+// binName is the executable staged under each version's directory. It is
+// what the supervisor repoints the service at, and what a restored service
+// runs again after a rollback.
+const binName = "retune-agent.exe"
+
+// supervisorName is the copy of the running agent that carries out the
+// update. It has to be a copy: the service's own image is locked and is
+// about to be stopped, so nothing can run straight out of it.
+const supervisorName = "supervisor.exe"
+
+// Client is the part of the agent's server connection the syncer needs.
+type Client interface {
+	FetchAgentVersion(ctx context.Context, id string) (protocol.AgentVersionResponse, error)
+	DownloadAgentBinary(ctx context.Context, id, wantSHA256 string, dst io.Writer) error
+	ReportAgentUpdate(ctx context.Context, id string, r protocol.AgentUpdateResult) error
+}
+
+// Syncer downloads, verifies and stages an assigned agent build, and hands
+// off to the supervisor that carries the update the rest of the way.
+type Syncer struct {
+	Dir      string // the data directory
+	Client   Client
+	Control  ServiceController // reads the live service's path and arguments
+	Running  string            // this build's version
+	Injected bool
+	Log      *slog.Logger
+	Now      func() time.Time
+
+	// Rollback, when set, is a previous attempt that was rolled back and has
+	// not been reported yet. The restored agent reports it on its next
+	// check-in and then clears the record: the supervisor cannot, because by
+	// the time it decides, the agent it was testing is gone.
+	Rollback *Record
+
+	// Spawn starts the supervisor. It is a field so a test can observe the
+	// hand-off without launching a process.
+	Spawn func(supervisorPath string) error
+
+	mu sync.Mutex
+}
+
+func (s *Syncer) now() time.Time {
+	if s.Now != nil {
+		return s.Now()
+	}
+	return time.Now()
+}
+
+func (s *Syncer) log() *slog.Logger {
+	if s.Log != nil {
+		return s.Log
+	}
+	return slog.New(slog.DiscardHandler)
+}
+
+// Sync processes the items from one check-in, staging whatever agent build
+// is due. Items of other kinds are ignored, which is how an older agent
+// copes with a newer server.
+func (s *Syncer) Sync(ctx context.Context, items []protocol.Item) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// A pending rollback is reported before anything else: it describes an
+	// attempt that has already been resolved, and nothing else will ever
+	// report it, since the agent that decided to roll back is gone.
+	if s.Rollback != nil {
+		rec := *s.Rollback
+		if err := s.report(ctx, rec.ItemID, rec.FromVersion, protocol.ResultFailed, rec.ToVersion, rec.Detail); err != nil {
+			// Left set, so the next cycle tries again instead of losing the
+			// only record of what happened.
+			s.log().Error("failed to report rollback", "error", err)
+		} else {
+			if err := RemoveRecord(s.Dir); err != nil {
+				s.log().Error("failed to remove reported rollback record", "error", err)
+			}
+			s.Rollback = nil
+		}
+	}
+
+	for _, item := range items {
+		if item.Kind != protocol.ItemKindAgent {
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := s.syncOne(ctx, item); err != nil {
+			// One bad build must not stop the rest, and the next check-in is
+			// the retry for anything transient.
+			s.log().Warn("agent update failed", "item_id", item.ID, "error", err)
+		}
+	}
+	return nil
+}
+
+func (s *Syncer) syncOne(ctx context.Context, item protocol.Item) error {
+	opts, err := protocol.ParseAgentOptions(item.Options)
+	if err != nil {
+		return fmt.Errorf("options: %w", err)
+	}
+	rec, _, err := ReadRecord(s.Dir)
+	if err != nil {
+		return fmt.Errorf("read record: %w", err)
+	}
+	def, err := s.Client.FetchAgentVersion(ctx, item.ID)
+	if err != nil {
+		return fmt.Errorf("fetch agent version: %w", err)
+	}
+
+	decision := Decide(s.Running, def.Version, s.Injected, rec)
+	if decision.Action == ActionNone {
+		if !s.Injected {
+			// The only refusal reason worth telling anyone about: a
+			// build with no injected version updates on every check-in on
+			// every machine unless it is told, loudly, why it will not.
+			if err := s.report(ctx, item.ID, def.Version, protocol.ResultFailed, "", decision.Reason); err != nil {
+				return fmt.Errorf("report refusal: %w", err)
+			}
+			return nil
+		}
+		s.log().Debug("agent update not due", "item_id", item.ID, "reason", decision.Reason)
+		return nil
+	}
+
+	return s.stage(ctx, item, opts, def)
+}
+
+// stage downloads, verifies and stages the assigned build, records the
+// attempt, and hands off to the supervisor. Every terminal failure along the
+// way is reported: an update merely under way is not, since the supervisor
+// owns that report.
+func (s *Syncer) stage(ctx context.Context, item protocol.Item, opts protocol.AgentOptions, def protocol.AgentVersionResponse) error {
+	versionDir := filepath.Join(s.Dir, "bin", def.Version)
+	if err := os.MkdirAll(versionDir, 0o755); err != nil {
+		return fmt.Errorf("create version dir: %w", err)
+	}
+	binPath := filepath.Join(versionDir, binName)
+	partPath := binPath + ".part"
+
+	if err := s.download(ctx, item.ID, def.SHA256, partPath); err != nil {
+		// DownloadAgentBinary hashes as it streams, so a mismatch is only
+		// discovered after wrong bytes are already on disk. A wrong binary
+		// left behind is worse than no binary, so the whole version
+		// directory goes, not just the .part file.
+		if rmErr := os.RemoveAll(versionDir); rmErr != nil {
+			s.log().Error("failed to remove partial download", "error", rmErr)
+		}
+		if repErr := s.report(ctx, item.ID, def.Version, protocol.ResultFailed, "", err.Error()); repErr != nil {
+			s.log().Error("failed to report download failure", "error", repErr)
+		}
+		return fmt.Errorf("download: %w", err)
+	}
+
+	if err := os.Rename(partPath, binPath); err != nil {
+		if rmErr := os.RemoveAll(versionDir); rmErr != nil {
+			s.log().Error("failed to remove partial download", "error", rmErr)
+		}
+		if repErr := s.report(ctx, item.ID, def.Version, protocol.ResultFailed, "", err.Error()); repErr != nil {
+			s.log().Error("failed to report stage failure", "error", repErr)
+		}
+		return fmt.Errorf("stage binary: %w", err)
+	}
+
+	// Only the live service knows whether this device was installed by the
+	// MSI (no arguments) or by hand (--data-dir); nothing else can tell.
+	var fromBinPath string
+	var fromArgs []string
+	if s.Control != nil {
+		var err error
+		fromBinPath, fromArgs, err = s.Control.Config()
+		if err != nil {
+			if rmErr := os.RemoveAll(versionDir); rmErr != nil {
+				s.log().Error("failed to remove staged build", "error", rmErr)
+			}
+			if repErr := s.report(ctx, item.ID, def.Version, protocol.ResultFailed, "", err.Error()); repErr != nil {
+				s.log().Error("failed to report controller failure", "error", repErr)
+			}
+			return fmt.Errorf("read service config: %w", err)
+		}
+	}
+
+	now := s.now()
+	rec := Record{
+		ItemID:      item.ID,
+		FromVersion: s.Running,
+		FromBinPath: fromBinPath,
+		FromArgs:    fromArgs,
+		ToVersion:   def.Version,
+		ToBinPath:   binPath,
+		StartedAt:   now,
+		Deadline:    now.Add(opts.Deadline()),
+		Status:      StatusPending,
+	}
+	if err := WriteRecord(s.Dir, rec); err != nil {
+		if rmErr := os.RemoveAll(versionDir); rmErr != nil {
+			s.log().Error("failed to remove staged build", "error", rmErr)
+		}
+		return fmt.Errorf("write record: %w", err)
+	}
+
+	// A copy, because the service image is locked and about to be stopped.
+	supervisorPath := filepath.Join(s.Dir, supervisorName)
+	if err := copyRunningExecutable(supervisorPath); err != nil {
+		return fmt.Errorf("copy supervisor: %w", err)
+	}
+	if err := s.Spawn(supervisorPath); err != nil {
+		return fmt.Errorf("spawn supervisor: %w", err)
+	}
+	return nil
+}
+
+func (s *Syncer) download(ctx context.Context, id, wantSHA256, partPath string) error {
+	f, err := os.Create(partPath)
+	if err != nil {
+		return fmt.Errorf("create part file: %w", err)
+	}
+	defer f.Close()
+	return s.Client.DownloadAgentBinary(ctx, id, wantSHA256, f)
+}
+
+// report sends one terminal outcome to the server.
+func (s *Syncer) report(ctx context.Context, id, version, status, rolledBackFrom, detail string) error {
+	r := protocol.AgentUpdateResult{
+		Version:        version,
+		Status:         status,
+		RolledBackFrom: rolledBackFrom,
+		Detail:         detail,
+		ReportedAt:     s.now(),
+	}
+	return s.Client.ReportAgentUpdate(ctx, id, r)
+}
+
+// copyRunningExecutable copies this process's own binary to dst, through a
+// temp file and rename so a reader never sees a half-written supervisor.
+func copyRunningExecutable(dst string) error {
+	self, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("locate running executable: %w", err)
+	}
+	src, err := os.Open(self)
+	if err != nil {
+		return fmt.Errorf("open running executable: %w", err)
+	}
+	defer src.Close()
+
+	tmp := dst + ".tmp"
+	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	if err != nil {
+		return fmt.Errorf("create supervisor copy: %w", err)
+	}
+	if _, err := io.Copy(out, src); err != nil {
+		out.Close()
+		os.Remove(tmp)
+		return fmt.Errorf("copy running executable: %w", err)
+	}
+	if err := out.Close(); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("close supervisor copy: %w", err)
+	}
+	return os.Rename(tmp, dst)
+}
