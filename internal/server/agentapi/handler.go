@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/x509"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -28,14 +29,12 @@ import (
 
 // Handler serves /api/agent/v1.
 type Handler struct {
-	Enroll    *enroll.Service
-	Inventory *inventory.Service
-	Commands  *commands.Service
-	Scripts   *scripts.Service
-	Profiles  *profiles.Service
-	Apps      *apps.Service
-	// AgentVersions is not used until self-update lands; keeping the field
-	// here now means every app.go edit for that feature happens in one task.
+	Enroll          *enroll.Service
+	Inventory       *inventory.Service
+	Commands        *commands.Service
+	Scripts         *scripts.Service
+	Profiles        *profiles.Service
+	Apps            *apps.Service
 	AgentVersions   *agentversions.Service
 	BitLocker       *bitlocker.Service
 	Store           *store.Store
@@ -71,6 +70,9 @@ func (h *Handler) Routes() http.Handler {
 	mux.Handle("POST /api/agent/v1/profiles/{id}/status", h.requireDevice(h.profileStatus))
 	mux.Handle("GET /api/agent/v1/apps/{id}/versions/{version}", h.requireDevice(h.appVersion))
 	mux.Handle("POST /api/agent/v1/apps/{id}/result", h.requireDevice(h.appResult))
+	mux.Handle("GET /api/agent/v1/agent-versions/{id}", h.requireDevice(h.agentVersion))
+	mux.Handle("GET /api/agent/v1/agent-versions/{id}/binary", h.requireDevice(h.agentVersionBinary))
+	mux.Handle("POST /api/agent/v1/agent-versions/{id}/result", h.requireDevice(h.agentVersionResult))
 	mux.Handle("GET /api/agent/v1/bitlocker", h.requireDevice(h.bitlockerStatus))
 	mux.Handle("POST /api/agent/v1/bitlocker", h.requireDevice(h.escrowBitLocker))
 	return mux
@@ -253,6 +255,14 @@ func (h *Handler) itemVersion(ctx context.Context, it store.Item) (int, bool) {
 			return 0, false
 		}
 		return app.CurrentVersion, true
+	case protocol.ItemKindAgent:
+		if _, err := h.AgentVersions.Get(ctx, it.ID); err != nil {
+			h.Log.Warn("assigned agent build is missing", "agent_version_id", it.ID, "error", err)
+			return 0, false
+		}
+		// A build is immutable, so there is only ever version 1 of it; the
+		// version string an agent compares against travels in the definition.
+		return 1, true
 	}
 	return 0, false
 }
@@ -607,6 +617,125 @@ func (h *Handler) appResult(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
 	default:
 		h.Log.Error("record app install", "device_id", a.Device.ID, "app_id", id, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+	}
+}
+
+// agentVersion hands a device the definition of an assigned build. As with
+// scripts, profiles and apps, a device may only read what it has been given,
+// so an unassigned build is a 404 -- the same answer as one that does not
+// exist, which is all an agent needs to know.
+func (h *Handler) agentVersion(w http.ResponseWriter, r *http.Request) {
+	a := auth(r)
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "agent_version_not_found", "unknown agent build")
+		return
+	}
+	ctx := r.Context()
+	allowed, err := h.Store.Q().DeviceHasItem(ctx, a.Device.ID, protocol.ItemKindAgent, id)
+	if err != nil {
+		h.Log.Error("check agent build assignment", "device_id", a.Device.ID, "agent_version_id", id, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+		return
+	}
+	if !allowed {
+		writeError(w, http.StatusNotFound, "agent_version_not_found", "unknown agent build")
+		return
+	}
+	v, err := h.AgentVersions.Get(ctx, id)
+	if errors.Is(err, agentversions.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "agent_version_not_found", "unknown agent build")
+		return
+	}
+	if err != nil {
+		h.Log.Error("read agent build", "agent_version_id", id, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+		return
+	}
+	writeJSON(w, http.StatusOK, protocol.AgentVersionResponse{
+		Version: v.Version, SHA256: v.SHA256, SizeBytes: v.SizeBytes,
+	})
+}
+
+// agentVersionBinary streams the bytes of an assigned build. This is the
+// product's first non-JSON agent response: the payload is a binary of a few
+// megabytes, and base64-in-JSON would inflate that by a third for no benefit.
+func (h *Handler) agentVersionBinary(w http.ResponseWriter, r *http.Request) {
+	a := auth(r)
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "agent_version_not_found", "unknown agent build")
+		return
+	}
+	ctx := r.Context()
+	allowed, err := h.Store.Q().DeviceHasItem(ctx, a.Device.ID, protocol.ItemKindAgent, id)
+	if err != nil {
+		h.Log.Error("check agent build assignment", "device_id", a.Device.ID, "agent_version_id", id, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+		return
+	}
+	if !allowed {
+		writeError(w, http.StatusNotFound, "agent_version_not_found", "unknown agent build")
+		return
+	}
+	body, size, err := h.AgentVersions.Open(ctx, id)
+	if errors.Is(err, agentversions.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "agent_version_not_found", "unknown agent build")
+		return
+	}
+	if err != nil {
+		h.Log.Error("open agent build", "agent_version_id", id, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+		return
+	}
+	defer body.Close()
+
+	// The agent verifies the SHA-256 from the definition, so a truncated
+	// transfer is caught there; Content-Length lets it fail sooner.
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+	if _, err := io.Copy(w, body); err != nil {
+		// The response is already partly written, so there is nothing useful
+		// to say to the client; the agent's hash check is what catches it.
+		h.Log.Warn("agent build download was cut short", "device_id", a.Device.ID, "error", err)
+	}
+}
+
+// agentVersionResult records the outcome of one device's attempt to install a
+// build. As with appResult, the gate on assignment happens before anything is
+// decoded: a device must never be able to forge a "succeeded" for a build it
+// was never given.
+func (h *Handler) agentVersionResult(w http.ResponseWriter, r *http.Request) {
+	a := auth(r)
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "agent_version_not_found", "unknown agent build")
+		return
+	}
+	ctx := r.Context()
+	allowed, err := h.Store.Q().DeviceHasItem(ctx, a.Device.ID, protocol.ItemKindAgent, id)
+	if err != nil {
+		h.Log.Error("check agent build assignment", "device_id", a.Device.ID, "agent_version_id", id, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+		return
+	}
+	if !allowed {
+		writeError(w, http.StatusNotFound, "agent_version_not_found", "unknown agent build")
+		return
+	}
+	var res protocol.AgentUpdateResult
+	if !decode(w, r, &res, maxResultBody) {
+		return
+	}
+	err = h.AgentVersions.RecordResult(ctx, a.Device.ID, id, res)
+	switch {
+	case err == nil:
+		writeNoContent(w)
+	case errors.Is(err, agentversions.ErrBadRequest):
+		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
+	default:
+		h.Log.Error("record agent update result", "device_id", a.Device.ID, "agent_version_id", id, "error", err)
 		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
 	}
 }
