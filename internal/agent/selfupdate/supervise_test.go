@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -191,6 +193,50 @@ func TestSuperviseKeepsAnUpdateThatChecksInAfterSeveralPolls(t *testing.T) {
 	}
 	if _, found, _ := selfupdate.ReadRecord(dir); found {
 		t.Error("a settled update should leave no record behind")
+	}
+}
+
+// Every update stages another copy of the agent under bin/, and nothing else
+// ever removes one: without this the data directory grows by a whole binary
+// per release, for the life of the device. The build that just won and the
+// one it replaced both stay -- the second is what a rollback needs.
+func TestSuperviseRemovesBuildsNobodyNeedsAnyMore(t *testing.T) {
+	dir := t.TempDir()
+	rec := pending(dir, time.Now().Add(time.Minute))
+	if err := selfupdate.WriteRecord(dir, rec); err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range []string{"0.8.0", "0.9.0", rec.FromVersion, rec.ToVersion} {
+		if err := os.MkdirAll(filepath.Join(dir, "bin", v), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := &fakeControl{binPath: rec.FromBinPath, args: rec.FromArgs}
+	c.onStart = func() {
+		done := rec
+		done.Status = selfupdate.StatusSucceeded
+		_ = selfupdate.WriteRecord(dir, done)
+	}
+
+	if err := supervisor(dir, c).Supervise(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(filepath.Join(dir, "bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var left []string
+	for _, e := range entries {
+		left = append(left, e.Name())
+	}
+	want := map[string]bool{rec.FromVersion: true, rec.ToVersion: true}
+	if len(left) != len(want) {
+		t.Fatalf("bin/ holds %v, want only the new build and the one it can go back to", left)
+	}
+	for _, name := range left {
+		if !want[name] {
+			t.Errorf("bin/%s should have been pruned", name)
+		}
 	}
 }
 

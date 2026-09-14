@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -125,6 +127,7 @@ func (s *Supervisor) Supervise(ctx context.Context) error {
 			if err := RemoveRecord(s.Dir); err != nil {
 				return fmt.Errorf("removing settled update record: %w", err)
 			}
+			s.pruneOldBuilds(rec)
 			return nil
 		}
 
@@ -154,6 +157,32 @@ func (s *Supervisor) Supervise(ctx context.Context) error {
 			return ctx.Err()
 		case <-ticker.C:
 		}
+	}
+}
+
+// pruneOldBuilds removes every staged build except the one that just won and
+// the one it replaced. The replaced one stays because it is what the service
+// is still pointed back at if a later update has to roll back; everything
+// else is a binary nobody will ever run again. Nothing here is worth failing
+// an update that already succeeded over, so every problem is logged and the
+// rest of the sweep carries on.
+func (s *Supervisor) pruneOldBuilds(rec Record) {
+	binDir := filepath.Join(s.Dir, "bin")
+	entries, err := os.ReadDir(binDir)
+	if err != nil {
+		s.Log.Error("failed to list staged builds", "err", err)
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() || e.Name() == rec.ToVersion || e.Name() == rec.FromVersion {
+			continue
+		}
+		path := filepath.Join(binDir, e.Name())
+		if err := os.RemoveAll(path); err != nil {
+			s.Log.Error("failed to remove an old staged build", "path", path, "err", err)
+			continue
+		}
+		s.Log.Info("removed an old staged build", "version", e.Name())
 	}
 }
 
