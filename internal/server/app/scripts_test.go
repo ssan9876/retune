@@ -1,10 +1,14 @@
 package app_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
 
 	"retune/internal/protocol"
 	"retune/internal/server/store"
@@ -189,6 +193,65 @@ func TestEditingABodyMakesANewVersion(t *testing.T) {
 	}
 }
 
+// The upsert behind reassignment is not app-specific: a script assigned
+// again to the same group with different deployment options replaces those
+// options in place, the same as an app's intent does.
+func TestReassigningAScriptReplacesItsOptions(t *testing.T) {
+	a, srv := newTestApp(t)
+	admin := signedIn(t, a, srv, store.RoleAdmin)
+
+	status, body := admin.do(http.MethodPost, "/scripts", map[string]string{
+		"name": "Held item", "body": "echo hi",
+	})
+	if status != http.StatusCreated {
+		t.Fatalf("create: %d %s", status, body)
+	}
+	script := decodeJSON[scriptResp](t, body)
+
+	status, body = admin.do(http.MethodPost, "/assignments", map[string]any{
+		"item_kind": protocol.ItemKindScript, "item_id": script.ID,
+		"group_id": store.BuiltinGroupID.String(), "mode": "include",
+		"options": map[string]any{"frequency": "once"},
+	})
+	if status != http.StatusCreated {
+		t.Fatalf("assign once: %d %s", status, body)
+	}
+	first := decodeJSON[struct {
+		ID string `json:"id"`
+	}](t, body)
+
+	status, body = admin.do(http.MethodPost, "/assignments", map[string]any{
+		"item_kind": protocol.ItemKindScript, "item_id": script.ID,
+		"group_id": store.BuiltinGroupID.String(), "mode": "include",
+		"options": map[string]any{"frequency": "recurring", "interval_hours": 6},
+	})
+	if status != http.StatusCreated {
+		t.Fatalf("reassign as recurring: %d %s", status, body)
+	}
+	second := decodeJSON[struct {
+		ID string `json:"id"`
+	}](t, body)
+	if second.ID != first.ID {
+		t.Errorf("a replacement keeps the original row's id, got %q want %q", second.ID, first.ID)
+	}
+	if !strings.Contains(string(body), `"frequency":"recurring"`) {
+		t.Errorf("the stored options should now say recurring, got %s", body)
+	}
+
+	status, body = admin.do(http.MethodGet, "/assignments?item_kind="+protocol.ItemKindScript+"&item_id="+script.ID, nil)
+	if status != http.StatusOK {
+		t.Fatalf("list assignments: %d %s", status, body)
+	}
+	list := decodeJSON[struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+	}](t, body)
+	if len(list.Items) != 1 {
+		t.Fatalf("reassigning must replace the row, not add one, got %d assignments", len(list.Items))
+	}
+}
+
 func TestBadDeploymentOptionsAreRejected(t *testing.T) {
 	a, srv := newTestApp(t)
 	admin := signedIn(t, a, srv, store.RoleAdmin)
@@ -345,5 +408,32 @@ func TestItemStatusCarriesTheVersion(t *testing.T) {
 	}](t, body)
 	if len(resp.Items) != 1 || resp.Items[0].Version != 2 {
 		t.Fatalf("the status should name version 2, got %+v", resp.Items)
+	}
+}
+
+// An item of a kind this server does not implement is never handed to an
+// agent. There is no endpoint to fetch its content from and no version to
+// fetch, so sending it could only confuse.
+func TestCheckinDropsAnUnknownItemKind(t *testing.T) {
+	a, srv := newTestApp(t)
+	_, agent := enrollDevice(t, a, srv, "DESKTOP-UNKNOWNKIND")
+
+	// Written straight to the store, because the admin API now refuses it.
+	_, err := a.Store.Q().CreateAssignment(context.Background(), store.Assignment{
+		ID: uuid.Must(uuid.NewV7()), ItemKind: "widget", ItemID: uuid.Must(uuid.NewV7()),
+		GroupID: uuid.MustParse("00000000-0000-0000-0000-000000000002"),
+		Mode:    store.ModeInclude, CreatedAt: time.Now(), CreatedBy: "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	status, body := send(t, agent, http.MethodPost, srv.URL+"/api/agent/v1/checkin",
+		protocol.CheckinRequest{AgentVersion: "1.0.0"})
+	if status != http.StatusOK {
+		t.Fatalf("checkin: %d %s", status, body)
+	}
+	if items := decodeJSON[protocol.CheckinResponse](t, body).Items; len(items) != 0 {
+		t.Fatalf("a kind nothing implements must not be sent, got %+v", items)
 	}
 }

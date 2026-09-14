@@ -31,6 +31,7 @@ var (
 	bucketScripts  = []byte("scripts")
 	bucketPrior    = []byte("policy_prior")
 	bucketProfiles = []byte("policy_profiles")
+	bucketApps     = []byte("apps")
 	keyInventory   = []byte("inventory_hash")
 )
 
@@ -62,7 +63,7 @@ func Open(path string) (*Store, error) {
 	}
 	err = db.Update(func(tx *bolt.Tx) error {
 		for _, b := range [][]byte{bucketResults, bucketLedger, bucketMeta, bucketItems, bucketScripts,
-			bucketPrior, bucketProfiles} {
+			bucketPrior, bucketProfiles, bucketApps} {
 			if _, err := tx.CreateBucketIfNotExists(b); err != nil {
 				return err
 			}
@@ -233,6 +234,51 @@ func (s *Store) ItemState(id string) (ItemState, error) {
 func (s *Store) SetItemState(id string, st ItemState) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
 		return putJSON(tx.Bucket(bucketItems), id, st)
+	})
+}
+
+// AppState is what the agent remembers about one assigned app, and is how it
+// decides whether that app needs installing, removing, or just rechecking.
+type AppState struct {
+	Version     int       `json:"version"`
+	Intent      string    `json:"intent"`
+	LastActedAt time.Time `json:"last_acted_at"`
+	LastStatus  string    `json:"last_status"`
+	// LastSeenAt is when Installed was last confirmed by detection, not just
+	// assumed from an earlier install or uninstall.
+	LastSeenAt time.Time `json:"last_seen_at"`
+	Installed  bool      `json:"installed"`
+	// Failures counts consecutive failures of this version under this intent.
+	Failures int `json:"failures"`
+	// Settled records that the current Version/Intent has already been
+	// reported once as having reached its desired state — whether by an
+	// install/uninstall that succeeded, or by a detection that found it
+	// already correct. It is what keeps an hourly recheck of an
+	// already-compliant app from reporting the same "succeeded" over and
+	// over, while still letting a new version or a changed intent report
+	// fresh.
+	Settled bool `json:"settled"`
+}
+
+// AppState returns what is remembered about an app. An app never seen before
+// reports the zero value rather than an error, because "never acted on" is
+// the normal starting point.
+func (s *Store) AppState(id string) (AppState, error) {
+	var out AppState
+	err := s.db.View(func(tx *bolt.Tx) error {
+		raw := tx.Bucket(bucketApps).Get([]byte(id))
+		if raw == nil {
+			return nil
+		}
+		return json.Unmarshal(raw, &out)
+	})
+	return out, err
+}
+
+// SetAppState records what happened to an app.
+func (s *Store) SetAppState(id string, st AppState) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		return putJSON(tx.Bucket(bucketApps), id, st)
 	})
 }
 

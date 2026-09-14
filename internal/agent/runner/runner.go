@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"retune/internal/agent/agentcfg"
+	"retune/internal/agent/apps"
 	"retune/internal/agent/checkin"
 	"retune/internal/agent/enrollment"
 	"retune/internal/agent/executor"
@@ -60,6 +61,19 @@ func Run(ctx context.Context, opts Options) error {
 	defer st.Close()
 
 	scriptRunner := executor.DefaultRunner(filepath.Join(opts.DataDir, "scripts"))
+
+	// A machine with no App Installer simply cannot deploy apps; every other
+	// part of the agent still works, so this must not stop it from starting.
+	// The syncer is still built, though: an assigned app must be reported
+	// failed, plainly, rather than the device just going silent about it.
+	appSyncer := &apps.Syncer{State: st, Log: opts.Log, Now: time.Now}
+	if wg, err := apps.New(); err != nil {
+		opts.Log.Info("app deployments are unavailable on this machine", "error", err)
+		appSyncer.Unavailable = err
+	} else {
+		appSyncer.Winget = wg
+	}
+
 	sess, err := session.New(session.Config{
 		Identity:  id,
 		IDStore:   idStore,
@@ -79,7 +93,8 @@ func Run(ctx context.Context, opts Options) error {
 			Reconciler: &policy.Reconciler{State: st, Log: opts.Log},
 			Cache:      st, Log: opts.Log,
 		},
-		Log: opts.Log,
+		Apps: appSyncer,
+		Log:  opts.Log,
 	})
 	if err != nil {
 		return err

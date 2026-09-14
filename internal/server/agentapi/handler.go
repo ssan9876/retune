@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	"retune/internal/protocol"
+	"retune/internal/server/apps"
 	"retune/internal/server/bitlocker"
 	"retune/internal/server/ca"
 	"retune/internal/server/commands"
@@ -31,6 +32,7 @@ type Handler struct {
 	Commands        *commands.Service
 	Scripts         *scripts.Service
 	Profiles        *profiles.Service
+	Apps            *apps.Service
 	BitLocker       *bitlocker.Service
 	Store           *store.Store
 	Now             func() time.Time
@@ -63,6 +65,8 @@ func (h *Handler) Routes() http.Handler {
 	mux.Handle("POST /api/agent/v1/scripts/{id}/runs", h.requireDevice(h.scriptRun))
 	mux.Handle("GET /api/agent/v1/profiles/{id}/versions/{version}", h.requireDevice(h.profileVersion))
 	mux.Handle("POST /api/agent/v1/profiles/{id}/status", h.requireDevice(h.profileStatus))
+	mux.Handle("GET /api/agent/v1/apps/{id}/versions/{version}", h.requireDevice(h.appVersion))
+	mux.Handle("POST /api/agent/v1/apps/{id}/result", h.requireDevice(h.appResult))
 	mux.Handle("GET /api/agent/v1/bitlocker", h.requireDevice(h.bitlockerStatus))
 	mux.Handle("POST /api/agent/v1/bitlocker", h.requireDevice(h.escrowBitLocker))
 	return mux
@@ -183,41 +187,29 @@ func (h *Handler) checkin(w http.ResponseWriter, r *http.Request) {
 	}
 	items := make([]protocol.Item, 0, len(assigned))
 	for _, it := range assigned {
-		item := protocol.Item{Kind: it.Kind, ID: it.ID.String(), Options: it.Options}
-		if it.Kind == protocol.ItemKindProfile {
-			pr, err := h.Profiles.Get(ctx, it.ID)
-			if err != nil {
-				// A profile that has gone missing is simply not offered.
-				h.Log.Warn("assigned profile is missing", "profile_id", it.ID, "error", err)
-				continue
-			}
-			item.Version = pr.CurrentVersion
+		version, exists := h.itemVersion(ctx, it)
+		if !exists {
+			continue
 		}
-		if it.Kind == protocol.ItemKindScript {
-			// The agent needs the version to know whether its cached copy is
-			// current; it fetches the body separately, once per version.
-			sc, err := h.Store.Q().GetScript(ctx, it.ID)
-			if err != nil {
-				// A script that has gone missing is simply not offered.
-				h.Log.Warn("assigned script is missing", "script_id", it.ID, "error", err)
-				continue
-			}
-			item.Version = sc.CurrentVersion
+		items = append(items, protocol.Item{
+			Kind: it.Kind, ID: it.ID.String(), Version: version, Options: it.Options,
+		})
 
-			// A deployment that needs a signed-in user cannot run on a machine
-			// where nobody is. The check-in says who is signed in, so the
-			// server records that as pending; the agent still receives it, and
-			// reports a real result as soon as somebody signs in.
-			if opts, err := protocol.ParseDeploymentOptions(it.Options); err == nil {
-				if opts.NeedsUserSession() && strings.TrimSpace(req.LoggedInUser) == "" {
-					if err := h.Scripts.SetItemPending(ctx, a.Device.ID, it.ID, sc.CurrentVersion,
-						"waiting for somebody to sign in"); err != nil {
-						h.Log.Warn("record pending deployment", "script_id", it.ID, "error", err)
-					}
-				}
-			}
+		// A deployment that needs a signed-in user cannot run on a machine
+		// where nobody is. The check-in says who is signed in, so the server
+		// records that as pending; the agent still receives it, and reports a
+		// real result as soon as somebody signs in.
+		if it.Kind != protocol.ItemKindScript || strings.TrimSpace(req.LoggedInUser) != "" {
+			continue
 		}
-		items = append(items, item)
+		opts, err := protocol.ParseDeploymentOptions(it.Options)
+		if err != nil || !opts.NeedsUserSession() {
+			continue
+		}
+		if err := h.Scripts.SetItemPending(ctx, a.Device.ID, it.ID, version,
+			"waiting for somebody to sign in"); err != nil {
+			h.Log.Warn("record pending deployment", "script_id", it.ID, "error", err)
+		}
 	}
 
 	writeJSON(w, http.StatusOK, protocol.CheckinResponse{
@@ -226,6 +218,39 @@ func (h *Handler) checkin(w http.ResponseWriter, r *http.Request) {
 		Commands:        cmds,
 		Items:           items,
 	})
+}
+
+// itemVersion reports the current version of an assigned item, and whether it
+// still exists. A kind with no case here is one this server does not
+// implement, and is never offered to an agent.
+func (h *Handler) itemVersion(ctx context.Context, it store.Item) (int, bool) {
+	switch it.Kind {
+	case protocol.ItemKindScript:
+		// The agent needs the version to know whether its cached copy is
+		// current; it fetches the body separately, once per version.
+		sc, err := h.Store.Q().GetScript(ctx, it.ID)
+		if err != nil {
+			// A script that has gone missing is simply not offered.
+			h.Log.Warn("assigned script is missing", "script_id", it.ID, "error", err)
+			return 0, false
+		}
+		return sc.CurrentVersion, true
+	case protocol.ItemKindProfile:
+		pr, err := h.Profiles.Get(ctx, it.ID)
+		if err != nil {
+			h.Log.Warn("assigned profile is missing", "profile_id", it.ID, "error", err)
+			return 0, false
+		}
+		return pr.CurrentVersion, true
+	case protocol.ItemKindApp:
+		app, err := h.Apps.Get(ctx, it.ID)
+		if err != nil {
+			h.Log.Warn("assigned app is missing", "app_id", it.ID, "error", err)
+			return 0, false
+		}
+		return app.CurrentVersion, true
+	}
+	return 0, false
 }
 
 func (h *Handler) renew(w http.ResponseWriter, r *http.Request) {
@@ -460,6 +485,92 @@ func (h *Handler) bitlockerStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, protocol.BitLockerHasResponse{Escrowed: has})
+}
+
+// appVersion hands a device the definition of an assigned app. As with
+// scripts and profiles, a device may only read what it has been given, so an
+// unassigned app is a 404 -- the same answer as one that does not exist.
+func (h *Handler) appVersion(w http.ResponseWriter, r *http.Request) {
+	a := auth(r)
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "app_not_found", "unknown app")
+		return
+	}
+	version, err := strconv.Atoi(r.PathValue("version"))
+	if err != nil || version < 1 {
+		writeError(w, http.StatusNotFound, "app_not_found", "unknown app version")
+		return
+	}
+	ctx := r.Context()
+	allowed, err := h.Store.Q().DeviceHasItem(ctx, a.Device.ID, protocol.ItemKindApp, id)
+	if err != nil {
+		h.Log.Error("check app assignment", "device_id", a.Device.ID, "app_id", id, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+		return
+	}
+	if !allowed {
+		writeError(w, http.StatusNotFound, "app_not_found", "unknown app")
+		return
+	}
+	v, err := h.Apps.Version(ctx, id, version)
+	if errors.Is(err, apps.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "app_not_found", "unknown app version")
+		return
+	}
+	if err != nil {
+		h.Log.Error("read app version", "app_id", id, "version", version, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+		return
+	}
+	writeJSON(w, http.StatusOK, protocol.AppVersionResponse{
+		Version: v.Version, PackageID: v.PackageID, PinnedVersion: v.PinnedVersion,
+		Scope: v.Scope, InstallArgs: v.InstallArgs, Hash: v.Hash,
+	})
+}
+
+// appResult records one install or uninstall reported by a device. Unlike
+// scriptRun, this endpoint too must gate on assignment: an app is not offered
+// by ID alone anywhere else in the agent API, but the same 404-for-both-cases
+// rule applies to writes as to reads.
+func (h *Handler) appResult(w http.ResponseWriter, r *http.Request) {
+	a := auth(r)
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "app_not_found", "unknown app")
+		return
+	}
+	// Gating the write side the same as the read side means a device whose
+	// assignment is revoked between an install starting and its result
+	// arriving gets a 404 and the result is dropped rather than recorded.
+	// That is the correct trade -- an agent must never be able to write
+	// history for something it was never given -- but it does mean a result
+	// can be lost to a race with revocation, not just rejected outright.
+	ctx := r.Context()
+	allowed, err := h.Store.Q().DeviceHasItem(ctx, a.Device.ID, protocol.ItemKindApp, id)
+	if err != nil {
+		h.Log.Error("check app assignment", "device_id", a.Device.ID, "app_id", id, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+		return
+	}
+	if !allowed {
+		writeError(w, http.StatusNotFound, "app_not_found", "unknown app")
+		return
+	}
+	var res protocol.AppResult
+	if !decode(w, r, &res, maxResultBody) {
+		return
+	}
+	err = h.Apps.RecordInstall(ctx, a.Device.ID, id, res)
+	switch {
+	case err == nil:
+		writeNoContent(w)
+	case errors.Is(err, apps.ErrBadRequest):
+		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
+	default:
+		h.Log.Error("record app install", "device_id", a.Device.ID, "app_id", id, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+	}
 }
 
 // escrowBitLocker stores a recovery password. The key is never logged, here or

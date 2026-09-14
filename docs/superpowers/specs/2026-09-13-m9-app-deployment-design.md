@@ -39,9 +39,13 @@ task, read-only, before any of this was designed:
   `--accept-source-agreements`. Pinning `--source winget` avoids it, which is
   wanted regardless: the Store source sends the machine's geographic region
   upstream and cannot be installed from silently.
-- **winget's output is UTF-8 and is mis-decoded by default** — `©` arrived as
-  `┬⌐`. The agent must decode it as UTF-8 explicitly or every stored install
-  log is mojibake.
+- **winget's output is already valid UTF-8 on a redirected pipe.** The probe's
+  `©` displayed on the console as `┬⌐`, which looks like a decoding bug but
+  isn't one: `0xC2 0xA9` is correct UTF-8 for `©`, and CP437 — the console's
+  own rendering codepage — is what turns those two bytes into `┬⌐`. A
+  redirected pipe gets no codepage translation from Windows; what the agent
+  reads is the same UTF-8 bytes winget wrote. No transcode is applied, because
+  adding one would corrupt data that is already correct.
 
 ## 3. Data model
 

@@ -15,7 +15,7 @@
 These apply to every task. They are copied from the spec; where a task repeats one it is for emphasis, not because the others are exempt.
 
 - **winget is invoked only as:** `--exact --source winget --disable-interactivity --accept-source-agreements`, with install additionally passing `--scope machine --silent --accept-package-agreements`. Never omit `--source winget`: the `msstore` source prompts for an agreement and sends the machine's geographic region upstream.
-- **winget output is decoded as UTF-8 explicitly.** The default decoding mangles it (`©` arrives as `┬⌐`).
+- **winget's output is already valid UTF-8 on a redirected pipe; no transcode is applied.** `©` displaying as `┬⌐` on a console is CP437 rendering the correct UTF-8 bytes `0xC2 0xA9`, not a decoding bug — a redirected pipe gets no codepage translation from Windows, and applying one would corrupt data that is already correct.
 - **Exit code `-1978335212`** (`APPINSTALLER_CLI_ERROR_NO_APPLICATIONS_FOUND`) means "not installed". It is the detection signal, not a failure.
 - **Scope is `machine` only.** `user` is rejected by validation. The agent is LocalSystem, so a user-scope install would land in the SYSTEM account's profile.
 - **Retune never upgrades an app it did not install this version of.** No chasing new upstream releases.
@@ -351,7 +351,11 @@ git commit -m "refactor: resolve check-in item versions through one dispatcher"
 
 **Files:**
 - Modify: `internal/agent/session/session.go` — `Config`, `New`, `Checkin`, plus two adapter types
-- Test: `internal/agent/session/session_test.go`
+- Test: `internal/agent/session/dispatch_test.go` (new; the package has no test file today)
+
+`internal/agent/runner/runner.go` needs no change here: it sets `Scripts` and
+`Policy` on the config, and `New` is what turns those into syncers. Task 11 is
+where it gains a line.
 
 **Interfaces:**
 - Produces:
@@ -366,43 +370,126 @@ git commit -m "refactor: resolve check-in item versions through one dispatcher"
 
 - [ ] **Step 1: Write the failing test**
 
-Read `internal/agent/session/session_test.go` first and follow however it already builds a session and waits for background work; the waiting involves the `s.pending` WaitGroup. Then add:
+There is no `internal/agent/session/session_test.go`, and building a real
+`Session` needs an enrolled identity and an mTLS connection — which is why the
+only place one is constructed in tests is `test/e2e/m2_test.go`, against a live
+server. Standing that up inside a unit test to check a dispatch rule is the
+wrong trade.
+
+So extract the loop instead of reaching around it. Add to
+`internal/agent/session/session.go`:
 
 ```go
-// A syncer that runs on empty is called with nothing assigned; one that does
-// not is left alone. That difference is the whole reason profiles can revert.
-func TestCheckinCallsSyncersByTheirEmptyRule(t *testing.T) {
-	eager := &countingSyncer{name: "eager", onEmpty: true}
-	lazy := &countingSyncer{name: "lazy"}
-
-	s := newTestSession(t, func(c *session.Config) {
-		c.Syncers = []session.ItemSyncer{eager, lazy}
-	})
-	if _, err := s.Checkin(context.Background()); err != nil {
-		t.Fatal(err)
+// dispatch starts each syncer that has something to do. It is separate from
+// Checkin so the rule about empty item lists can be tested without an enrolled
+// identity and a server to talk to.
+func dispatch(ctx context.Context, syncers []ItemSyncer, items []protocol.Item,
+	pending *sync.WaitGroup, log *slog.Logger) {
+	for _, syncer := range syncers {
+		if len(items) == 0 && !syncer.RunOnEmpty() {
+			continue
+		}
+		pending.Add(1)
+		go func() {
+			defer pending.Done()
+			if err := syncer.Sync(ctx, items); err != nil {
+				log.Warn("applying assigned work failed", "syncer", syncer.Name(), "error", err)
+			}
+		}()
 	}
-	s.Wait()
+}
+```
 
-	if eager.calls() != 1 {
-		t.Errorf("a syncer that runs on empty should have been called once, got %d", eager.calls())
+Then create `internal/agent/session/dispatch_test.go` as `package session` —
+an internal test, because `dispatch` is unexported:
+
+```go
+package session
+
+import (
+	"context"
+	"log/slog"
+	"sync"
+	"testing"
+
+	"retune/internal/protocol"
+)
+
+// A syncer that runs on empty is started with nothing assigned; one that does
+// not is left alone. That difference is the whole reason profiles can revert:
+// an empty list is exactly when an unassigned profile must be undone.
+func TestDispatchHonoursTheEmptyRule(t *testing.T) {
+	cases := map[string]struct {
+		items      []protocol.Item
+		wantEager  int
+		wantLazy   int
+	}{
+		"nothing assigned": {
+			items: nil, wantEager: 1, wantLazy: 0,
+		},
+		"something assigned": {
+			items:     []protocol.Item{{Kind: "script", ID: "s1", Version: 1}},
+			wantEager: 1, wantLazy: 1,
+		},
 	}
-	if lazy.calls() != 0 {
-		t.Errorf("a syncer that does not should have been left alone, got %d", lazy.calls())
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			eager := &countingSyncer{name: "eager", onEmpty: true}
+			lazy := &countingSyncer{name: "lazy"}
+			var pending sync.WaitGroup
+
+			dispatch(context.Background(), []ItemSyncer{eager, lazy}, tc.items,
+				&pending, slog.New(slog.DiscardHandler))
+			pending.Wait()
+
+			if eager.calls() != tc.wantEager {
+				t.Errorf("eager syncer ran %d times, want %d", eager.calls(), tc.wantEager)
+			}
+			if lazy.calls() != tc.wantLazy {
+				t.Errorf("lazy syncer ran %d times, want %d", lazy.calls(), tc.wantLazy)
+			}
+		})
 	}
 }
 
+// Every syncer gets the same item list, and one that fails does not stop the
+// others: a broken deployment must not hold up the rest of a check-in.
+func TestDispatchIsolatesFailures(t *testing.T) {
+	angry := &countingSyncer{name: "angry", err: errors.New("no")}
+	calm := &countingSyncer{name: "calm"}
+	var pending sync.WaitGroup
+
+	items := []protocol.Item{{Kind: "script", ID: "s1", Version: 1}}
+	dispatch(context.Background(), []ItemSyncer{angry, calm}, items,
+		&pending, slog.New(slog.DiscardHandler))
+	pending.Wait()
+
+	if calm.calls() != 1 {
+		t.Errorf("a failing syncer must not stop the next one, got %d", calm.calls())
+	}
+	if got := angry.sawItems(); len(got) != 1 {
+		t.Errorf("every syncer gets the whole list, got %+v", got)
+	}
+}
+
+// countingSyncer records how often it ran and what it was given.
 type countingSyncer struct {
 	name    string
 	onEmpty bool
-	mu      sync.Mutex
-	n       int
+	err     error
+
+	mu    sync.Mutex
+	n     int
+	items []protocol.Item
 }
 
-func (c *countingSyncer) Sync(context.Context, []protocol.Item) error {
+func (c *countingSyncer) Sync(_ context.Context, items []protocol.Item) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.n++
-	return nil
+	c.items = items
+	return c.err
 }
 func (c *countingSyncer) RunOnEmpty() bool { return c.onEmpty }
 func (c *countingSyncer) Name() string     { return c.name }
@@ -411,15 +498,20 @@ func (c *countingSyncer) calls() int {
 	defer c.mu.Unlock()
 	return c.n
 }
+func (c *countingSyncer) sawItems() []protocol.Item {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.items
+}
 ```
 
-If there is no `newTestSession` helper and no exported way to wait, add both: a helper that builds a `Session` against an `httptest` server the way the existing tests do, and `func (s *Session) Wait() { s.pending.Wait() }` on `Session` with the comment that it exists so tests can wait for background syncers.
+Add `"errors"` to that file's imports.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `go test ./internal/agent/session/ -run TestCheckinCallsSyncersByTheirEmptyRule -count=1`
+Run: `go test ./internal/agent/session/ -run TestDispatch -count=1`
 
-Expected: FAIL to compile — `session.ItemSyncer` and `Config.Syncers` do not exist.
+Expected: FAIL to compile — `ItemSyncer` and `dispatch` do not exist yet.
 
 - [ ] **Step 3: Add the interface, the field and the adapters**
 
@@ -487,26 +579,16 @@ Append to `s.cfg`, not `cfg`: `s` was built from a copy of the config, and the c
 
 - [ ] **Step 4: Replace the two branches in Checkin**
 
-Replace both the `if s.cfg.Scripts != nil && len(resp.Items) > 0 { ... }` block and the `if s.cfg.Policy != nil { ... }` block with:
+Replace both the `if s.cfg.Scripts != nil && len(resp.Items) > 0 { ... }` block
+and the `if s.cfg.Policy != nil { ... }` block with one call to the function
+Step 1 added:
 
 ```go
 	// Assigned work is applied in the background: a long-running deployment
 	// must not hold up check-ins, inventory or commands. Each syncer runs one
 	// job at a time internally, so a slow one only means the next check-in
 	// finds it still busy.
-	for _, syncer := range s.cfg.Syncers {
-		if len(resp.Items) == 0 && !syncer.RunOnEmpty() {
-			continue
-		}
-		items, syncer := resp.Items, syncer
-		s.pending.Add(1)
-		go func() {
-			defer s.pending.Done()
-			if err := syncer.Sync(ctx, items); err != nil {
-				s.cfg.Log.Warn("applying assigned work failed", "syncer", syncer.Name(), "error", err)
-			}
-		}()
-	}
+	dispatch(ctx, s.cfg.Syncers, resp.Items, &s.pending, s.cfg.Log)
 ```
 
 - [ ] **Step 5: Run the tests**
@@ -1501,7 +1583,15 @@ In `internal/server/adminapi/itemkinds.go`, add to `optionsParsers`:
 	},
 ```
 
-Add `Apps *apps.Service` to the `adminapi.Handler` struct. In `internal/server/app/app.go`, add `Apps *apps.Service` to the `App` struct, construct `appSvc := &apps.Service{Store: st, Now: time.Now}` beside `prof`, pass `Apps: appSvc` to both the `adminapi.Handler` and the `agentapi.Handler` literals, and add `Apps: appSvc` to the returned `&App{...}`.
+Add `Apps *apps.Service` to the `adminapi.Handler` struct **and to the
+`agentapi.Handler` struct**. The agent handler does not use the field until
+Task 8, but wiring both here keeps every change to `app.go` in one task, and an
+as-yet-unused struct field compiles.
+
+In `internal/server/app/app.go`: add `Apps *apps.Service` to the `App` struct,
+construct `appSvc := &apps.Service{Store: st, Now: time.Now}` beside `prof`,
+pass `Apps: appSvc` to both the `adminapi.Handler` and the `agentapi.Handler`
+literals, and add `Apps: appSvc` to the returned `&App{...}`.
 
 - [ ] **Step 5: Run the tests**
 
@@ -1630,7 +1720,8 @@ Expected: FAIL — the agent routes 404.
 
 - [ ] **Step 3: Add the field, the routes and the `itemVersion` case**
 
-Add `Apps *apps.Service` to the `agentapi.Handler` struct. In `Routes()`, beside the profile pair:
+Task 7 already added the `Apps *apps.Service` field to the `agentapi.Handler`
+struct; do not add it again. In `Routes()`, beside the profile pair:
 
 ```go
 	mux.Handle("GET /api/agent/v1/apps/{id}/versions/{version}", h.requireDevice(h.appVersion))
@@ -1878,7 +1969,7 @@ func uninstallArgs(packageID string) []string {
 
 `installedVersion` scans the output for the line containing the package ID and returns the next whitespace-separated field after it, returning `""` when there is none.
 
-In `winget_windows.go`, `New()` lists `%ProgramFiles%\WindowsApps` for directories matching `Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe`, sorts descending by name, and returns the one containing `winget.exe`; with none, `ErrNoAppInstaller`. Running a command uses `exec.CommandContext`, captures stdout and stderr into `executor.NewCapped(protocol.MaxOutputBytes)`, and **decodes the bytes as UTF-8 explicitly** — winget writes UTF-8 and the default console decoding mangles it.
+In `winget_windows.go`, `New()` lists `%ProgramFiles%\WindowsApps` for directories matching `Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe`, sorts descending by name, and returns the one containing `winget.exe`; with none, `ErrNoAppInstaller`. Running a command uses `exec.CommandContext`, captures stdout and stderr into `executor.NewCapped(protocol.MaxOutputBytes)`, and **applies no transcode** — winget's output on a redirected pipe is already valid UTF-8, and the `©`-as-`┬⌐` mangling some see is CP437 rendering those correct bytes on a console, a display artifact a redirected pipe never hits.
 
 - [ ] **Step 4: Run the tests**
 
@@ -1957,6 +2048,11 @@ func uninstall() protocol.AppOptions {
 }
 
 func TestDecide(t *testing.T) {
+	// Every state that represents an app already acted on carries the intent
+	// it was acted on under. A zero Intent means "never acted on", which is a
+	// fresh instruction however the rest of the state reads.
+	const install, remove = protocol.IntentInstall, protocol.IntentUninstall
+
 	cases := map[string]struct {
 		version int
 		opts    protocol.AppOptions
@@ -1969,43 +2065,47 @@ func TestDecide(t *testing.T) {
 		},
 		"a new version is a fresh instruction": {
 			version: 2, opts: opts(nil),
-			state: state.AppState{Version: 1, Installed: true, LastSeenAt: now, LastActedAt: now},
+			state: state.AppState{Version: 1, Intent: install, Installed: true, LastSeenAt: now},
+			want:  apps.ActionDetect,
+		},
+		"a changed intent is re-checked before acting on it": {
+			version: 1, opts: uninstall(),
+			state: state.AppState{Version: 1, Intent: install, Installed: true, LastSeenAt: now},
 			want:  apps.ActionDetect,
 		},
 		"installed and checked recently: nothing to do": {
 			version: 1, opts: opts(nil),
-			state: state.AppState{Version: 1, Installed: true, LastSeenAt: now.Add(-10 * time.Minute)},
-			want:  apps.ActionNone,
+			state: state.AppState{
+				Version: 1, Intent: install, Installed: true, LastSeenAt: now.Add(-10 * time.Minute),
+			},
+			want: apps.ActionNone,
 		},
 		"installed but not checked for an hour": {
 			version: 1, opts: opts(nil),
-			state: state.AppState{Version: 1, Installed: true, LastSeenAt: now.Add(-90 * time.Minute)},
-			want:  apps.ActionDetect,
+			state: state.AppState{
+				Version: 1, Intent: install, Installed: true, LastSeenAt: now.Add(-90 * time.Minute),
+			},
+			want: apps.ActionDetect,
 		},
 		"detected missing, so put it back": {
 			version: 1, opts: opts(nil),
-			state: state.AppState{Version: 1, Installed: false, LastSeenAt: now},
+			state: state.AppState{Version: 1, Intent: install, Installed: false, LastSeenAt: now},
 			want:  apps.ActionInstall,
 		},
-		"uninstall intent with it present": {
+		"uninstall intent with it still present": {
 			version: 1, opts: uninstall(),
-			state: state.AppState{Version: 1, Installed: true, LastSeenAt: now},
+			state: state.AppState{Version: 1, Intent: remove, Installed: true, LastSeenAt: now},
 			want:  apps.ActionUninstall,
 		},
 		"uninstall intent with it already gone": {
 			version: 1, opts: uninstall(),
-			state: state.AppState{Version: 1, Installed: false, LastSeenAt: now, Intent: protocol.IntentUninstall},
+			state: state.AppState{Version: 1, Intent: remove, Installed: false, LastSeenAt: now},
 			want:  apps.ActionNone,
-		},
-		"a changed intent is acted on at once": {
-			version: 1, opts: uninstall(),
-			state: state.AppState{Version: 1, Intent: protocol.IntentInstall, Installed: true, LastSeenAt: now},
-			want:  apps.ActionUninstall,
 		},
 		"it has failed too often to keep trying": {
 			version: 1, opts: opts(nil),
 			state: state.AppState{
-				Version: 1, Installed: false, LastSeenAt: now, LastActedAt: now,
+				Version: 1, Intent: install, Installed: false, LastSeenAt: now, LastActedAt: now,
 				LastStatus: protocol.ResultFailed, Failures: 3,
 			},
 			want: apps.ActionNone,
