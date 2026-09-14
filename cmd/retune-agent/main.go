@@ -20,7 +20,9 @@ import (
 	"retune/internal/agent/enrollment"
 	"retune/internal/agent/facts"
 	"retune/internal/agent/identity"
+	"retune/internal/agent/logging"
 	"retune/internal/agent/runner"
+	"retune/internal/agent/selfupdate"
 )
 
 const usage = `usage: retune-agent <command>
@@ -30,7 +32,9 @@ commands:
   run [--data-dir D] [--once]
   configure --server URL --token T [--pin sha256:...] [--data-dir D]   (Windows)
   install [--data-dir D]                                              (Windows)
-  uninstall                                                           (Windows)`
+  uninstall                                                           (Windows)
+  cleanup [--data-dir D]                                              (Windows)
+  supervise-update [--data-dir D]                                     (Windows)`
 
 func main() {
 	if err := run(context.Background(), os.Args[1:], os.Stdout); err != nil {
@@ -157,6 +161,25 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 		}
 		fmt.Fprintln(out, "Removed the Retune service.")
 		return nil
+
+	case "supervise-update":
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		// Run from a copy of the outgoing build, detached, by the agent that
+		// is about to be replaced. It is the known-good binary supervising its
+		// own replacement.
+		control, err := selfupdate.NewController(selfupdate.ServiceName)
+		if err != nil {
+			return err
+		}
+		defer control.Close()
+		log, closeLog, err := logging.New(logging.Options{Dir: *dataDir, EventLog: true})
+		if err != nil {
+			return err
+		}
+		defer closeLog()
+		return (&selfupdate.Supervisor{Dir: *dataDir, Control: control, Log: log}).Supervise(ctx)
 
 	default:
 		return fmt.Errorf("unknown command %q\n%s", args[0], usage)

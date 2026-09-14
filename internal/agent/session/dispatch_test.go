@@ -12,7 +12,11 @@ import (
 
 // A syncer that runs on empty is started with nothing assigned; one that does
 // not is left alone. That difference is the whole reason profiles can revert:
-// an empty list is exactly when an unassigned profile must be undone.
+// an empty list is exactly when an unassigned profile must be undone. Scripts,
+// apps and self-update all report RunOnEmpty false for the same underlying
+// reason -- an unassigned script stops running, an unassigned app stays
+// installed, and an unassigned build stays running -- none of that is
+// undoing anything, so none of them need to be started with nothing to do.
 func TestDispatchHonoursTheEmptyRule(t *testing.T) {
 	cases := map[string]struct {
 		items     []protocol.Item

@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -21,6 +22,7 @@ import (
 	"retune/internal/agent/inventory"
 	"retune/internal/agent/policy"
 	"retune/internal/agent/scripts"
+	"retune/internal/agent/selfupdate"
 	"retune/internal/agent/state"
 	"retune/internal/protocol"
 )
@@ -49,6 +51,8 @@ type Config struct {
 	Policy *policy.Syncer
 	// Apps, when set, installs and removes the apps assigned to this device.
 	Apps *apps.Syncer
+	// SelfUpdate, when set, replaces this agent with an assigned build.
+	SelfUpdate *selfupdate.Syncer
 	// Syncers apply what is assigned to this device. New appends Scripts and
 	// Policy to whatever is set here.
 	Syncers     []ItemSyncer
@@ -116,6 +120,9 @@ func New(cfg Config) (*Session, error) {
 	if cfg.Apps != nil && cfg.Apps.Client == nil {
 		cfg.Apps.Client = appClient{s}
 	}
+	if cfg.SelfUpdate != nil && cfg.SelfUpdate.Client == nil {
+		cfg.SelfUpdate.Client = selfUpdateClient{s}
+	}
 	if cfg.Policy != nil {
 		if cfg.Policy.Fetcher == nil {
 			cfg.Policy.Fetcher = policyClient{s}
@@ -137,6 +144,9 @@ func New(cfg Config) (*Session, error) {
 	}
 	if cfg.Apps != nil {
 		s.cfg.Syncers = append(s.cfg.Syncers, appSyncer{cfg.Apps})
+	}
+	if cfg.SelfUpdate != nil {
+		s.cfg.Syncers = append(s.cfg.Syncers, selfUpdateSyncer{cfg.SelfUpdate})
 	}
 	return s, nil
 }
@@ -491,3 +501,31 @@ func (c policyClient) HasRecoveryKey(ctx context.Context, volumeID string) (bool
 func (c policyClient) EscrowRecoveryKey(ctx context.Context, volumeID, method, recoveryPassword string) error {
 	return c.s.currentClient().EscrowRecoveryKey(ctx, volumeID, method, recoveryPassword)
 }
+
+// selfUpdateClient routes the self-update syncer's calls through the
+// session's current client, so a certificate renewal is picked up without the
+// syncer knowing anything about certificates.
+type selfUpdateClient struct{ s *Session }
+
+func (c selfUpdateClient) FetchAgentVersion(ctx context.Context, id string) (protocol.AgentVersionResponse, error) {
+	return c.s.currentClient().FetchAgentVersion(ctx, id)
+}
+
+func (c selfUpdateClient) DownloadAgentBinary(ctx context.Context, id, sha string, dst io.Writer) error {
+	return c.s.currentClient().DownloadAgentBinary(ctx, id, sha, dst)
+}
+
+func (c selfUpdateClient) ReportAgentUpdate(ctx context.Context, id string, r protocol.AgentUpdateResult) error {
+	return c.s.currentClient().ReportAgentUpdate(ctx, id, r)
+}
+
+// selfUpdateSyncer adapts the self-update syncer. It is not called with an
+// empty item list: an agent that is no longer assigned a build keeps the one
+// it is running, because unassignment is not a downgrade instruction.
+type selfUpdateSyncer struct{ s *selfupdate.Syncer }
+
+func (a selfUpdateSyncer) Sync(ctx context.Context, items []protocol.Item) error {
+	return a.s.Sync(ctx, items)
+}
+func (selfUpdateSyncer) RunOnEmpty() bool { return false }
+func (selfUpdateSyncer) Name() string     { return "agent self-update" }

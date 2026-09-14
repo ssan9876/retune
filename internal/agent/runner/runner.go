@@ -22,6 +22,7 @@ import (
 	"retune/internal/agent/inventory"
 	"retune/internal/agent/policy"
 	"retune/internal/agent/scripts"
+	"retune/internal/agent/selfupdate"
 	"retune/internal/agent/session"
 	"retune/internal/agent/state"
 )
@@ -62,6 +63,17 @@ func Run(ctx context.Context, opts Options) error {
 
 	scriptRunner := executor.DefaultRunner(filepath.Join(opts.DataDir, "scripts"))
 
+	// A rollback is only visible to the server if the restored agent says so.
+	// The supervisor cannot report it: by the time it decides, the agent it
+	// was testing is gone and the one that comes back is this process.
+	var rollback *selfupdate.Record
+	if rec, found, err := selfupdate.ReadRecord(opts.DataDir); err == nil && found &&
+		rec.Status == selfupdate.StatusRolledBack {
+		opts.Log.Warn("a previous update was rolled back",
+			"attempted", rec.ToVersion, "restored", rec.FromVersion, "detail", rec.Detail)
+		rollback = &rec
+	}
+
 	// A machine with no App Installer simply cannot deploy apps; every other
 	// part of the agent still works, so this must not stop it from starting.
 	// The syncer is still built, though: an assigned app must be reported
@@ -72,6 +84,23 @@ func Run(ctx context.Context, opts Options) error {
 		appSyncer.Unavailable = err
 	} else {
 		appSyncer.Winget = wg
+	}
+
+	updater := &selfupdate.Syncer{
+		Dir: opts.DataDir, Running: facts.AgentVersion, Injected: facts.VersionInjected(),
+		Log: opts.Log, Now: time.Now, Rollback: rollback,
+		Spawn: selfupdate.SpawnSupervisor,
+	}
+	// A platform with no service control manager cannot self-update. Every
+	// assigned build is then refused with that reason rather than the device
+	// going quiet about it.
+	if control, err := selfupdate.NewController(selfupdate.ServiceName); err != nil {
+		opts.Log.Info("self-update is unavailable on this machine", "error", err)
+	} else {
+		updater.Control = control
+		// Run holds the controller for exactly as long as the syncer lives;
+		// the handles go back to the service control manager when Run returns.
+		defer control.Close()
 	}
 
 	sess, err := session.New(session.Config{
@@ -93,8 +122,9 @@ func Run(ctx context.Context, opts Options) error {
 			Reconciler: &policy.Reconciler{State: st, Log: opts.Log},
 			Cache:      st, Log: opts.Log,
 		},
-		Apps: appSyncer,
-		Log:  opts.Log,
+		Apps:       appSyncer,
+		SelfUpdate: updater,
+		Log:        opts.Log,
 	})
 	if err != nil {
 		return err

@@ -47,6 +47,12 @@ type ServiceController interface {
 // Windows, where there is no service control manager to speak to.
 var ErrWindowsOnly = errors.New("controlling a service is only available on Windows")
 
+// ServiceName is both the Windows service name and the Event Log source.
+// It is declared here, not in cmd/retune-agent, so the runner and the
+// supervise-update subcommand -- which open a controller independently of
+// each other -- cannot drift apart on what service they mean.
+const ServiceName = "Retune"
+
 // NewController opens a handle to the named service through the Windows
 // service control manager. On any other platform it returns ErrWindowsOnly.
 func NewController(serviceName string) (ServiceController, error) {
