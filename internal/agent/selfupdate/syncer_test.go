@@ -563,6 +563,47 @@ func TestCheckedInIsNotBlockedByASyncThatIsDownloading(t *testing.T) {
 	wg.Wait()
 }
 
+// A supervisor that could not even stop the service writes rolled_back while
+// this process keeps running: it was never restarted, so nothing handed it a
+// Rollback at startup. Waiting for the next service restart to report that
+// would leave the console staring at a device that looks fine, so Sync adopts
+// whatever unreported rollback it finds on disk.
+func TestSyncAdoptsAnUnreportedRollbackFromDisk(t *testing.T) {
+	dir := t.TempDir()
+	rec := selfupdate.Record{
+		ItemID: "v1", FromVersion: "1.0.0", ToVersion: "2.0.0",
+		Status: selfupdate.StatusRolledBack, Detail: "the service would not stop: it is wedged",
+	}
+	if err := selfupdate.WriteRecord(dir, rec); err != nil {
+		t.Fatal(err)
+	}
+	c := &fakeClient{version: "1.0.0"}
+	s := &selfupdate.Syncer{
+		Dir: dir, Client: c, Running: "1.0.0", Injected: true,
+		Log: slog.New(slog.DiscardHandler), Now: time.Now,
+		Spawn: func(string) error { return nil },
+	}
+
+	if err := s.Sync(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.reports) != 1 || c.reports[0].RolledBackFrom != "2.0.0" {
+		t.Fatalf("the rollback on disk should have been reported, got %+v", c.reports)
+	}
+	got, found, _ := selfupdate.ReadRecord(dir)
+	if !found || !got.Reported {
+		t.Fatalf("it should be marked reported, got %+v (found=%v)", got, found)
+	}
+
+	// And not again on the next cycle.
+	if err := s.Sync(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.reports) != 1 {
+		t.Errorf("it must not be reported twice, got %d", len(c.reports))
+	}
+}
+
 // A hand-off that fails after the build is staged and the record written
 // must not wedge the device: without this cleanup, Decide would answer
 // "already under way" forever, with no supervisor left to ever resolve it.

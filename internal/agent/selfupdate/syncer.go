@@ -111,6 +111,21 @@ func (s *Syncer) Sync(ctx context.Context, items []protocol.Item) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// A rollback can also arrive without a restart behind it: a supervisor that
+	// could not stop the service writes one while this very process keeps
+	// running, so nothing handed it a Rollback at startup. Adopting whatever
+	// unreported rollback is on disk is what keeps that outcome from waiting
+	// for the next service restart to reach the console.
+	if s.Rollback == nil {
+		if rec, found, err := s.readRecord(); err != nil {
+			s.log().Error("failed to read the update record", "error", err)
+		} else if found && rec.Status == StatusRolledBack && !rec.Reported {
+			s.log().Warn("adopting a rollback this process was not restarted for",
+				"attempted", rec.ToVersion, "restored", rec.FromVersion, "detail", rec.Detail)
+			s.Rollback = &rec
+		}
+	}
+
 	// A pending rollback is reported before anything else: it describes an
 	// attempt that has already been resolved, and nothing else will ever
 	// report it, since the agent that decided to roll back is gone.
