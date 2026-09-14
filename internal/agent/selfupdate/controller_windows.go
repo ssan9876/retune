@@ -45,10 +45,16 @@ func newController(serviceName string) (ServiceController, error) {
 	return &windowsController{m: m, s: s}, nil
 }
 
-// Close releases the handles opened by newController.
+// Close releases the handles opened by newController. It tolerates either
+// handle being nil so a zero-value controller can be closed harmlessly.
 func (c *windowsController) Close() error {
-	c.s.Close()
-	return c.m.Disconnect()
+	if c.s != nil {
+		c.s.Close()
+	}
+	if c.m != nil {
+		return c.m.Disconnect()
+	}
+	return nil
 }
 
 // Config reports the service's current image and arguments. BinaryPathName

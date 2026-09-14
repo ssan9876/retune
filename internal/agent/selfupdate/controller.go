@@ -37,6 +37,10 @@ type ServiceController interface {
 
 	// Running reports whether the service is currently running.
 	Running() (bool, error)
+
+	// Close releases the handles to the service and to the service control
+	// manager that NewController opened.
+	Close() error
 }
 
 // ErrWindowsOnly is returned by NewController on any platform other than
