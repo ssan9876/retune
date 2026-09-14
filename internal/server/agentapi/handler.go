@@ -389,11 +389,28 @@ func (h *Handler) scriptRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "script_not_found", "unknown script")
 		return
 	}
+	// Gating the write side the same as the read side means a device whose
+	// assignment is revoked between a run starting and its result arriving
+	// gets a 404 and the result is dropped rather than recorded. That is the
+	// correct trade -- an agent must never be able to write history for
+	// something it was never given -- but it does mean a result can be lost
+	// to a race with revocation, not just rejected outright.
+	ctx := r.Context()
+	allowed, err := h.Store.Q().DeviceHasItem(ctx, a.Device.ID, protocol.ItemKindScript, id)
+	if err != nil {
+		h.Log.Error("check script assignment", "device_id", a.Device.ID, "script_id", id, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+		return
+	}
+	if !allowed {
+		writeError(w, http.StatusNotFound, "script_not_found", "unknown script")
+		return
+	}
 	var run protocol.ScriptRun
 	if !decode(w, r, &run, maxResultBody) {
 		return
 	}
-	err = h.Scripts.RecordRun(r.Context(), a.Device.ID, id, run)
+	err = h.Scripts.RecordRun(ctx, a.Device.ID, id, run)
 	switch {
 	case err == nil:
 		writeNoContent(w)
@@ -453,11 +470,28 @@ func (h *Handler) profileStatus(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "profile_not_found", "unknown profile")
 		return
 	}
+	// Gating the write side the same as the read side means a device whose
+	// assignment is revoked between a status check starting and its report
+	// arriving gets a 404 and the report is dropped rather than recorded.
+	// That is the correct trade -- an agent must never be able to write
+	// history for something it was never given -- but it does mean a report
+	// can be lost to a race with revocation, not just rejected outright.
+	ctx := r.Context()
+	allowed, err := h.Store.Q().DeviceHasItem(ctx, a.Device.ID, protocol.ItemKindProfile, id)
+	if err != nil {
+		h.Log.Error("check profile assignment", "device_id", a.Device.ID, "profile_id", id, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+		return
+	}
+	if !allowed {
+		writeError(w, http.StatusNotFound, "profile_not_found", "unknown profile")
+		return
+	}
 	var report protocol.ProfileStatus
 	if !decode(w, r, &report, maxResultBody) {
 		return
 	}
-	err = h.Profiles.RecordStatus(r.Context(), a.Device.ID, id, report)
+	err = h.Profiles.RecordStatus(ctx, a.Device.ID, id, report)
 	switch {
 	case err == nil:
 		writeNoContent(w)

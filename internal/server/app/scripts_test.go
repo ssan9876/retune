@@ -147,6 +147,47 @@ func TestUnassignedScriptIsNotReadable(t *testing.T) {
 	}
 }
 
+// The write side needs the same gate as the read side: an agent must not be
+// able to forge history for a script it was never given, even though the
+// script genuinely exists at the time it tries.
+func TestAgentCannotReportRunsForUnassignedScripts(t *testing.T) {
+	a, srv := newTestApp(t)
+	admin := signedIn(t, a, srv, store.RoleAdmin)
+	_, agent := enrollDevice(t, a, srv, "DESKTOP-FORGER")
+
+	status, body := admin.do(http.MethodPost, "/scripts", map[string]string{
+		"name": "Baseline", "body": "echo hi",
+	})
+	if status != http.StatusCreated {
+		t.Fatalf("create: %d %s", status, body)
+	}
+	script := decodeJSON[scriptResp](t, body)
+
+	url := fmt.Sprintf("%s/api/agent/v1/scripts/%s/runs", srv.URL, script.ID)
+	status, _ = send(t, agent, http.MethodPost, url, protocol.ScriptRun{
+		Version: 1, Status: protocol.ResultSucceeded, Phase: protocol.PhaseScript,
+	})
+	if status != http.StatusNotFound {
+		t.Fatalf("a run for an unassigned script must not be accepted, got %d", status)
+	}
+	resp := itemStatus(t, admin, script.ID)
+	if len(resp.Items) != 0 {
+		t.Fatalf("a rejected run must not be recorded, got %+v", resp.Items)
+	}
+
+	assignScript(t, admin, script.ID, nil)
+	status, body = send(t, agent, http.MethodPost, url, protocol.ScriptRun{
+		Version: 1, Status: protocol.ResultSucceeded, Phase: protocol.PhaseScript,
+	})
+	if status != http.StatusNoContent {
+		t.Fatalf("once assigned, the same run should be accepted: %d %s", status, body)
+	}
+	resp = itemStatus(t, admin, script.ID)
+	if resp.Rollup[store.ItemSucceeded] != 1 {
+		t.Fatalf("the accepted run should be recorded, got %v", resp.Rollup)
+	}
+}
+
 func TestEditingABodyMakesANewVersion(t *testing.T) {
 	a, srv := newTestApp(t)
 	admin := signedIn(t, a, srv, store.RoleAdmin)
