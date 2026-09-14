@@ -45,8 +45,17 @@ jobs:
       - name: Test
         run: go test ./...
 
+      # A throwaway key per run: CI artefacts are for tests, not release, but
+      # the signing path itself is exercised every time.
+      - name: Make a throwaway release key
+        run: go run ./cmd/retune-sign keygen --out "$RUNNER_TEMP/release"
+
       - name: Build the binaries
-        run: go build -ldflags "-X retune/internal/agent/facts.AgentVersion=0.1.${{ github.run_number }}" -o bin/ ./cmd/...
+        run: |
+          PUB=$(cat "$RUNNER_TEMP/release/release.pub")
+          go build -ldflags "-X retune/internal/agent/facts.AgentVersion=0.1.${{ github.run_number }} -X retune/internal/agent/facts.TrustedKeysRaw=$PUB" -o bin/ ./cmd/...
+          go run ./cmd/retune-sign sign --key "$RUNNER_TEMP/release/release.key" --version 0.1.${{ github.run_number }} bin/retune-agent
+          go run ./cmd/retune-sign verify --trust "$PUB" bin/retune-agent bin/retune-agent.sig
 
       # Builds the console and the binary the same way a deployment does.
       - name: Build the server image
@@ -73,6 +82,9 @@ jobs:
       - name: Test without the database
         run: go test -short ./...
 
+      - name: Make a throwaway release key
+        run: go run ./cmd/retune-sign keygen --out "$env:RUNNER_TEMP\release"
+
       - name: Build the binaries
         run: go build -ldflags "-X retune/internal/agent/facts.AgentVersion=0.1.${{ github.run_number }}" -o bin/ ./cmd/...
 
@@ -82,9 +94,12 @@ jobs:
       - name: Add the WiX Util extension
         run: wix extension add --global WixToolset.Util.wixext/5.0.2
 
-      # The MSI is unsigned, so this needs no secrets.
+      # The MSI is unsigned (Authenticode), but the agent inside it is signed
+      # with the run's throwaway release key.
       - name: Build the agent MSI
-        run: pwsh deploy/msi/build.ps1 -Version 0.1.${{ github.run_number }}
+        run: |
+          $pub = (Get-Content "$env:RUNNER_TEMP\release\release.pub").Trim()
+          pwsh deploy/msi/build.ps1 -Version 0.1.${{ github.run_number }} -ReleaseKey "$env:RUNNER_TEMP\release\release.key" -TrustedKeys $pub
 
       - uses: actions/upload-artifact@v7
         with:

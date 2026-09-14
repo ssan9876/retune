@@ -33,12 +33,22 @@ compose-down:
 	docker compose -f deploy/docker/docker-compose.yml down
 
 # agent cross-compiles the Windows agent. VERSION stamps the binary; an
-# unstamped build refuses to self-update, on purpose.
+# unstamped build refuses to self-update, on purpose. RELEASE_KEY (a path, or
+# env:NAME) signs the build and stamps its own public key as the trust list;
+# RELEASE_PUBKEYS overrides the trust list for a rotation. Without RELEASE_KEY
+# the build is unsigned, trusts nothing, and says so.
 VERSION ?= 0.1.0-dev
+RELEASE_KEY ?=
+RELEASE_PUBKEYS ?=
 agent:
+	@if [ -n "$(RELEASE_KEY)" ] && [ -z "$(RELEASE_PUBKEYS)" ]; then \
+	  echo "RELEASE_KEY is set; RELEASE_PUBKEYS must name the public key(s) to embed"; exit 1; fi
 	GOOS=windows GOARCH=amd64 go build -trimpath \
-	  -ldflags "-X retune/internal/agent/facts.AgentVersion=$(VERSION)" \
+	  -ldflags "-X retune/internal/agent/facts.AgentVersion=$(VERSION) -X retune/internal/agent/facts.TrustedKeysRaw=$(RELEASE_PUBKEYS)" \
 	  -o bin/retune-agent.exe ./cmd/retune-agent
+	@if [ -n "$(RELEASE_KEY)" ]; then \
+	  go run ./cmd/retune-sign sign --key "$(RELEASE_KEY)" --version "$(VERSION)" bin/retune-agent.exe; \
+	else echo "bin/retune-agent.exe is unsigned and trusts no release key (set RELEASE_KEY and RELEASE_PUBKEYS)"; fi
 
 # msi builds the agent installer (requires the WiX 5 dotnet tool).
 msi:

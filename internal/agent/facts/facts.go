@@ -8,6 +8,7 @@ import (
 
 	"retune/internal/agent/inventory"
 	"retune/internal/protocol"
+	"retune/internal/release"
 )
 
 // PlaceholderVersion is what an unstamped build reports. A build carrying it
@@ -24,6 +25,27 @@ var AgentVersion = PlaceholderVersion
 // VersionInjected reports whether this build was stamped with a real version.
 func VersionInjected() bool {
 	return AgentVersion != "" && AgentVersion != PlaceholderVersion
+}
+
+// TrustedKeysRaw is the comma-separated list of release public keys this
+// build trusts, stamped at build time beside the version:
+//
+//	go build -ldflags "-X retune/internal/agent/facts.TrustedKeysRaw=<base64>,<base64>"
+//
+// A build with no list cannot self-update. Rotation is a build that trusts
+// both keys, then one that trusts only the new one; nothing on a device is
+// ever edited to change what it trusts.
+var TrustedKeysRaw = ""
+
+// TrustedKeys parses the stamped list. A list that fails to parse is treated
+// as empty rather than partially honoured, since trusting fewer keys than
+// intended only ever refuses an update, while trusting a wrong one runs code.
+func TrustedKeys() []release.PublicKey {
+	keys, err := release.ParseTrustList(TrustedKeysRaw)
+	if err != nil {
+		return nil
+	}
+	return keys
 }
 
 // Device returns the facts sent at enrollment.

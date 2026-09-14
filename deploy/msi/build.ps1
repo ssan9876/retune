@@ -9,10 +9,17 @@
 #>
 param(
   [string]$Version = "0.1.0",
-  [string]$OutDir = "bin"
+  [string]$OutDir = "bin",
+  # Path to release.key, or env:NAME. When set, the build is signed and the
+  # .sig is written beside the MSI.
+  [string]$ReleaseKey = "",
+  # Comma-separated public keys the agent embeds. Required with -ReleaseKey.
+  [string]$TrustedKeys = ""
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($ReleaseKey -ne "" -and $TrustedKeys -eq "") { throw "-TrustedKeys is required with -ReleaseKey" }
 
 $root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 $out = Join-Path $root $OutDir
@@ -25,9 +32,17 @@ Write-Host "Building the agent for windows/amd64..."
 $env:GOOS = "windows"
 $env:GOARCH = "amd64"
 & go build -trimpath `
-  -ldflags "-X retune/internal/agent/facts.AgentVersion=$Version" `
+  -ldflags "-X retune/internal/agent/facts.AgentVersion=$Version -X retune/internal/agent/facts.TrustedKeysRaw=$TrustedKeys" `
   -o $agentExe (Join-Path $root "cmd/retune-agent")
 if ($LASTEXITCODE -ne 0) { throw "go build failed" }
+
+if ($ReleaseKey -ne "") {
+  Write-Host "Signing the agent..."
+  & go run ./cmd/retune-sign sign --key $ReleaseKey --version $Version $agentExe
+  if ($LASTEXITCODE -ne 0) { throw "signing failed" }
+} else {
+  Write-Host "The agent is unsigned and trusts no release key (pass -ReleaseKey and -TrustedKeys)."
+}
 
 Write-Host "Building $msi (version $Version)..."
 & wix build -arch x64 `
