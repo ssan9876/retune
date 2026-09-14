@@ -4,8 +4,10 @@ package client
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +21,12 @@ import (
 	"retune/internal/pki"
 	"retune/internal/protocol"
 )
+
+// downloadTimeout is the budget for fetching a build. The JSON client's flat
+// 60 seconds covers a whole request including the body, which is plenty for
+// an object and nowhere near enough for a multi-megabyte binary over a slow
+// link.
+const downloadTimeout = 30 * time.Minute
 
 // HTTPError is a non-2xx response from the server.
 type HTTPError struct {
@@ -40,6 +48,10 @@ func (e *HTTPError) Retryable() bool {
 type Client struct {
 	base string
 	http *http.Client
+	// download is used only for fetching a build payload: same transport (so
+	// the same client certificate), but no whole-request Timeout, because a
+	// binary download's budget is sized by its own context instead.
+	download *http.Client
 }
 
 // New builds a client. If pin is set ("sha256:<hex>"), the server chain must
@@ -64,6 +76,9 @@ func New(serverURL, pin string, clientCert *tls.Certificate) (*Client, error) {
 	return &Client{
 		base: strings.TrimRight(serverURL, "/"),
 		http: &http.Client{Transport: tr, Timeout: 60 * time.Second},
+		// A payload download has no whole-request deadline: its context
+		// carries one sized for a binary rather than for an object.
+		download: &http.Client{Transport: tr},
 	}, nil
 }
 
@@ -239,4 +254,63 @@ func (c *Client) EscrowRecoveryKey(ctx context.Context, volumeID, method, recove
 	return c.do(ctx, http.MethodPost, "/api/agent/v1/bitlocker", protocol.BitLockerEscrowRequest{
 		VolumeID: volumeID, Method: method, RecoveryPassword: recoveryPassword,
 	}, nil)
+}
+
+// FetchAgentVersion downloads the definition of an assigned agent build: what
+// version it is, how big it should be, and what it should hash to.
+func (c *Client) FetchAgentVersion(ctx context.Context, id string) (protocol.AgentVersionResponse, error) {
+	var resp protocol.AgentVersionResponse
+	err := c.do(ctx, http.MethodGet, "/api/agent/v1/agent-versions/"+url.PathEscape(id), nil, &resp)
+	return resp, err
+}
+
+// ReportAgentUpdate tells the server how an update turned out.
+func (c *Client) ReportAgentUpdate(ctx context.Context, id string, r protocol.AgentUpdateResult) error {
+	return c.do(ctx, http.MethodPost,
+		"/api/agent/v1/agent-versions/"+url.PathEscape(id)+"/result", r, nil)
+}
+
+// DownloadTimeout is the budget for a payload download, exposed so a test can
+// assert it is not the JSON client's much shorter one.
+func (c *Client) DownloadTimeout() time.Duration { return downloadTimeout }
+
+// DownloadAgentBinary streams a build to dst, hashing as it goes, and refuses
+// anything whose SHA-256 is not what the definition promised. It does not use
+// the JSON client: that one decodes bodies and would cut a large download off
+// at its own timeout.
+func (c *Client) DownloadAgentBinary(ctx context.Context, id, wantSHA256 string, dst io.Writer) error {
+	ctx, cancel := context.WithTimeout(ctx, downloadTimeout)
+	defer cancel()
+
+	path := "/api/agent/v1/agent-versions/" + url.PathEscape(id) + "/binary"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+path, nil)
+	if err != nil {
+		return err
+	}
+	// The same transport -- and so the same mutual TLS identity -- with no
+	// whole-request deadline of its own.
+	res, err := c.download.Do(req)
+	if err != nil {
+		return fmt.Errorf("GET %s: %w", path, err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		var e protocol.Error
+		_ = json.NewDecoder(io.LimitReader(res.Body, 64<<10)).Decode(&e)
+		return &HTTPError{Status: res.StatusCode, Code: e.Code, Message: e.Message}
+	}
+
+	// Hashed while it streams, so verification never requires buffering the
+	// whole binary or re-reading it from dst.
+	sum := sha256.New()
+	if _, err := io.Copy(io.MultiWriter(dst, sum), res.Body); err != nil {
+		return fmt.Errorf("download %s: %w", path, err)
+	}
+	got := hex.EncodeToString(sum.Sum(nil))
+	// Hex can arrive in either case, so compare case-insensitively rather than
+	// rejecting a technically-valid hash over letter case.
+	if !strings.EqualFold(got, wantSHA256) {
+		return fmt.Errorf("sha256 mismatch: the server promised %s and sent %s", wantSHA256, got)
+	}
+	return nil
 }
