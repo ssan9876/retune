@@ -24,7 +24,9 @@ $msi = Join-Path $out "retune-agent.msi"
 Write-Host "Building the agent for windows/amd64..."
 $env:GOOS = "windows"
 $env:GOARCH = "amd64"
-& go build -trimpath -o $agentExe (Join-Path $root "cmd/retune-agent")
+& go build -trimpath `
+  -ldflags "-X retune/internal/agent/facts.AgentVersion=$Version" `
+  -o $agentExe (Join-Path $root "cmd/retune-agent")
 if ($LASTEXITCODE -ne 0) { throw "go build failed" }
 
 Write-Host "Building $msi (version $Version)..."

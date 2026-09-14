@@ -10,8 +10,21 @@ import (
 	"retune/internal/protocol"
 )
 
-// AgentVersion is reported on every check-in.
-const AgentVersion = "0.1.0-dev"
+// PlaceholderVersion is what an unstamped build reports. A build carrying it
+// refuses to self-update: it would report the same string after updating, be
+// told to update again, and do that on every check-in forever.
+const PlaceholderVersion = "0.1.0-dev"
+
+// AgentVersion is reported on every check-in. It is a var, not a const, so a
+// release build can stamp it:
+//
+//	go build -ldflags "-X retune/internal/agent/facts.AgentVersion=1.2.3"
+var AgentVersion = PlaceholderVersion
+
+// VersionInjected reports whether this build was stamped with a real version.
+func VersionInjected() bool {
+	return AgentVersion != "" && AgentVersion != PlaceholderVersion
+}
 
 // Device returns the facts sent at enrollment.
 func Device() protocol.DeviceFacts {

@@ -32,9 +32,13 @@ compose-up:
 compose-down:
 	docker compose -f deploy/docker/docker-compose.yml down
 
-# agent cross-compiles the Windows agent.
+# agent cross-compiles the Windows agent. VERSION stamps the binary; an
+# unstamped build refuses to self-update, on purpose.
+VERSION ?= 0.1.0-dev
 agent:
-	GOOS=windows GOARCH=amd64 go build -trimpath -o bin/retune-agent.exe ./cmd/retune-agent
+	GOOS=windows GOARCH=amd64 go build -trimpath \
+	  -ldflags "-X retune/internal/agent/facts.AgentVersion=$(VERSION)" \
+	  -o bin/retune-agent.exe ./cmd/retune-agent
 
 # msi builds the agent installer (requires the WiX 5 dotnet tool).
 msi:
