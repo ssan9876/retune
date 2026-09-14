@@ -1859,6 +1859,10 @@ Rollback has to drive the service control manager, and the *only* way to test th
       Stop(ctx context.Context) error
       Start() error
       Running() (bool, error)
+      // Close releases the manager and service handles behind the
+      // controller. NewController opens two; a caller that never closes
+      // them leaks both on every update attempt.
+      Close() error
   }
   var ErrWindowsOnly = errors.New("controlling a service is only available on Windows")
   func NewController(serviceName string) (ServiceController, error)
@@ -2009,6 +2013,8 @@ func (f *fakeControl) Running() (bool, error) {
 	defer f.mu.Unlock()
 	return f.running, nil
 }
+
+func (f *fakeControl) Close() error { return nil }
 
 func (f *fakeControl) did() []string {
 	f.mu.Lock()
@@ -2498,12 +2504,16 @@ Carry `rollback` into the syncer so it reports the failure on the next check-in 
 	// A platform with no service control manager cannot self-update. Every
 	// assigned build is then refused with that reason rather than the device
 	// going quiet about it.
-	if control, err := selfupdate.NewController(serviceName); err != nil {
+	if control, err := selfupdate.NewController(selfupdate.ServiceName); err != nil {
 		opts.Log.Info("self-update is unavailable on this machine", "error", err)
 	} else {
 		updater.Control = control
+		defer control.Close()
 	}
 ```
+
+The `defer` is correct here: `Run` holds the controller for exactly as long as
+the syncer lives, and the handles go back when `Run` returns.
 
 `serviceName` lives in `cmd/retune-agent`, not here. Export the constant the
 runner needs from `selfupdate` instead — add `const ServiceName = "Retune"` to
@@ -2548,6 +2558,7 @@ In `cmd/retune-agent/main.go`, add a case before `default:`:
 		if err != nil {
 			return err
 		}
+		defer control.Close()
 		log, closeLog, err := logging.New(logging.Options{Dir: *dataDir, EventLog: true})
 		if err != nil {
 			return err
