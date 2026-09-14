@@ -63,15 +63,28 @@ func Run(ctx context.Context, opts Options) error {
 
 	scriptRunner := executor.DefaultRunner(filepath.Join(opts.DataDir, "scripts"))
 
-	// A rollback is only visible to the server if the restored agent says so.
-	// The supervisor cannot report it: by the time it decides, the agent it
-	// was testing is gone and the one that comes back is this process.
+	// Whatever a previous attempt left behind is settled before the first
+	// check-in. A rollback is only visible to the server if the restored agent
+	// says so -- the supervisor cannot report it, because by the time it
+	// decides, the agent it was testing is gone and the one that comes back is
+	// this process -- and an attempt whose supervisor died is nobody's to
+	// resolve unless this process does it.
 	var rollback *selfupdate.Record
-	if rec, found, err := selfupdate.ReadRecord(opts.DataDir); err == nil && found &&
-		rec.Status == selfupdate.StatusRolledBack {
-		opts.Log.Warn("a previous update was rolled back",
-			"attempted", rec.ToVersion, "restored", rec.FromVersion, "detail", rec.Detail)
-		rollback = &rec
+	if rec, found, err := selfupdate.ReadRecord(opts.DataDir); err != nil {
+		opts.Log.Warn("could not read the self-update record", "error", err)
+	} else {
+		switch selfupdate.Reconcile(rec, found, facts.AgentVersion, time.Now()) {
+		case selfupdate.ReconcileReport:
+			opts.Log.Warn("a previous update was rolled back",
+				"attempted", rec.ToVersion, "restored", rec.FromVersion, "detail", rec.Detail)
+			rollback = &rec
+		case selfupdate.ReconcileAbandon:
+			opts.Log.Warn("abandoning an expired update attempt",
+				"from", rec.FromVersion, "to", rec.ToVersion)
+			if err := selfupdate.RemoveRecord(opts.DataDir); err != nil {
+				opts.Log.Warn("could not remove the expired update record", "error", err)
+			}
+		}
 	}
 
 	// A machine with no App Installer simply cannot deploy apps; every other

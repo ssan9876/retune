@@ -106,6 +106,82 @@ func TestSyncStagesAndHandsOff(t *testing.T) {
 	}
 }
 
+// Proof of life. The supervisor polls the record for a succeeded status and
+// nothing else writes one, so without this the deadline always expires and
+// every update rolls back.
+func TestCheckedInMarksThisBuildsAttemptSucceeded(t *testing.T) {
+	dir := t.TempDir()
+	rec := selfupdate.Record{
+		ItemID: "v1", FromVersion: "1.0.0", ToVersion: "2.0.0",
+		Deadline: time.Now().Add(time.Minute), Status: selfupdate.StatusPending,
+	}
+	if err := selfupdate.WriteRecord(dir, rec); err != nil {
+		t.Fatal(err)
+	}
+	s := &selfupdate.Syncer{Dir: dir, Running: "2.0.0", Injected: true, Log: slog.New(slog.DiscardHandler)}
+
+	if err := s.CheckedIn(); err != nil {
+		t.Fatal(err)
+	}
+	got, found, _ := selfupdate.ReadRecord(dir)
+	if !found || got.Status != selfupdate.StatusSucceeded {
+		t.Fatalf("the attempt this build was staged for should be succeeded, got %+v", got)
+	}
+}
+
+// A check-in only proves the build it came from. Anything else the record
+// might describe is somebody else's business.
+func TestCheckedInLeavesEveryOtherRecordAlone(t *testing.T) {
+	cases := map[string]struct {
+		rec     selfupdate.Record
+		running string
+	}{
+		"an attempt to stage a different version": {
+			rec: selfupdate.Record{
+				ToVersion: "3.0.0", Status: selfupdate.StatusPending,
+				Deadline: time.Now().Add(time.Minute),
+			},
+			running: "2.0.0",
+		},
+		"an attempt that was already rolled back": {
+			rec:     selfupdate.Record{ToVersion: "2.0.0", Status: selfupdate.StatusRolledBack},
+			running: "2.0.0",
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := selfupdate.WriteRecord(dir, tc.rec); err != nil {
+				t.Fatal(err)
+			}
+			s := &selfupdate.Syncer{Dir: dir, Running: tc.running, Injected: true, Log: slog.New(slog.DiscardHandler)}
+
+			if err := s.CheckedIn(); err != nil {
+				t.Fatal(err)
+			}
+			got, _, _ := selfupdate.ReadRecord(dir)
+			if got.Status != tc.rec.Status {
+				t.Errorf("status = %q, want it untouched at %q", got.Status, tc.rec.Status)
+			}
+		})
+	}
+}
+
+// The ordinary case: no update is under way, and a check-in must not invent a
+// record for one.
+func TestCheckedInWithNoRecordWritesNothing(t *testing.T) {
+	dir := t.TempDir()
+	s := &selfupdate.Syncer{Dir: dir, Running: "1.0.0", Injected: true, Log: slog.New(slog.DiscardHandler)}
+
+	if err := s.CheckedIn(); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, _ := selfupdate.ReadRecord(dir); found {
+		t.Error("a check-in with nothing under way should leave no record behind")
+	}
+}
+
 // A payload whose hash does not match is refused, nothing is staged, and the
 // supervisor is never started.
 func TestSyncRefusesAMismatchedHash(t *testing.T) {

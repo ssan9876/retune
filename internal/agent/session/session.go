@@ -208,6 +208,14 @@ func (s *Session) Checkin(ctx context.Context, req protocol.CheckinRequest) (pro
 		return resp, err
 	}
 
+	// The server accepted this check-in, which is the only thing that proves
+	// a freshly installed build actually works. It is told here rather than
+	// from the self-update syncer's own Sync, because Sync does not run when
+	// nothing is assigned: an administrator who unassigns the build between
+	// the hand-off and the restart would otherwise starve the supervisor of
+	// its proof and force a rollback of a perfectly good agent.
+	s.noteCheckedIn()
+
 	if resp.InventoryDue {
 		if err := s.UploadInventory(ctx); err != nil {
 			s.cfg.Log.Warn("uploading inventory failed", "error", err)
@@ -222,6 +230,19 @@ func (s *Session) Checkin(ctx context.Context, req protocol.CheckinRequest) (pro
 	// finds it still busy.
 	dispatch(ctx, s.cfg.Syncers, resp.Items, &s.pending, s.cfg.Log)
 	return resp, nil
+}
+
+// noteCheckedIn passes the proof of life on to the self-update syncer, if
+// there is one. A failure here is worth a line in the log and nothing more:
+// the check-in itself succeeded, and the worst case is that the supervisor
+// rolls an update back that would have stood.
+func (s *Session) noteCheckedIn() {
+	if s.cfg.SelfUpdate == nil {
+		return
+	}
+	if err := s.cfg.SelfUpdate.CheckedIn(); err != nil {
+		s.cfg.Log.Warn("recording proof of life for a pending self-update failed", "error", err)
+	}
 }
 
 // UploadInventory collects and uploads inventory, then records the hash the

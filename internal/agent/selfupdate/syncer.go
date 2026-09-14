@@ -123,6 +123,32 @@ func (s *Syncer) Sync(ctx context.Context, items []protocol.Item) error {
 	return nil
 }
 
+// CheckedIn is called by the session after every check-in that reached the
+// server. It is the proof of life the supervisor waits for: if this build is
+// the one a pending record was staged for, the record is marked succeeded.
+//
+// It is deliberately not gated on Injected. A build that got this far is by
+// definition the one that was staged, and if it somehow was not stamped,
+// Running is the placeholder and will not match the record's ToVersion.
+func (s *Syncer) CheckedIn() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	rec, found, err := ReadRecord(s.Dir)
+	if err != nil {
+		return fmt.Errorf("read record: %w", err)
+	}
+	if !found || rec.Status != StatusPending || rec.ToVersion != s.Running {
+		return nil
+	}
+	rec.Status = StatusSucceeded
+	if err := WriteRecord(s.Dir, rec); err != nil {
+		return fmt.Errorf("write record: %w", err)
+	}
+	s.log().Info("this build checked in; the update stands", "from", rec.FromVersion, "to", rec.ToVersion)
+	return nil
+}
+
 func (s *Syncer) syncOne(ctx context.Context, item protocol.Item) error {
 	opts, err := protocol.ParseAgentOptions(item.Options)
 	if err != nil {

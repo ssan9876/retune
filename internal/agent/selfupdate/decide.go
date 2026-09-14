@@ -3,6 +3,8 @@
 // if the new binary never checks in.
 package selfupdate
 
+import "time"
+
 // Action is what Decide concluded about the assigned version.
 type Action int
 
@@ -46,4 +48,48 @@ func Decide(running, assigned string, injected bool, attempted Record) Decision 
 		}
 	}
 	return Decision{Action: ActionUpdate}
+}
+
+// ReconcileAction is what a starting agent should do about the record it
+// found on disk.
+type ReconcileAction int
+
+const (
+	// ReconcileNone leaves the record exactly as it is.
+	ReconcileNone ReconcileAction = iota
+	// ReconcileReport is a rollback that only the restored agent can tell the
+	// server about, because the supervisor that decided it is gone.
+	ReconcileReport
+	// ReconcileAbandon is a pending attempt with nobody left to resolve it.
+	ReconcileAbandon
+)
+
+// Reconcile says what a starting agent should make of the record it found.
+// Like Decide it is pure, so the rules can be read and tested without a
+// runner, a data directory or a service around them.
+func Reconcile(rec Record, found bool, running string, now time.Time) ReconcileAction {
+	if !found {
+		return ReconcileNone
+	}
+	switch rec.Status {
+	case StatusRolledBack:
+		return ReconcileReport
+	case StatusPending:
+		// The staged build is the one running, so the attempt is still alive
+		// even past its deadline: the supervisor may be dead, but CheckedIn
+		// resolves it on the first check-in that reaches the server.
+		if rec.ToVersion == running {
+			return ReconcileNone
+		}
+		// The old build is back and the deadline has passed with no verdict
+		// written, which means the supervisor never got to write one -- a
+		// reboot, an MSI repair, something killed it. No verdict is invented
+		// here either: for the same reason a cancelled supervision records
+		// none, penalizing a build nobody ever judged is worse than retrying
+		// it.
+		if !now.Before(rec.Deadline) {
+			return ReconcileAbandon
+		}
+	}
+	return ReconcileNone
 }

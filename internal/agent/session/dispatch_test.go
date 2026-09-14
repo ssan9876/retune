@@ -6,9 +6,44 @@ import (
 	"log/slog"
 	"sync"
 	"testing"
+	"time"
 
+	"retune/internal/agent/selfupdate"
 	"retune/internal/protocol"
 )
+
+// A check-in that the server accepted is the proof of life the supervisor
+// waits for, so the session has to pass it on before anything else it does
+// with the response. Without this the deadline always expires and every
+// update on every device rolls back.
+func TestCheckedInIsPassedToTheSelfUpdateSyncer(t *testing.T) {
+	dir := t.TempDir()
+	rec := selfupdate.Record{
+		ItemID: "v1", FromVersion: "1.0.0", ToVersion: "2.0.0",
+		Deadline: time.Now().Add(time.Minute), Status: selfupdate.StatusPending,
+	}
+	if err := selfupdate.WriteRecord(dir, rec); err != nil {
+		t.Fatal(err)
+	}
+	s := &Session{cfg: Config{
+		SelfUpdate: &selfupdate.Syncer{Dir: dir, Running: "2.0.0", Injected: true},
+		Log:        slog.New(slog.DiscardHandler),
+	}}
+
+	s.noteCheckedIn()
+
+	got, found, _ := selfupdate.ReadRecord(dir)
+	if !found || got.Status != selfupdate.StatusSucceeded {
+		t.Fatalf("the staged attempt should be marked succeeded, got %+v", got)
+	}
+}
+
+// Self-update is optional -- a platform with no service control manager runs
+// without it -- and a check-in must not care.
+func TestCheckedInWithoutASelfUpdateSyncer(t *testing.T) {
+	s := &Session{cfg: Config{Log: slog.New(slog.DiscardHandler)}}
+	s.noteCheckedIn()
+}
 
 // A syncer that runs on empty is started with nothing assigned; one that does
 // not is left alone. That difference is the whole reason profiles can revert:

@@ -2,6 +2,7 @@ package selfupdate_test
 
 import (
 	"testing"
+	"time"
 
 	"retune/internal/agent/selfupdate"
 )
@@ -55,6 +56,64 @@ func TestDecide(t *testing.T) {
 			}
 			if got.Action == selfupdate.ActionNone && got.Reason == "" {
 				t.Error("a decision not to update should say why, for the agent's log")
+			}
+		})
+	}
+}
+
+// What a starting agent should make of whatever record it finds. The case
+// that matters is the third one: a supervisor killed by a reboot or an MSI
+// repair leaves a pending record nobody will ever resolve, and the old build
+// is the one that came back.
+func TestReconcile(t *testing.T) {
+	now := time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)
+	past := now.Add(-time.Minute)
+	future := now.Add(time.Minute)
+
+	cases := map[string]struct {
+		rec     selfupdate.Record
+		found   bool
+		running string
+		want    selfupdate.ReconcileAction
+	}{
+		"no record at all": {
+			found: false, running: "1.0.0", want: selfupdate.ReconcileNone,
+		},
+		"a rollback nobody has reported yet": {
+			rec:   selfupdate.Record{FromVersion: "1.0.0", ToVersion: "2.0.0", Status: selfupdate.StatusRolledBack},
+			found: true, running: "1.0.0", want: selfupdate.ReconcileReport,
+		},
+		"a pending attempt whose supervisor is gone and whose build never came up": {
+			rec: selfupdate.Record{
+				FromVersion: "1.0.0", ToVersion: "2.0.0",
+				Deadline: past, Status: selfupdate.StatusPending,
+			},
+			found: true, running: "1.0.0", want: selfupdate.ReconcileAbandon,
+		},
+		"a pending attempt still inside its deadline": {
+			rec: selfupdate.Record{
+				FromVersion: "1.0.0", ToVersion: "2.0.0",
+				Deadline: future, Status: selfupdate.StatusPending,
+			},
+			found: true, running: "1.0.0", want: selfupdate.ReconcileNone,
+		},
+		"a pending attempt and this is the build it staged": {
+			rec: selfupdate.Record{
+				FromVersion: "1.0.0", ToVersion: "2.0.0",
+				Deadline: past, Status: selfupdate.StatusPending,
+			},
+			found: true, running: "2.0.0", want: selfupdate.ReconcileNone,
+		},
+		"an attempt that already succeeded": {
+			rec:   selfupdate.Record{ToVersion: "2.0.0", Status: selfupdate.StatusSucceeded},
+			found: true, running: "2.0.0", want: selfupdate.ReconcileNone,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := selfupdate.Reconcile(tc.rec, tc.found, tc.running, now); got != tc.want {
+				t.Errorf("action = %v, want %v", got, tc.want)
 			}
 		})
 	}
