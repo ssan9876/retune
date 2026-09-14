@@ -1,2 +1,5 @@
 node_modules/
 dist/
+
+# tsc -b writes this next to the config; it is build state, not source.
+*.tsbuildinfo
