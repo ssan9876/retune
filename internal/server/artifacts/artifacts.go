@@ -60,8 +60,17 @@ func (s Store) Put(version string, r io.Reader, limit int64) (sha256Hex string, 
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", 0, err
 	}
-
+	// From here on, every exit path is covered by one cleanup: whatever
+	// step fails, a refused upload must leave nothing behind. Using a
+	// single deferred check means the next step added here can't forget it.
 	tmp := final + ".part"
+	defer func() {
+		if err != nil {
+			os.Remove(tmp)
+			os.Remove(dir)
+		}
+	}()
+
 	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return "", 0, err
@@ -80,14 +89,12 @@ func (s Store) Put(version string, r io.Reader, limit int64) (sha256Hex string, 
 		copyErr = closeErr
 	}
 	if copyErr != nil {
-		os.Remove(tmp)
-		os.Remove(dir)
-		return "", 0, copyErr
+		err = copyErr
+		return "", 0, err
 	}
 
-	if err := os.Rename(tmp, final); err != nil {
-		os.Remove(tmp)
-		os.Remove(dir)
+	if renameErr := os.Rename(tmp, final); renameErr != nil {
+		err = renameErr
 		return "", 0, err
 	}
 

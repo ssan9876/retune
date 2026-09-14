@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -91,10 +92,20 @@ func TestOpenAndRemoveMissing(t *testing.T) {
 // A version string arrives from an administrator and becomes a path segment,
 // so it must not be able to escape the directory.
 func TestPutRejectsAPathTraversingVersion(t *testing.T) {
-	s := artifacts.Store{Dir: t.TempDir()}
+	dir := t.TempDir()
+	s := artifacts.Store{Dir: dir}
 	for _, bad := range []string{"../evil", "a/b", `a\b`, "", "."} {
 		if _, _, err := s.Put(bad, strings.NewReader("x"), 1<<20); err == nil {
 			t.Errorf("version %q should be refused", bad)
+		}
+		// Rejection must happen before any filesystem call, not just before
+		// the return -- nothing should ever be created under Dir.
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 0 {
+			t.Errorf("version %q should create nothing under Dir, found %v", bad, entries)
 		}
 	}
 }
