@@ -133,12 +133,19 @@ to `from_bin_path` with `from_args`, set `status` to `rolled_back` with a
 reason, and start the service again.
 
 The restored agent reads `update.json` at startup, reports the failed version
-and the reason, and deletes the file. The console then shows *"3 devices rolled
+and the reason, and marks the record `reported` — it does not delete it. The
+record is also the only memory that this version failed on this device, and
+deleting it would let the very next item of the very same check-in decide to
+install the same broken build again. The console then shows *"3 devices rolled
 back from 0.2.0"* rather than silence — which is what turns a bad build from a
 mystery into a pilot group telling you something.
 
-On success the supervisor deletes `update.json`, prunes versions older than the
-current and previous, and removes itself.
+On success the supervisor deletes `update.json` and prunes versions older than
+the current and previous. It does not remove itself: a running image cannot
+delete its own file, and scheduling one for the next reboot is more machinery
+than the problem deserves. `supervisor.exe` stays in the data directory, is
+overwritten by the next update, and goes with the whole directory when
+`cleanup` runs at uninstall.
 
 ### Known limits, stated rather than glossed
 

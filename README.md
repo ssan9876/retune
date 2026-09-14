@@ -318,7 +318,9 @@ group, and the agents in that group replace themselves with it.
 A build is stamped with its version at compile time. An agent built without
 that stamp refuses to self-update and says so, because it would otherwise
 report the same version after updating, be told to update again, and do that
-on every check-in for ever.
+on every check-in for ever. The upload is refused for the same reason: a build
+whose bytes do not contain the version it was declared as never gets as far as
+being assigned.
 
 **A bad build costs one check-in cycle, not a truck roll.** After swapping, the
 new agent must check in successfully within the assignment's deadline (ten
