@@ -66,6 +66,12 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 		if *server == "" || *token == "" {
 			return errors.New("--server and --token are required")
 		}
+		// Before the device key is written, not after: a hand-enrolled machine
+		// gets the same locked-down directory the MSI path gets from
+		// configure, and for the same reasons.
+		if err := secureDataDir(*dataDir); err != nil {
+			return err
+		}
 		id, err := enrollment.Enroll(ctx, enrollment.Options{
 			ServerURL: *server, Token: *token, Pin: *pin, Facts: facts.Device(),
 			Store: identity.Store{Dir: *dataDir, Keys: identity.DefaultKeys()},
@@ -144,6 +150,12 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 		}
 		exe, err := os.Executable()
 		if err != nil {
+			return err
+		}
+		// The service about to be created runs as LocalSystem out of this
+		// directory, so it is locked down before it exists rather than
+		// whenever somebody happens to run configure.
+		if err := secureDataDir(*dataDir); err != nil {
 			return err
 		}
 		if err := installService(exe, *dataDir); err != nil {

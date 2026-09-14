@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -97,6 +98,16 @@ func (h *handler) Execute(args []string, req <-chan svc.ChangeRequest, status ch
 // minutes later; exiting would make the service control manager fight the
 // process with restarts.
 func (h *handler) serve(ctx context.Context, log *slog.Logger) error {
+	// Before anything else reads or writes in there. The directory holds the
+	// device key and, since self-update, binaries this service runs as
+	// LocalSystem; if a standard user got there first, they own it and can
+	// plant one. Starting anyway is the escalation, so this is the one failure
+	// the service does not retry through.
+	if err := secureDataDir(h.dataDir); err != nil {
+		log.Error("could not restrict the data directory; refusing to start", "dir", h.dataDir, "error", err)
+		return fmt.Errorf("securing %s: %w", h.dataDir, err)
+	}
+
 	for {
 		err := runner.Run(ctx, runner.Options{DataDir: h.dataDir, Log: log})
 		switch {
@@ -258,10 +269,23 @@ func disableService() error {
 }
 
 // secureDataDir restricts the agent's data directory to SYSTEM and
-// Administrators, because it holds the enrollment token and the device key.
-// icacls ships with Windows and expresses this in one line; building the same
-// ACL through the security APIs is a great deal of code for the same result.
+// Administrators, because it holds the enrollment token, the device key and
+// the builds the service runs as LocalSystem. icacls ships with Windows and
+// expresses this in one line; building the same ACL through the security APIs
+// is a great deal of code for the same result.
+//
+// It creates the directory if it is not there yet and is safe to repeat --
+// both of which it has to be, because every path that writes something
+// sensitive there calls it, and most of them call it on a directory some
+// earlier run already secured. The grants are absolute (/grant:r), so a second
+// run leaves exactly the same ACL as the first.
 func secureDataDir(dir string) error {
+	// Creating it here rather than finding it is the point: a standard user
+	// who gets to C:\ProgramData\Retune first owns it, and an owner can put
+	// a binary of their choosing where a LocalSystem service will run it.
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("create %s: %w", dir, err)
+	}
 	cmd := exec.Command("icacls", dir, "/inheritance:r",
 		"/grant:r", "SYSTEM:(OI)(CI)F",
 		"/grant:r", "Administrators:(OI)(CI)F")
