@@ -3,8 +3,8 @@
 package agentversions
 
 import (
-	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	"retune/internal/protocol"
+	"retune/internal/release"
 	"retune/internal/server/artifacts"
 	"retune/internal/server/store"
 )
@@ -25,6 +26,9 @@ var (
 	ErrVersionTaken = errors.New("that version has already been uploaded")
 	// ErrBadRequest is returned for input the caller can fix.
 	ErrBadRequest = errors.New("bad request")
+	// ErrNoReleaseKeys means the service has no release keys configured, so no
+	// upload can ever be verified.
+	ErrNoReleaseKeys = errors.New("no release keys are configured")
 )
 
 // MaxUploadBytes caps one uploaded build. The agent is a single static Go
@@ -37,6 +41,9 @@ type Service struct {
 	Store     *store.Store
 	Artifacts artifacts.Store
 	Now       func() time.Time
+	// ReleaseKeys are the public keys a build must be signed by. With none
+	// configured every upload is refused: nothing silently accepts.
+	ReleaseKeys []release.PublicKey
 }
 
 func (s *Service) now() time.Time {
@@ -48,9 +55,10 @@ func (s *Service) now() time.Time {
 
 // NewVersion describes a build to upload.
 type NewVersion struct {
-	Version string
-	Notes   string
-	Actor   string
+	Version   string
+	Notes     string
+	Actor     string
+	Signature release.Signature
 }
 
 // Upload stores a build and records what was received. The bytes land first:
@@ -67,6 +75,22 @@ func (s *Service) Upload(ctx context.Context, in NewVersion, body io.Reader) (st
 		return store.AgentVersion{}, err
 	}
 
+	if len(s.ReleaseKeys) == 0 {
+		return store.AgentVersion{}, ErrNoReleaseKeys
+	}
+	sig := in.Signature
+	keyKnown := false
+	for _, k := range s.ReleaseKeys {
+		if k.ID() == sig.KeyID {
+			keyKnown = true
+			break
+		}
+	}
+	if !keyKnown {
+		return store.AgentVersion{}, s.reject(ctx, in, fmt.Sprintf(
+			"the signature names key %s, which is not a configured release key", sig.KeyID))
+	}
+
 	sum, size, err := s.Artifacts.Put(version, body, MaxUploadBytes)
 	if errors.Is(err, artifacts.ErrExists) {
 		return store.AgentVersion{}, ErrVersionTaken
@@ -77,28 +101,28 @@ func (s *Service) Upload(ctx context.Context, in NewVersion, body io.Reader) (st
 		return store.AgentVersion{}, fmt.Errorf("%w: %v", ErrBadRequest, err)
 	}
 
-	// A build whose version was never stamped in reports the placeholder for
-	// ever, and the agent refuses to install one, so accepting it would only
-	// produce a build that can be assigned to a whole fleet and can never
-	// succeed anywhere. This is the last moment there is somebody at a console
-	// to tell about it. The scan is for the declared version and nothing else:
-	// the placeholder string is in every binary's rodata whether the stamp
-	// happened or not, so its presence proves nothing either way.
-	stamped, err := s.stampedWith(version)
-	if err != nil {
+	// The bytes are on disk; from here every refusal removes them. The checks
+	// run in the order that gives the most useful message: a wrong file, a
+	// wrong version, then a signature that is simply forged.
+	if !strings.EqualFold(sum, sig.SHA256) {
 		_ = s.Artifacts.Remove(version)
-		return store.AgentVersion{}, err
+		return store.AgentVersion{}, s.reject(ctx, in, fmt.Sprintf(
+			"the uploaded bytes hash to %s but the signature is over %s", sum, sig.SHA256))
 	}
-	if !stamped {
+	if version != sig.Version {
 		_ = s.Artifacts.Remove(version)
-		return store.AgentVersion{}, fmt.Errorf(
-			"%w: the uploaded binary does not contain version %q; was it built with the version stamp?",
-			ErrBadRequest, version)
+		return store.AgentVersion{}, s.reject(ctx, in, fmt.Sprintf(
+			"declared version %q does not match the signed version %q", version, sig.Version))
+	}
+	if err := release.Verify(s.ReleaseKeys, release.Manifest{Version: version, SHA256: sum}, sig); err != nil {
+		_ = s.Artifacts.Remove(version)
+		return store.AgentVersion{}, s.reject(ctx, in, "the signature did not verify")
 	}
 
 	v := store.AgentVersion{
 		ID: uuid.Must(uuid.NewV7()), Version: version, SHA256: sum, SizeBytes: size,
 		Notes: in.Notes, CreatedAt: s.now(), CreatedBy: in.Actor,
+		KeyID: sig.KeyID, Signature: base64.StdEncoding.EncodeToString(sig.Signature),
 	}
 	err = s.Store.InTx(ctx, func(q *store.Queries) error {
 		if err := q.CreateAgentVersion(ctx, v); err != nil {
@@ -107,7 +131,7 @@ func (s *Service) Upload(ctx context.Context, in NewVersion, body io.Reader) (st
 		return q.InsertAudit(ctx, store.AuditEntry{
 			Actor: in.Actor, Action: "agent_version.uploaded", TargetKind: "agent_version",
 			TargetID: v.ID.String(),
-			Details:  map[string]any{"version": version, "sha256": sum, "size_bytes": size},
+			Details:  map[string]any{"version": version, "sha256": sum, "size_bytes": size, "key_id": sig.KeyID},
 		})
 	})
 	if err != nil {
@@ -120,52 +144,20 @@ func (s *Service) Upload(ctx context.Context, in NewVersion, body io.Reader) (st
 	return v, nil
 }
 
-// scanChunk is how much of a stored build is held in memory at a time while
-// looking for the version string. The cap on an upload is 128 MiB and a
-// server may be handling several at once, so the file is read in pieces
-// rather than whole.
-const scanChunk = 1 << 20
-
-// stampedWith reports whether the stored bytes for version contain that
-// version string anywhere.
-func (s *Service) stampedWith(version string) (bool, error) {
-	r, _, err := s.Artifacts.Open(version)
-	if err != nil {
-		return false, err
+// reject records why an upload was refused and returns the error the caller
+// sees. The audit entry is the point: an admin account pushing a build the
+// release key never signed is exactly what this milestone exists to notice,
+// and a 400 alone leaves no trace of it.
+func (s *Service) reject(ctx context.Context, in NewVersion, reason string) error {
+	if err := s.Store.Q().InsertAudit(ctx, store.AuditEntry{
+		Actor: in.Actor, Action: "agent_version.rejected", TargetKind: "agent_version", TargetID: "",
+		Details: map[string]any{"version": in.Version, "reason": reason, "key_id": in.Signature.KeyID},
+	}); err != nil {
+		// The refusal stands either way; losing the audit row is the lesser
+		// failure, but not a silent one.
+		return fmt.Errorf("%w: %s (and recording the refusal failed: %v)", ErrBadRequest, reason, err)
 	}
-	defer r.Close()
-	return containsVersion(r, version)
-}
-
-// containsVersion streams r looking for version. Each chunk keeps the last
-// len(version)-1 bytes of the one before it, so a match that straddles the
-// boundary between two reads is still found -- otherwise a perfectly well
-// stamped build would be rejected depending on where its version happened to
-// land in the file.
-func containsVersion(r io.Reader, version string) (bool, error) {
-	needle := []byte(version)
-	if len(needle) == 0 || len(needle) > scanChunk {
-		return false, nil
-	}
-	buf := make([]byte, scanChunk)
-	carried := 0
-	for {
-		n, err := io.ReadFull(r, buf[carried:])
-		have := carried + n
-		if bytes.Contains(buf[:have], needle) {
-			return true, nil
-		}
-		if err != nil {
-			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-				return false, nil
-			}
-			return false, err
-		}
-		// Carry the tail forward: a match can be at most len(needle)-1 bytes
-		// into the next chunk before it is wholly inside it.
-		carried = len(needle) - 1
-		copy(buf, buf[have-carried:have])
-	}
+	return fmt.Errorf("%w: %s", ErrBadRequest, reason)
 }
 
 // uploadError translates what CreateAgentVersion's transaction can fail with

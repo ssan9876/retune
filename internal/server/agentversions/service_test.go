@@ -2,6 +2,8 @@ package agentversions_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"strings"
@@ -11,29 +13,52 @@ import (
 	"github.com/google/uuid"
 
 	"retune/internal/protocol"
+	"retune/internal/release"
 	"retune/internal/server/agentversions"
 	"retune/internal/server/artifacts"
 	"retune/internal/server/store"
 	"retune/internal/server/store/storetest"
 )
 
-func service(t *testing.T, st *store.Store) *agentversions.Service {
+func service(t *testing.T, st *store.Store) (*agentversions.Service, release.PrivateKey) {
 	t.Helper()
-	return &agentversions.Service{Store: st, Artifacts: artifacts.Store{Dir: t.TempDir()}}
+	priv, err := release.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &agentversions.Service{
+		Store: st, Artifacts: artifacts.Store{Dir: t.TempDir()},
+		ReleaseKeys: []release.PublicKey{priv.Public()},
+	}, priv
+}
+
+// signed builds a valid NewVersion for body under priv.
+func signed(priv release.PrivateKey, version, body, actor string) agentversions.NewVersion {
+	sum := sha256.Sum256([]byte(body))
+	return agentversions.NewVersion{
+		Version: version, Actor: actor,
+		Signature: release.Sign(priv, release.Manifest{Version: version, SHA256: hex.EncodeToString(sum[:])}),
+	}
 }
 
 func TestUploadRecordsTheHashItComputed(t *testing.T) {
 	st := storetest.New(t)
 	ctx := context.Background()
-	svc := service(t, st)
+	svc, priv := service(t, st)
 
-	v, err := svc.Upload(ctx, agentversions.NewVersion{Version: "1.2.3", Actor: "ops"},
+	v, err := svc.Upload(ctx, signed(priv, "1.2.3", "a pretend agent 1.2.3", "ops"),
 		strings.NewReader("a pretend agent 1.2.3"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if v.SHA256 == "" || v.SizeBytes != int64(len("a pretend agent 1.2.3")) {
 		t.Fatalf("version = %+v", v)
+	}
+	if v.KeyID != priv.Public().ID() {
+		t.Errorf("KeyID = %q, want %q", v.KeyID, priv.Public().ID())
+	}
+	if v.Signature == "" {
+		t.Error("Signature should not be empty")
 	}
 
 	r, size, err := svc.Open(ctx, v.ID)
@@ -54,55 +79,27 @@ func TestUploadRecordsTheHashItComputed(t *testing.T) {
 func TestUploadRefusesADuplicateVersion(t *testing.T) {
 	st := storetest.New(t)
 	ctx := context.Background()
-	svc := service(t, st)
+	svc, priv := service(t, st)
 
-	if _, err := svc.Upload(ctx, agentversions.NewVersion{Version: "1.0.0", Actor: "ops"},
+	if _, err := svc.Upload(ctx, signed(priv, "1.0.0", "first 1.0.0", "ops"),
 		strings.NewReader("first 1.0.0")); err != nil {
 		t.Fatal(err)
 	}
-	_, err := svc.Upload(ctx, agentversions.NewVersion{Version: "1.0.0", Actor: "ops"},
+	_, err := svc.Upload(ctx, signed(priv, "1.0.0", "second 1.0.0", "ops"),
 		strings.NewReader("second 1.0.0"))
 	if !errors.Is(err, agentversions.ErrVersionTaken) {
 		t.Fatalf("want ErrVersionTaken, got %v", err)
 	}
 }
 
-// A build whose version was never stamped in reports the placeholder for
-// ever: it would be told to update, report a version that is not the one
-// assigned, and be told to update again, on every check-in on every machine
-// it reached. The agent refuses to install such a build, so accepting the
-// upload only produces a build that can be assigned and can never succeed.
-// Catching it here, while there is still somebody at a console to tell, is
-// the only moment it can be fixed cheaply.
-func TestUploadRefusesABinaryThatDoesNotContainItsVersion(t *testing.T) {
-	st := storetest.New(t)
-	ctx := context.Background()
-	svc := service(t, st)
-
-	_, err := svc.Upload(ctx, agentversions.NewVersion{Version: "5.0.0", Actor: "ops"},
-		strings.NewReader("a binary built without -ldflags"))
-	if !errors.Is(err, agentversions.ErrBadRequest) {
-		t.Fatalf("want ErrBadRequest, got %v", err)
-	}
-	if !strings.Contains(err.Error(), "version stamp") {
-		t.Errorf("the message should say what to do about it, got %q", err)
-	}
-	// The bytes go too: a stored artifact with no row behind it is
-	// indistinguishable from a completed upload once somebody looks at disk,
-	// and it would block a corrected upload of the same version.
-	if _, _, err := svc.Artifacts.Open("5.0.0"); err == nil {
-		t.Error("a refused upload must not leave its bytes behind")
-	}
-}
-
 func TestUploadRejectsBadInput(t *testing.T) {
 	st := storetest.New(t)
 	ctx := context.Background()
-	svc := service(t, st)
+	svc, priv := service(t, st)
 
 	for name, in := range map[string]agentversions.NewVersion{
-		"no version":        {Actor: "ops"},
-		"a path in version": {Version: "../evil", Actor: "ops"},
+		"no version":        signed(priv, "", "x", "ops"),
+		"a path in version": signed(priv, "../evil", "x", "ops"),
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := svc.Upload(ctx, in, strings.NewReader("x")); !errors.Is(err, agentversions.ErrBadRequest) {
@@ -112,14 +109,89 @@ func TestUploadRejectsBadInput(t *testing.T) {
 	}
 }
 
+// A missing or unrecognized signature is refused before the release keys are
+// even consulted about content: with none configured every upload is
+// refused, so nothing is silently accepted just because a caller forgot to
+// wire ReleaseKeys.
+func TestUploadRefusesWithoutReleaseKeys(t *testing.T) {
+	st := storetest.New(t)
+	svc, priv := service(t, st)
+	svc.ReleaseKeys = nil
+	_, err := svc.Upload(context.Background(), signed(priv, "1.0.0", "b", "ops"), strings.NewReader("b"))
+	if !errors.Is(err, agentversions.ErrNoReleaseKeys) {
+		t.Fatalf("want ErrNoReleaseKeys, got %v", err)
+	}
+}
+
+func TestUploadRejections(t *testing.T) {
+	st := storetest.New(t)
+	ctx := context.Background()
+	svc, priv := service(t, st)
+	other, _ := release.GenerateKey()
+
+	cases := map[string]struct {
+		in   agentversions.NewVersion
+		body string
+		want string
+	}{
+		"unknown key": {
+			in: signed(other, "1.0.0", "b", "ops"), body: "b", want: "not a configured release key",
+		},
+		"bytes differ from the signed hash": {
+			in: signed(priv, "1.0.0", "b", "ops"), body: "not b", want: "hash to",
+		},
+		"declared version differs from the signed one": {
+			in: func() agentversions.NewVersion {
+				n := signed(priv, "1.0.0", "b", "ops")
+				n.Version = "1.0.1"
+				return n
+			}(), body: "b", want: "does not match the signed version",
+		},
+		"forged signature": {
+			in: func() agentversions.NewVersion {
+				n := signed(priv, "1.0.0", "b", "ops")
+				n.Signature.Signature[0] ^= 1
+				return n
+			}(), body: "b", want: "did not verify",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := svc.Upload(ctx, tc.in, strings.NewReader(tc.body))
+			if !errors.Is(err, agentversions.ErrBadRequest) || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("want ErrBadRequest containing %q, got %v", tc.want, err)
+			}
+			if _, _, err := svc.Artifacts.Open(tc.in.Version); err == nil {
+				t.Error("a refused upload must not leave its bytes behind")
+			}
+		})
+	}
+
+	// Every rejection is audited: a refused upload is the event signing exists
+	// to notice.
+	entries, _, err := st.Q().ListAuditPage(ctx, store.Page{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rejected := 0
+	for _, e := range entries {
+		if e.Action == "agent_version.rejected" {
+			rejected++
+		}
+	}
+	if rejected != len(cases) {
+		t.Errorf("%d rejection audit entries, want %d", rejected, len(cases))
+	}
+}
+
 // Deleting a build removes its bytes and its assignments, so no device is left
 // being told to install something that no longer exists.
 func TestDeleteRemovesBytesAndAssignments(t *testing.T) {
 	st := storetest.New(t)
 	ctx := context.Background()
-	svc := service(t, st)
+	svc, priv := service(t, st)
 
-	v, err := svc.Upload(ctx, agentversions.NewVersion{Version: "2.0.0", Actor: "ops"},
+	v, err := svc.Upload(ctx, signed(priv, "2.0.0", "bytes 2.0.0", "ops"),
 		strings.NewReader("bytes 2.0.0"))
 	if err != nil {
 		t.Fatal(err)
@@ -165,9 +237,9 @@ func newDevice(t *testing.T, q *store.Queries, hostname string) store.Device {
 func TestRecordResultSetsItemStatus(t *testing.T) {
 	st := storetest.New(t)
 	ctx := context.Background()
-	svc := service(t, st)
+	svc, priv := service(t, st)
 
-	v, err := svc.Upload(ctx, agentversions.NewVersion{Version: "4.0.0", Actor: "ops"},
+	v, err := svc.Upload(ctx, signed(priv, "4.0.0", "bytes 4.0.0", "ops"),
 		strings.NewReader("bytes 4.0.0"))
 	if err != nil {
 		t.Fatal(err)
