@@ -32,12 +32,6 @@ func Decide(running, assigned string, injected bool, trusted int, attempted Reco
 	if !injected {
 		return Decision{Reason: "this build has no injected version, so it will not self-update"}
 	}
-	// A build with no trusted release keys cannot verify anything it
-	// downloads, so it must not download. Like the unstamped case, this is a
-	// build problem, and saying so on every check-in is how it gets fixed.
-	if trusted == 0 {
-		return Decision{Reason: "this build has no trusted release keys, so it will not self-update"}
-	}
 	if assigned == "" {
 		return Decision{Reason: "the assigned build has no version"}
 	}
@@ -45,6 +39,17 @@ func Decide(running, assigned string, injected bool, trusted int, attempted Reco
 	// recovered from a bad one.
 	if running == assigned {
 		return Decision{Reason: "this device is already running the assigned version"}
+	}
+	// A build with no trusted release keys cannot verify anything it
+	// downloads, so it must not download. Like the unstamped case, this is a
+	// build problem, and saying so on every check-in is how it gets fixed.
+	// Checked after the same-version comparison: a build already on its
+	// assigned version must stay quiet rather than report "failed" every
+	// cycle while the server's inference marks the device "succeeded" -- a
+	// flapping status nobody could act on anyway, since there is nothing to
+	// update to.
+	if trusted == 0 {
+		return Decision{Reason: "this build has no trusted release keys, so it will not self-update"}
 	}
 	if attempted.ToVersion == assigned {
 		switch attempted.Status {

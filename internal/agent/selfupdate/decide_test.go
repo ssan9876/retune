@@ -36,6 +36,10 @@ func TestDecide(t *testing.T) {
 			running: "1.2.3", assigned: "1.3.0", injected: true, trusted: 0,
 			want: selfupdate.ActionNone, reason: "no trusted release keys",
 		},
+		"already on the assigned version, and trusts no release key: staying quiet wins": {
+			running: "1.2.3", assigned: "1.2.3", injected: true, trusted: 0,
+			want: selfupdate.ActionNone, reason: "already running",
+		},
 		"the same version already failed and was rolled back": {
 			running: "1.2.3", assigned: "1.3.0", injected: true, trusted: 1,
 			attempted: selfupdate.Record{ToVersion: "1.3.0", Status: selfupdate.StatusRolledBack},
