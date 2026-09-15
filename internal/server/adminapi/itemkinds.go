@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"retune/internal/protocol"
+	"retune/internal/server/compliance"
 )
 
 // optionsParsers validates and canonicalises the options of an include
@@ -41,5 +42,24 @@ var optionsParsers = map[string]func(json.RawMessage) ([]byte, error){
 			return nil, err
 		}
 		return opts.Marshal()
+	},
+	// A compliance policy has nothing to configure per assignment - unlike a
+	// script or profile, the same policy always evaluates the same way - so
+	// the only acceptable options are none at all.
+	compliance.ItemKindCompliance: func(raw json.RawMessage) ([]byte, error) {
+		if len(raw) == 0 {
+			return nil, nil
+		}
+		var v any
+		if err := json.Unmarshal(raw, &v); err != nil {
+			return nil, fmt.Errorf("%w: compliance takes no options", protocol.ErrBadOptions)
+		}
+		if v == nil {
+			return nil, nil
+		}
+		if m, ok := v.(map[string]any); !ok || len(m) != 0 {
+			return nil, fmt.Errorf("%w: compliance takes no options", protocol.ErrBadOptions)
+		}
+		return nil, nil
 	},
 }

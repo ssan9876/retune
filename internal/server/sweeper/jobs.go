@@ -9,9 +9,10 @@ import (
 
 // Lock IDs are fixed so they stay stable across restarts and replicas.
 const (
-	lockExpireCommands  = 5274001
-	lockCleanupSessions = 5274002
-	lockEvaluateGroups  = 5274003
+	lockExpireCommands     = 5274001
+	lockCleanupSessions    = 5274002
+	lockEvaluateGroups     = 5274003
+	lockEvaluateCompliance = 5274004
 )
 
 // GroupEvaluator recomputes dynamic group membership.
@@ -29,6 +30,23 @@ func GroupJob(g GroupEvaluator) Job {
 			n, err := g.EvaluateAll(ctx)
 			return int64(n), err
 		},
+	}
+}
+
+// ComplianceEvaluator re-scores every active device's compliance policies.
+type ComplianceEvaluator interface {
+	EvaluateActive(ctx context.Context, q *store.Queries, now time.Time) (int64, error)
+}
+
+// ComplianceJob re-evaluates compliance for every active device. Its interval
+// is fixed at 15 minutes, the same as GroupJob and for the same reason: it is
+// too expensive to ride along with the configurable sweep interval, and
+// ingest-time evaluation (inventory.Service.Compliance) is already the fast
+// path for devices that check in.
+func ComplianceJob(c ComplianceEvaluator) Job {
+	return Job{
+		Name: "compliance.evaluate", LockID: lockEvaluateCompliance, Interval: 15 * time.Minute,
+		Run: c.EvaluateActive,
 	}
 }
 
