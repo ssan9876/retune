@@ -38,7 +38,7 @@ if ($LASTEXITCODE -ne 0) { throw "go build failed" }
 
 if ($ReleaseKey -ne "") {
   Write-Host "Signing the agent..."
-  & go run ./cmd/retune-sign sign --key $ReleaseKey --version $Version $agentExe
+  & go run (Join-Path $root "cmd/retune-sign") sign --key $ReleaseKey --version $Version $agentExe
   if ($LASTEXITCODE -ne 0) { throw "signing failed" }
 } else {
   Write-Host "The agent is unsigned and trusts no release key (pass -ReleaseKey and -TrustedKeys)."
