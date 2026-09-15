@@ -74,6 +74,7 @@ session_ttl_hours: 12
 | `checkin_interval_seconds` | `300` | how often agents check in (minimum 30) |
 | `session_ttl_hours` | `12` | console session lifetime (1–168) |
 | `sweep_interval_seconds` | `300` | how often expired commands and sessions are cleared (minimum 10) |
+| `agent_release_keys` | — | comma-separated public keys that sign agent builds; uploads are refused until set |
 
 Every setting is also an environment variable of the same name in capitals,
 and the environment wins over the file.
@@ -315,12 +316,11 @@ account's profile rather than anyone's.
 Agent builds live under **Agent versions**. Upload a build, assign it to a
 group, and the agents in that group replace themselves with it.
 
-A build is stamped with its version at compile time. An agent built without
-that stamp refuses to self-update and says so, because it would otherwise
-report the same version after updating, be told to update again, and do that
-on every check-in for ever. The upload is refused for the same reason: a build
-whose bytes do not contain the version it was declared as never gets as far as
-being assigned.
+A build is stamped with its version at compile time and **signed with the release key**. `retune-sign keygen` makes the key once; keep `release.key` off the server — the server never needs it. `make agent VERSION=1.4.0 RELEASE_KEY=path/to/release.key RELEASE_PUBKEYS=<public key>` (or `deploy/msi/build.ps1 -ReleaseKey … -TrustedKeys …`) produces `retune-agent.exe` and `retune-agent.exe.sig`. Upload both. The server checks the signature against `AGENT_RELEASE_KEYS` before it accepts a build, and every agent checks it again after downloading, against the keys it was built to trust. An admin account cannot push code the key never signed; neither can the server.
+
+An agent built without a version stamp or without a trust list refuses to self-update and says so.
+
+To rotate the key: ship a build signed by the old key that trusts both, add the new key to `AGENT_RELEASE_KEYS`, then ship a build signed by the new key that trusts only it.
 
 **A bad build costs one check-in cycle, not a truck roll.** After swapping, the
 new agent must check in successfully within the assignment's deadline (ten
@@ -411,6 +411,8 @@ retune-server command queue --device <id> --type <type> [flags] | command show <
 retune-server bootstrap-admin --email E [--password P] [--role R]
 retune-server admin list | create | password | totp | disable | enable
 
+retune-sign keygen | sign | verify
+
 retune-agent enroll --server URL --token T [--pin sha256:...] [--data-dir D]
 retune-agent run [--data-dir D] [--once]
 retune-agent configure --server URL --token T [--pin sha256:...]   (Windows)
@@ -423,6 +425,8 @@ retune-agent install [--data-dir D] | uninstall                    (Windows)
 go test ./...                 # needs Docker for the database tests
 npm --prefix web run test
 ```
+
+CI runs the Linux suite under `-race`.
 
 ## Design and plans
 

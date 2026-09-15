@@ -25,6 +25,7 @@ services:
       PUBLIC_URL: ${PUBLIC_URL:-https://localhost:8443}
       DATA_DIR: /var/lib/retune
       SWEEP_INTERVAL_SECONDS: ${SWEEP_INTERVAL_SECONDS:-300}
+      AGENT_RELEASE_KEYS: ${AGENT_RELEASE_KEYS:-}
     ports:
       - "8443:8443"
     volumes:
