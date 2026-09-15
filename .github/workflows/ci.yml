@@ -105,4 +105,6 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: retune-agent-msi
-          path: bin/retune-agent.msi
+          path: |
+            bin/retune-agent.msi
+            bin/retune-agent.exe.sig
