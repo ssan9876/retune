@@ -121,10 +121,11 @@ func (q *Queries) MarkCommandsDelivered(ctx context.Context, ids []uuid.UUID, at
 }
 
 // MarkCommandRunning reports whether the command moved to running.
-func (q *Queries) MarkCommandRunning(ctx context.Context, id, deviceID uuid.UUID, at time.Time) (bool, error) {
+func (q *Queries) MarkCommandRunning(ctx context.Context, tenantID, id, deviceID uuid.UUID, at time.Time) (bool, error) {
 	tag, err := q.db.Exec(ctx, `
-		UPDATE commands SET status = 'running', started_at = $3
-		WHERE id = $1 AND device_id = $2 AND status IN ('queued', 'delivered')`, id, deviceID, at)
+		UPDATE commands SET status = 'running', started_at = $4
+		WHERE tenant_id = $1 AND id = $2 AND device_id = $3 AND status IN ('queued', 'delivered')`,
+		tenantID, id, deviceID, at)
 	if err != nil {
 		return false, err
 	}
@@ -132,10 +133,11 @@ func (q *Queries) MarkCommandRunning(ctx context.Context, id, deviceID uuid.UUID
 }
 
 // CompleteCommand reports whether the command moved to a terminal status.
-func (q *Queries) CompleteCommand(ctx context.Context, id, deviceID uuid.UUID, status string, at time.Time) (bool, error) {
+func (q *Queries) CompleteCommand(ctx context.Context, tenantID, id, deviceID uuid.UUID, status string, at time.Time) (bool, error) {
 	tag, err := q.db.Exec(ctx, `
-		UPDATE commands SET status = $3, completed_at = $4
-		WHERE id = $1 AND device_id = $2 AND status IN ('queued', 'delivered', 'running')`, id, deviceID, status, at)
+		UPDATE commands SET status = $4, completed_at = $5
+		WHERE tenant_id = $1 AND id = $2 AND device_id = $3 AND status IN ('queued', 'delivered', 'running')`,
+		tenantID, id, deviceID, status, at)
 	if err != nil {
 		return false, err
 	}

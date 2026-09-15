@@ -168,7 +168,7 @@ func (s *Service) Deliver(ctx context.Context, deviceID uuid.UUID) ([]protocol.C
 func (s *Service) Start(ctx context.Context, deviceID, commandID uuid.UUID) error {
 	now := s.Now()
 	return s.Store.InTx(ctx, func(q *store.Queries) error {
-		ok, err := q.MarkCommandRunning(ctx, commandID, deviceID, now)
+		ok, err := q.MarkCommandRunning(ctx, store.DefaultTenantID, commandID, deviceID, now)
 		if err != nil || ok {
 			return err
 		}
@@ -194,7 +194,7 @@ func (s *Service) Complete(ctx context.Context, deviceID, commandID uuid.UUID, r
 	errText, _ := clampOutput(r.Error, false)
 
 	return s.Store.InTx(ctx, func(q *store.Queries) error {
-		ok, err := q.CompleteCommand(ctx, commandID, deviceID, r.Status, now)
+		ok, err := q.CompleteCommand(ctx, store.DefaultTenantID, commandID, deviceID, r.Status, now)
 		if err != nil {
 			return err
 		}

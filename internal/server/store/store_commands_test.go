@@ -42,6 +42,16 @@ func TestCommandQueriesAreScopedByTenant(t *testing.T) {
 	if _, err := q.GetCommand(ctx, store.DefaultTenantID, c.ID); err != nil {
 		t.Errorf("the owning tenant should still see it: %v", err)
 	}
+
+	if ok, err := q.MarkCommandRunning(ctx, other, c.ID, d.ID, now); err != nil || ok {
+		t.Errorf("another tenant must not be able to start the command: ok=%v err=%v", ok, err)
+	}
+	if ok, err := q.CompleteCommand(ctx, other, c.ID, d.ID, store.CommandSucceeded, now); err != nil || ok {
+		t.Errorf("another tenant must not be able to complete the command: ok=%v err=%v", ok, err)
+	}
+	if got, err := q.GetCommand(ctx, store.DefaultTenantID, c.ID); err != nil || got.Status != store.CommandQueued {
+		t.Errorf("another tenant's update must leave the row unchanged: %+v %v", got, err)
+	}
 }
 
 func TestCommands(t *testing.T) {
@@ -91,22 +101,22 @@ func TestCommands(t *testing.T) {
 		t.Fatalf("delivered = %+v", got)
 	}
 
-	ok, err := q.MarkCommandRunning(ctx, c1.ID, d.ID, now)
+	ok, err := q.MarkCommandRunning(ctx, store.DefaultTenantID, c1.ID, d.ID, now)
 	if err != nil || !ok {
 		t.Fatalf("MarkCommandRunning = %v, %v", ok, err)
 	}
-	if ok, _ = q.MarkCommandRunning(ctx, c1.ID, d.ID, now); ok {
+	if ok, _ = q.MarkCommandRunning(ctx, store.DefaultTenantID, c1.ID, d.ID, now); ok {
 		t.Fatal("second MarkCommandRunning must report no change")
 	}
-	if ok, _ = q.MarkCommandRunning(ctx, c2.ID, other.ID, now); ok {
+	if ok, _ = q.MarkCommandRunning(ctx, store.DefaultTenantID, c2.ID, other.ID, now); ok {
 		t.Fatal("a command must not be startable by another device")
 	}
 
-	ok, err = q.CompleteCommand(ctx, c1.ID, d.ID, store.CommandSucceeded, now)
+	ok, err = q.CompleteCommand(ctx, store.DefaultTenantID, c1.ID, d.ID, store.CommandSucceeded, now)
 	if err != nil || !ok {
 		t.Fatalf("CompleteCommand = %v, %v", ok, err)
 	}
-	if ok, _ = q.CompleteCommand(ctx, c1.ID, d.ID, store.CommandFailed, now); ok {
+	if ok, _ = q.CompleteCommand(ctx, store.DefaultTenantID, c1.ID, d.ID, store.CommandFailed, now); ok {
 		t.Fatal("completing twice must report no change")
 	}
 	if err := q.InsertCommandResult(ctx, store.CommandResult{
