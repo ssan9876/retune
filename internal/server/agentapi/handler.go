@@ -193,7 +193,7 @@ func (h *Handler) checkin(w http.ResponseWriter, r *http.Request) {
 	}
 	items := make([]protocol.Item, 0, len(assigned))
 	for _, it := range assigned {
-		version, exists := h.itemVersion(ctx, it)
+		version, agentVersion, exists := h.itemVersion(ctx, it)
 		if !exists {
 			continue
 		}
@@ -206,14 +206,12 @@ func (h *Handler) checkin(w http.ResponseWriter, r *http.Request) {
 		// carried this version. That is the only proof of success there is,
 		// and recording it here is what lets a build's status page show the
 		// devices it reached beside the ones it failed on.
-		if it.Kind == protocol.ItemKindAgent {
-			if v, err := h.AgentVersions.Get(ctx, it.ID); err == nil && v.Version == req.AgentVersion {
-				if err := h.Store.Q().MarkItemSucceededOnce(ctx, store.ItemStatus{
-					DeviceID: a.Device.ID, ItemKind: protocol.ItemKindAgent, ItemID: it.ID,
-					Detail: "running this version", Version: 1, UpdatedAt: h.Now(),
-				}); err != nil {
-					h.Log.Warn("record agent build success", "agent_version_id", it.ID, "error", err)
-				}
+		if it.Kind == protocol.ItemKindAgent && agentVersion == req.AgentVersion {
+			if err := h.Store.Q().MarkItemSucceededOnce(ctx, store.ItemStatus{
+				DeviceID: a.Device.ID, ItemKind: protocol.ItemKindAgent, ItemID: it.ID,
+				Detail: "running this version", Version: 1, UpdatedAt: h.Now(),
+			}); err != nil {
+				h.Log.Warn("record agent build success", "agent_version_id", it.ID, "error", err)
 			}
 		}
 
@@ -245,7 +243,13 @@ func (h *Handler) checkin(w http.ResponseWriter, r *http.Request) {
 // itemVersion reports the current version of an assigned item, and whether it
 // still exists. A kind with no case here is one this server does not
 // implement, and is never offered to an agent.
-func (h *Handler) itemVersion(ctx context.Context, it store.Item) (int, bool) {
+//
+// agentVersion is the agent build's own version string, for ItemKindAgent
+// only ("" for every other kind): the success-inference block in checkin
+// needs it to compare against what the device reported, and returning it
+// here spares checkin a second h.AgentVersions.Get for the very row this
+// call already fetched.
+func (h *Handler) itemVersion(ctx context.Context, it store.Item) (version int, agentVersion string, exists bool) {
 	switch it.Kind {
 	case protocol.ItemKindScript:
 		// The agent needs the version to know whether its cached copy is
@@ -254,33 +258,34 @@ func (h *Handler) itemVersion(ctx context.Context, it store.Item) (int, bool) {
 		if err != nil {
 			// A script that has gone missing is simply not offered.
 			h.Log.Warn("assigned script is missing", "script_id", it.ID, "error", err)
-			return 0, false
+			return 0, "", false
 		}
-		return sc.CurrentVersion, true
+		return sc.CurrentVersion, "", true
 	case protocol.ItemKindProfile:
 		pr, err := h.Profiles.Get(ctx, it.ID)
 		if err != nil {
 			h.Log.Warn("assigned profile is missing", "profile_id", it.ID, "error", err)
-			return 0, false
+			return 0, "", false
 		}
-		return pr.CurrentVersion, true
+		return pr.CurrentVersion, "", true
 	case protocol.ItemKindApp:
 		app, err := h.Apps.Get(ctx, it.ID)
 		if err != nil {
 			h.Log.Warn("assigned app is missing", "app_id", it.ID, "error", err)
-			return 0, false
+			return 0, "", false
 		}
-		return app.CurrentVersion, true
+		return app.CurrentVersion, "", true
 	case protocol.ItemKindAgent:
-		if _, err := h.AgentVersions.Get(ctx, it.ID); err != nil {
+		v, err := h.AgentVersions.Get(ctx, it.ID)
+		if err != nil {
 			h.Log.Warn("assigned agent build is missing", "agent_version_id", it.ID, "error", err)
-			return 0, false
+			return 0, "", false
 		}
 		// A build is immutable, so there is only ever version 1 of it; the
 		// version string an agent compares against travels in the definition.
-		return 1, true
+		return 1, v.Version, true
 	}
-	return 0, false
+	return 0, "", false
 }
 
 func (h *Handler) renew(w http.ResponseWriter, r *http.Request) {
