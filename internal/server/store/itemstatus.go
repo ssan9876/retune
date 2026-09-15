@@ -108,6 +108,30 @@ func (q *Queries) DeleteItemStatusExcept(ctx context.Context, deviceID uuid.UUID
 	return err
 }
 
+// ListDeviceItemStatus returns one device's status for every item of one
+// kind, keyed by item id. Compliance evaluation uses this to build
+// Facts.ProfileStatus (kind "profile") without a per-policy round trip for
+// each profile_applied rule.
+func (q *Queries) ListDeviceItemStatus(ctx context.Context, deviceID uuid.UUID, kind string) (map[uuid.UUID]string, error) {
+	rows, err := q.db.Query(ctx, `
+		SELECT item_id, status FROM device_item_status
+		WHERE tenant_id = $1 AND device_id = $2 AND item_kind = $3`, DefaultTenantID, deviceID, kind)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[uuid.UUID]string{}
+	for rows.Next() {
+		var id uuid.UUID
+		var status string
+		if err := rows.Scan(&id, &status); err != nil {
+			return nil, err
+		}
+		out[id] = status
+	}
+	return out, rows.Err()
+}
+
 // ListItemStatus returns one page of devices for an item, optionally narrowed
 // to a single status, for drilling into a rollup.
 func (q *Queries) ListItemStatus(ctx context.Context, itemKind string, itemID uuid.UUID, status string, page Page) ([]ItemStatus, int, error) {
