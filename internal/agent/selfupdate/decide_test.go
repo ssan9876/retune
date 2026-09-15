@@ -11,38 +11,43 @@ func TestDecide(t *testing.T) {
 	cases := map[string]struct {
 		running, assigned string
 		injected          bool
+		trusted           int
 		attempted         selfupdate.Record
 		want              selfupdate.Action
 		reason            string
 	}{
 		"already on the assigned version": {
-			running: "1.2.3", assigned: "1.2.3", injected: true,
+			running: "1.2.3", assigned: "1.2.3", injected: true, trusted: 1,
 			want: selfupdate.ActionNone, reason: "already",
 		},
 		"a newer version is assigned": {
-			running: "1.2.3", assigned: "1.3.0", injected: true,
+			running: "1.2.3", assigned: "1.3.0", injected: true, trusted: 1,
 			want: selfupdate.ActionUpdate,
 		},
 		"an older version is assigned: a downgrade is a real instruction": {
-			running: "1.3.0", assigned: "1.2.3", injected: true,
+			running: "1.3.0", assigned: "1.2.3", injected: true, trusted: 1,
 			want: selfupdate.ActionUpdate,
 		},
 		"this build has no injected version": {
-			running: "0.1.0-dev", assigned: "1.3.0", injected: false,
+			running: "0.1.0-dev", assigned: "1.3.0", injected: false, trusted: 1,
 			want: selfupdate.ActionNone, reason: "no injected version",
 		},
+		"this build trusts no release key": {
+			running: "1.2.3", assigned: "1.3.0", injected: true, trusted: 0,
+			want: selfupdate.ActionNone, reason: "no trusted release keys",
+		},
 		"the same version already failed and was rolled back": {
-			running: "1.2.3", assigned: "1.3.0", injected: true,
+			running: "1.2.3", assigned: "1.3.0", injected: true, trusted: 1,
 			attempted: selfupdate.Record{ToVersion: "1.3.0", Status: selfupdate.StatusRolledBack},
 			want:      selfupdate.ActionNone, reason: "rolled back",
 		},
 		"a different version after a rollback is still attempted": {
-			running: "1.2.3", assigned: "1.4.0", injected: true,
+			running: "1.2.3", assigned: "1.4.0", injected: true, trusted: 1,
 			attempted: selfupdate.Record{ToVersion: "1.3.0", Status: selfupdate.StatusRolledBack},
 			want:      selfupdate.ActionUpdate,
 		},
 		"an update is already in flight": {
-			running: "1.2.3", assigned: "1.3.0", injected: true,
+			running: "1.2.3", assigned: "1.3.0", injected: true, trusted: 1,
 			attempted: selfupdate.Record{ToVersion: "1.3.0", Status: selfupdate.StatusPending},
 			want:      selfupdate.ActionNone, reason: "already under way",
 		},
@@ -50,7 +55,7 @@ func TestDecide(t *testing.T) {
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			got := selfupdate.Decide(tc.running, tc.assigned, tc.injected, tc.attempted)
+			got := selfupdate.Decide(tc.running, tc.assigned, tc.injected, tc.trusted, tc.attempted)
 			if got.Action != tc.want {
 				t.Fatalf("action = %v, want %v (reason %q)", got.Action, tc.want, got.Reason)
 			}
@@ -130,10 +135,10 @@ func TestReconcile(t *testing.T) {
 // not be retried in a loop, but a later build must not be blocked by it.
 func TestARolledBackVersionIsNotRetried(t *testing.T) {
 	rolled := selfupdate.Record{ToVersion: "2.0.0", Status: selfupdate.StatusRolledBack}
-	if d := selfupdate.Decide("1.0.0", "2.0.0", true, rolled); d.Action != selfupdate.ActionNone {
+	if d := selfupdate.Decide("1.0.0", "2.0.0", true, 1, rolled); d.Action != selfupdate.ActionNone {
 		t.Error("the version that was rolled back must not be attempted again")
 	}
-	if d := selfupdate.Decide("1.0.0", "2.0.1", true, rolled); d.Action != selfupdate.ActionUpdate {
+	if d := selfupdate.Decide("1.0.0", "2.0.1", true, 1, rolled); d.Action != selfupdate.ActionUpdate {
 		t.Error("a different version must still be attempted")
 	}
 }

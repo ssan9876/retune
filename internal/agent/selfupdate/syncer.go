@@ -2,6 +2,7 @@ package selfupdate
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 
 	"retune/internal/agent/client"
 	"retune/internal/protocol"
+	"retune/internal/release"
 )
 
 // binName is the executable staged under each version's directory. It is
@@ -41,6 +43,7 @@ type Syncer struct {
 	Control  ServiceController // reads the live service's path and arguments
 	Running  string            // this build's version
 	Injected bool
+	Trusted  []release.PublicKey // the release keys this build was stamped to trust
 	Log      *slog.Logger
 	Now      func() time.Time
 
@@ -241,12 +244,13 @@ func (s *Syncer) syncOne(ctx context.Context, item protocol.Item) error {
 		return fmt.Errorf("fetch agent version: %w", err)
 	}
 
-	decision := Decide(s.Running, def.Version, s.Injected, rec)
+	decision := Decide(s.Running, def.Version, s.Injected, len(s.Trusted), rec)
 	if decision.Action == ActionNone {
-		if !s.Injected {
-			// The only refusal reason worth telling anyone about: a
-			// build with no injected version updates on every check-in on
-			// every machine unless it is told, loudly, why it will not.
+		if !s.Injected || len(s.Trusted) == 0 {
+			// The only refusal reasons worth telling anyone about: a
+			// build with no injected version, or no trusted release keys,
+			// updates on every check-in on every machine unless it is told,
+			// loudly, why it will not.
 			if err := s.report(ctx, item.ID, def.Version, protocol.ResultFailed, "", decision.Reason); err != nil {
 				return fmt.Errorf("report refusal: %w", err)
 			}
@@ -296,6 +300,26 @@ func (s *Syncer) stage(ctx context.Context, item protocol.Item, opts protocol.Ag
 			s.log().Error("failed to report download failure", "error", repErr)
 		}
 		return fmt.Errorf("download: %w", err)
+	}
+
+	// The hash matched what the server promised; now check that somebody with
+	// the release key promised it. The server verified this at upload, but the
+	// server is exactly what this check does not trust.
+	sigBytes, err := base64.StdEncoding.DecodeString(def.Signature)
+	if err == nil {
+		err = release.Verify(s.Trusted,
+			release.Manifest{Version: def.Version, SHA256: def.SHA256},
+			release.Signature{Version: def.Version, SHA256: def.SHA256, KeyID: def.KeyID, Signature: sigBytes})
+	}
+	if err != nil {
+		if rmErr := os.RemoveAll(versionDir); rmErr != nil {
+			s.log().Error("failed to remove unverified download", "error", rmErr)
+		}
+		detail := fmt.Sprintf("signature did not verify against any trusted release key (key %s): %v", def.KeyID, err)
+		if repErr := s.report(ctx, item.ID, def.Version, protocol.ResultFailed, "", detail); repErr != nil {
+			s.log().Error("failed to report signature failure", "error", repErr)
+		}
+		return fmt.Errorf("verify signature: %w", err)
 	}
 
 	if err := os.Rename(partPath, binPath); err != nil {

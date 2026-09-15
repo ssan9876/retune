@@ -22,14 +22,21 @@ type Decision struct {
 
 // Decide reports whether this agent should replace itself. It is deliberately
 // a pure function: the running version, the assigned one, whether this build
-// was stamped at all, and what was last attempted are the whole input.
-func Decide(running, assigned string, injected bool, attempted Record) Decision {
+// was stamped at all, how many release keys it trusts, and what was last
+// attempted are the whole input.
+func Decide(running, assigned string, injected bool, trusted int, attempted Record) Decision {
 	// A build that was never stamped reports the placeholder for ever. It
 	// would update, report the same string, be told to update again, and do
 	// that on every check-in on every machine. Refusing is the only safe
 	// answer, and saying so is how somebody finds out why.
 	if !injected {
 		return Decision{Reason: "this build has no injected version, so it will not self-update"}
+	}
+	// A build with no trusted release keys cannot verify anything it
+	// downloads, so it must not download. Like the unstamped case, this is a
+	// build problem, and saying so on every check-in is how it gets fixed.
+	if trusted == 0 {
+		return Decision{Reason: "this build has no trusted release keys, so it will not self-update"}
 	}
 	if assigned == "" {
 		return Decision{Reason: "the assigned build has no version"}

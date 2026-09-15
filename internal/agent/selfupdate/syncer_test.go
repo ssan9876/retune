@@ -3,6 +3,7 @@ package selfupdate_test
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -16,7 +17,22 @@ import (
 
 	"retune/internal/agent/selfupdate"
 	"retune/internal/protocol"
+	"retune/internal/release"
 )
+
+// testKey signs every build the fake server offers; syncers under test trust
+// it unless a test says otherwise.
+var testKey = mustKey()
+
+func mustKey() release.PrivateKey {
+	k, err := release.GenerateKey()
+	if err != nil {
+		panic(err)
+	}
+	return k
+}
+
+func trustTestKey() []release.PublicKey { return []release.PublicKey{testKey.Public()} }
 
 // fakeClient stands in for the agent's server connection. downloadErr, when
 // set, simulates a hash mismatch: the real client hashes as it streams, so
@@ -30,6 +46,10 @@ type fakeClient struct {
 	// test holds a Sync open in the middle of staging a build and watches what
 	// else can still happen meanwhile.
 	onDownload func()
+	// signer, when set, signs the fake server's offer with a key other than
+	// testKey -- how a test simulates a build signed by a key this agent was
+	// not built to trust.
+	signer *release.PrivateKey
 
 	fetches   int
 	downloads int
@@ -39,10 +59,17 @@ type fakeClient struct {
 func (c *fakeClient) FetchAgentVersion(ctx context.Context, id string) (protocol.AgentVersionResponse, error) {
 	c.fetches++
 	sum := sha256.Sum256(c.payload)
+	key := testKey
+	if c.signer != nil {
+		key = *c.signer
+	}
+	sig := release.Sign(key, release.Manifest{Version: c.version, SHA256: hex.EncodeToString(sum[:])})
 	return protocol.AgentVersionResponse{
 		Version:   c.version,
 		SHA256:    hex.EncodeToString(sum[:]),
 		SizeBytes: int64(len(c.payload)),
+		KeyID:     sig.KeyID,
+		Signature: base64.StdEncoding.EncodeToString(sig.Signature),
 	}, nil
 }
 
@@ -84,7 +111,7 @@ func TestSyncStagesAndHandsOff(t *testing.T) {
 	control := &fakeControl{binPath: `C:\Program Files\Retune\retune-agent.exe`, args: []string{"--data-dir", dir}}
 	var spawned string
 	s := &selfupdate.Syncer{
-		Dir: dir, Client: c, Control: control, Running: "1.0.0", Injected: true,
+		Dir: dir, Client: c, Control: control, Running: "1.0.0", Injected: true, Trusted: trustTestKey(),
 		Log: slog.New(slog.DiscardHandler), Now: time.Now,
 		Spawn: func(p string) error { spawned = p; return nil },
 	}
@@ -126,7 +153,7 @@ func TestCheckedInMarksThisBuildsAttemptSucceeded(t *testing.T) {
 	if err := selfupdate.WriteRecord(dir, rec); err != nil {
 		t.Fatal(err)
 	}
-	s := &selfupdate.Syncer{Dir: dir, Running: "2.0.0", Injected: true, Log: slog.New(slog.DiscardHandler)}
+	s := &selfupdate.Syncer{Dir: dir, Running: "2.0.0", Injected: true, Trusted: trustTestKey(), Log: slog.New(slog.DiscardHandler)}
 
 	if err := s.CheckedIn(); err != nil {
 		t.Fatal(err)
@@ -163,7 +190,7 @@ func TestCheckedInLeavesEveryOtherRecordAlone(t *testing.T) {
 			if err := selfupdate.WriteRecord(dir, tc.rec); err != nil {
 				t.Fatal(err)
 			}
-			s := &selfupdate.Syncer{Dir: dir, Running: tc.running, Injected: true, Log: slog.New(slog.DiscardHandler)}
+			s := &selfupdate.Syncer{Dir: dir, Running: tc.running, Injected: true, Trusted: trustTestKey(), Log: slog.New(slog.DiscardHandler)}
 
 			if err := s.CheckedIn(); err != nil {
 				t.Fatal(err)
@@ -180,7 +207,7 @@ func TestCheckedInLeavesEveryOtherRecordAlone(t *testing.T) {
 // record for one.
 func TestCheckedInWithNoRecordWritesNothing(t *testing.T) {
 	dir := t.TempDir()
-	s := &selfupdate.Syncer{Dir: dir, Running: "1.0.0", Injected: true, Log: slog.New(slog.DiscardHandler)}
+	s := &selfupdate.Syncer{Dir: dir, Running: "1.0.0", Injected: true, Trusted: trustTestKey(), Log: slog.New(slog.DiscardHandler)}
 
 	if err := s.CheckedIn(); err != nil {
 		t.Fatal(err)
@@ -198,7 +225,7 @@ func TestSyncRefusesAMismatchedHash(t *testing.T) {
 	control := &fakeControl{binPath: `C:\Program Files\Retune\retune-agent.exe`}
 	var spawned bool
 	s := &selfupdate.Syncer{
-		Dir: dir, Client: c, Control: control, Running: "1.0.0", Injected: true,
+		Dir: dir, Client: c, Control: control, Running: "1.0.0", Injected: true, Trusted: trustTestKey(),
 		Log: slog.New(slog.DiscardHandler), Now: time.Now,
 		Spawn: func(string) error { spawned = true; return nil },
 	}
@@ -233,7 +260,7 @@ func TestSyncReportsAPendingRollback(t *testing.T) {
 	}
 	c := &fakeClient{version: "1.0.0"}
 	s := &selfupdate.Syncer{
-		Dir: dir, Client: c, Running: "1.0.0", Injected: true,
+		Dir: dir, Client: c, Running: "1.0.0", Injected: true, Trusted: trustTestKey(),
 		Log: slog.New(slog.DiscardHandler), Now: time.Now, Rollback: &rec,
 		Spawn: func(string) error { return nil },
 	}
@@ -273,7 +300,7 @@ func TestSyncDoesNotRetryAVersionItJustReportedRolledBack(t *testing.T) {
 		t.Helper()
 		return &selfupdate.Syncer{
 			Dir: dir, Client: c, Control: &fakeControl{binPath: `C:\Program Files\Retune\retune-agent.exe`},
-			Running: "1.0.0", Injected: true,
+			Running: "1.0.0", Injected: true, Trusted: trustTestKey(),
 			Log: slog.New(slog.DiscardHandler), Now: time.Now, Rollback: rec,
 			Spawn: func(string) error { *spawned++; return nil },
 		}
@@ -330,7 +357,7 @@ func TestSyncRefusesWithoutAnInjectedVersion(t *testing.T) {
 	dir := t.TempDir()
 	c := &fakeClient{version: "2.0.0", payload: []byte("bytes")}
 	s := &selfupdate.Syncer{
-		Dir: dir, Client: c, Running: "0.1.0-dev", Injected: false,
+		Dir: dir, Client: c, Running: "0.1.0-dev", Injected: false, Trusted: trustTestKey(),
 		Log: slog.New(slog.DiscardHandler), Now: time.Now,
 		Spawn: func(string) error { t.Fatal("nothing should be handed off"); return nil },
 	}
@@ -355,7 +382,7 @@ func TestSyncIgnoresOtherKinds(t *testing.T) {
 	dir := t.TempDir()
 	c := &fakeClient{version: "2.0.0", payload: []byte("bytes")}
 	s := &selfupdate.Syncer{
-		Dir: dir, Client: c, Running: "1.0.0", Injected: true,
+		Dir: dir, Client: c, Running: "1.0.0", Injected: true, Trusted: trustTestKey(),
 		Log: slog.New(slog.DiscardHandler), Now: time.Now,
 		Spawn: func(string) error { t.Fatal("nothing should be handed off"); return nil },
 	}
@@ -384,7 +411,7 @@ func TestSyncRefusesWithNoController(t *testing.T) {
 	dir := t.TempDir()
 	c := &fakeClient{version: "2.0.0", payload: []byte("bytes")}
 	s := &selfupdate.Syncer{
-		Dir: dir, Client: c, Control: nil, Running: "1.0.0", Injected: true,
+		Dir: dir, Client: c, Control: nil, Running: "1.0.0", Injected: true, Trusted: trustTestKey(),
 		Log: slog.New(slog.DiscardHandler), Now: time.Now,
 		Spawn: func(string) error { t.Fatal("nothing should be handed off"); return nil },
 	}
@@ -423,7 +450,7 @@ func TestSyncSerialisesConcurrentCalls(t *testing.T) {
 	var mu sync.Mutex
 	var spawns int
 	s := &selfupdate.Syncer{
-		Dir: dir, Client: c, Control: control, Running: "1.0.0", Injected: true,
+		Dir: dir, Client: c, Control: control, Running: "1.0.0", Injected: true, Trusted: trustTestKey(),
 		Log: slog.New(slog.DiscardHandler), Now: time.Now,
 		Spawn: func(string) error {
 			mu.Lock()
@@ -481,7 +508,7 @@ func TestReportingARollbackDoesNotClobberANewerAttempt(t *testing.T) {
 	}
 	c := &fakeClient{version: "1.0.0"}
 	s := &selfupdate.Syncer{
-		Dir: dir, Client: c, Running: "1.0.0", Injected: true, Rollback: &rolledBack,
+		Dir: dir, Client: c, Running: "1.0.0", Injected: true, Trusted: trustTestKey(), Rollback: &rolledBack,
 		Log: slog.New(slog.DiscardHandler), Now: time.Now,
 		Spawn: func(string) error { return nil },
 	}
@@ -524,7 +551,7 @@ func TestCheckedInIsNotBlockedByASyncThatIsDownloading(t *testing.T) {
 	}
 	control := &fakeControl{binPath: `C:\Program Files\Retune\retune-agent.exe`, args: []string{"--data-dir", dir}}
 	s := &selfupdate.Syncer{
-		Dir: dir, Client: c, Control: control, Running: "1.0.0", Injected: true,
+		Dir: dir, Client: c, Control: control, Running: "1.0.0", Injected: true, Trusted: trustTestKey(),
 		Log: slog.New(slog.DiscardHandler), Now: time.Now,
 		Spawn: func(string) error { return nil },
 	}
@@ -579,7 +606,7 @@ func TestSyncAdoptsAnUnreportedRollbackFromDisk(t *testing.T) {
 	}
 	c := &fakeClient{version: "1.0.0"}
 	s := &selfupdate.Syncer{
-		Dir: dir, Client: c, Running: "1.0.0", Injected: true,
+		Dir: dir, Client: c, Running: "1.0.0", Injected: true, Trusted: trustTestKey(),
 		Log: slog.New(slog.DiscardHandler), Now: time.Now,
 		Spawn: func(string) error { return nil },
 	}
@@ -612,7 +639,7 @@ func TestSyncAbandonsAFailedHandOff(t *testing.T) {
 	c := &fakeClient{version: "2.0.0", payload: []byte("new agent bytes")}
 	control := &fakeControl{binPath: `C:\Program Files\Retune\retune-agent.exe`}
 	s := &selfupdate.Syncer{
-		Dir: dir, Client: c, Control: control, Running: "1.0.0", Injected: true,
+		Dir: dir, Client: c, Control: control, Running: "1.0.0", Injected: true, Trusted: trustTestKey(),
 		Log: slog.New(slog.DiscardHandler), Now: time.Now,
 		Spawn: func(string) error { return errors.New("could not start the supervisor process") },
 	}
@@ -628,5 +655,66 @@ func TestSyncAbandonsAFailedHandOff(t *testing.T) {
 	}
 	if len(c.reports) != 1 || c.reports[0].Status != protocol.ResultFailed {
 		t.Fatalf("the failed hand-off should be reported, got %+v", c.reports)
+	}
+}
+
+// The server verified the signature at upload, but the server is what this
+// check does not trust: a build signed by a key this agent was not built to
+// trust is refused after download, reported, and leaves nothing behind.
+func TestSyncRefusesABuildSignedByAnUntrustedKey(t *testing.T) {
+	dir := t.TempDir()
+	other := mustKey()
+	c := &fakeClient{version: "2.0.0", payload: []byte("bytes"), signer: &other}
+	control := &fakeControl{binPath: `C:\Program Files\Retune\retune-agent.exe`}
+	var spawned bool
+	s := &selfupdate.Syncer{
+		Dir: dir, Client: c, Control: control, Running: "1.0.0", Injected: true, Trusted: trustTestKey(),
+		Log: slog.New(slog.DiscardHandler), Now: time.Now,
+		Spawn: func(string) error { spawned = true; return nil },
+	}
+
+	if err := s.Sync(context.Background(), []protocol.Item{agentItem("v1", nil)}); err != nil {
+		t.Fatal(err)
+	}
+	if spawned {
+		t.Error("an unverified build must never be handed to the supervisor")
+	}
+	if _, found, _ := selfupdate.ReadRecord(dir); found {
+		t.Error("nothing should be pending")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "bin", "2.0.0")); err == nil {
+		t.Error("an unverified download must leave nothing behind")
+	}
+	if len(c.reports) != 1 || c.reports[0].Status != protocol.ResultFailed {
+		t.Fatalf("the refusal should be reported, got %+v", c.reports)
+	}
+	if !strings.Contains(c.reports[0].Detail, "signature did not verify") ||
+		!strings.Contains(c.reports[0].Detail, other.Public().ID()) {
+		t.Errorf("the detail should say why and name the key, got %q", c.reports[0].Detail)
+	}
+}
+
+// A build stamped with no trust list cannot verify anything, so it must not
+// download anything. Like the unstamped case, it says so on every check-in.
+func TestSyncRefusesWhenTheBuildTrustsNoKeys(t *testing.T) {
+	dir := t.TempDir()
+	c := &fakeClient{version: "2.0.0", payload: []byte("bytes")}
+	s := &selfupdate.Syncer{
+		Dir: dir, Client: c, Control: &fakeControl{}, Running: "1.0.0", Injected: true, Trusted: nil,
+		Log: slog.New(slog.DiscardHandler), Now: time.Now,
+		Spawn: func(string) error { t.Fatal("nothing should be handed off"); return nil },
+	}
+
+	if err := s.Sync(context.Background(), []protocol.Item{agentItem("v1", nil)}); err != nil {
+		t.Fatal(err)
+	}
+	if c.downloads != 0 {
+		t.Errorf("it must not download, got %d downloads", c.downloads)
+	}
+	if len(c.reports) != 1 || c.reports[0].Status != protocol.ResultFailed {
+		t.Fatalf("the refusal should be reported, got %+v", c.reports)
+	}
+	if !strings.Contains(c.reports[0].Detail, "no trusted release keys") {
+		t.Errorf("the detail should say why, got %q", c.reports[0].Detail)
 	}
 }

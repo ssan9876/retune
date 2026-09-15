@@ -101,7 +101,8 @@ func Run(ctx context.Context, opts Options) error {
 
 	updater := &selfupdate.Syncer{
 		Dir: opts.DataDir, Running: facts.AgentVersion, Injected: facts.VersionInjected(),
-		Log: opts.Log, Now: time.Now, Rollback: rollback,
+		Trusted: facts.TrustedKeys(),
+		Log:     opts.Log, Now: time.Now, Rollback: rollback,
 		Spawn: selfupdate.SpawnSupervisor,
 	}
 	// A platform with no service control manager cannot self-update. Every
