@@ -660,7 +660,9 @@ func TestSyncAbandonsAFailedHandOff(t *testing.T) {
 
 // The server verified the signature at upload, but the server is what this
 // check does not trust: a build signed by a key this agent was not built to
-// trust is refused after download, reported, and leaves nothing behind.
+// trust is refused after download, reported, and leaves no staged binary
+// behind -- but a refused record is written, so the same build is not
+// downloaded again on the next check-in.
 func TestSyncRefusesABuildSignedByAnUntrustedKey(t *testing.T) {
 	dir := t.TempDir()
 	other := mustKey()
@@ -679,8 +681,9 @@ func TestSyncRefusesABuildSignedByAnUntrustedKey(t *testing.T) {
 	if spawned {
 		t.Error("an unverified build must never be handed to the supervisor")
 	}
-	if _, found, _ := selfupdate.ReadRecord(dir); found {
-		t.Error("nothing should be pending")
+	rec, found, _ := selfupdate.ReadRecord(dir)
+	if !found || rec.Status != selfupdate.StatusRefused || rec.ItemID != "v1" {
+		t.Fatalf("a refused record should remember this build, got %+v (found=%v)", rec, found)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "bin", "2.0.0")); err == nil {
 		t.Error("an unverified download must leave nothing behind")
@@ -716,6 +719,100 @@ func TestSyncRefusesWhenTheBuildTrustsNoKeys(t *testing.T) {
 	}
 	if !strings.Contains(c.reports[0].Detail, "no trusted release keys") {
 		t.Errorf("the detail should say why, got %q", c.reports[0].Detail)
+	}
+}
+
+// A build refused on its signature must never be downloaded again: the next
+// check-in finds the refused record and returns before fetching or
+// downloading anything, so the same 13 MB is not pulled every cycle for as
+// long as the bad build stays assigned.
+func TestARefusedBuildIsNotDownloadedAgain(t *testing.T) {
+	dir := t.TempDir()
+	other := mustKey()
+	c := &fakeClient{version: "2.0.0", payload: []byte("bytes"), signer: &other}
+	control := &fakeControl{binPath: `C:\Program Files\Retune\retune-agent.exe`}
+	s := &selfupdate.Syncer{
+		Dir: dir, Client: c, Control: control, Running: "1.0.0", Injected: true, Trusted: trustTestKey(),
+		Log: slog.New(slog.DiscardHandler), Now: time.Now,
+		Spawn: func(string) error { return nil },
+	}
+
+	if err := s.Sync(context.Background(), []protocol.Item{agentItem("v1", nil)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Sync(context.Background(), []protocol.Item{agentItem("v1", nil)}); err != nil {
+		t.Fatal(err)
+	}
+	if c.downloads != 1 {
+		t.Errorf("downloads = %d, want 1", c.downloads)
+	}
+	if c.fetches != 1 {
+		t.Errorf("fetches = %d, want 1", c.fetches)
+	}
+	if len(c.reports) != 1 {
+		t.Fatalf("reports = %+v, want exactly one", c.reports)
+	}
+	rec, found, _ := selfupdate.ReadRecord(dir)
+	if !found || rec.Status != selfupdate.StatusRefused || rec.ItemID != "v1" {
+		t.Fatalf("record = %+v (found=%v), want a refused record for item v1", rec, found)
+	}
+}
+
+// A refusal of one item must not block a different item: the memory is keyed
+// on item id, and a differently-signed build under a different item id is
+// still worth trying.
+func TestARefusedBuildDoesNotBlockADifferentItem(t *testing.T) {
+	dir := t.TempDir()
+	other := mustKey()
+	c := &fakeClient{version: "2.0.0", payload: []byte("bytes"), signer: &other}
+	control := &fakeControl{binPath: `C:\Program Files\Retune\retune-agent.exe`}
+	s := &selfupdate.Syncer{
+		Dir: dir, Client: c, Control: control, Running: "1.0.0", Injected: true, Trusted: trustTestKey(),
+		Log: slog.New(slog.DiscardHandler), Now: time.Now,
+		Spawn: func(string) error { return nil },
+	}
+	if err := s.Sync(context.Background(), []protocol.Item{agentItem("v1", nil)}); err != nil {
+		t.Fatal(err)
+	}
+
+	c2 := &fakeClient{version: "3.0.0", payload: []byte("good bytes")}
+	var spawned bool
+	s2 := &selfupdate.Syncer{
+		Dir: dir, Client: c2, Control: control, Running: "1.0.0", Injected: true, Trusted: trustTestKey(),
+		Log: slog.New(slog.DiscardHandler), Now: time.Now,
+		Spawn: func(string) error { spawned = true; return nil },
+	}
+	if err := s2.Sync(context.Background(), []protocol.Item{agentItem("v2", nil)}); err != nil {
+		t.Fatal(err)
+	}
+	if c2.downloads != 1 {
+		t.Errorf("downloads = %d, want 1", c2.downloads)
+	}
+	if !spawned {
+		t.Error("a different item's trusted build should be handed off")
+	}
+}
+
+// A hash mismatch is transient, not remembered: the next check-in is its
+// retry, unlike a refused signature.
+func TestAHashMismatchIsRetried(t *testing.T) {
+	dir := t.TempDir()
+	c := &fakeClient{version: "2.0.0", payload: []byte("bytes"), downloadErr: errors.New("sha256 mismatch")}
+	control := &fakeControl{binPath: `C:\Program Files\Retune\retune-agent.exe`}
+	s := &selfupdate.Syncer{
+		Dir: dir, Client: c, Control: control, Running: "1.0.0", Injected: true, Trusted: trustTestKey(),
+		Log: slog.New(slog.DiscardHandler), Now: time.Now,
+		Spawn: func(string) error { return nil },
+	}
+
+	if err := s.Sync(context.Background(), []protocol.Item{agentItem("v1", nil)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Sync(context.Background(), []protocol.Item{agentItem("v1", nil)}); err != nil {
+		t.Fatal(err)
+	}
+	if c.downloads != 2 {
+		t.Errorf("downloads = %d, want 2", c.downloads)
 	}
 }
 

@@ -131,6 +131,10 @@ func TestReconcile(t *testing.T) {
 			rec:   selfupdate.Record{ToVersion: "2.0.0", Status: selfupdate.StatusSucceeded},
 			found: true, running: "2.0.0", want: selfupdate.ReconcileNone,
 		},
+		"a build refused on its signature": {
+			rec:   selfupdate.Record{ItemID: "v1", ToVersion: "2.0.0", Status: selfupdate.StatusRefused},
+			found: true, running: "1.0.0", want: selfupdate.ReconcileNone,
+		},
 	}
 
 	for name, tc := range cases {
@@ -151,5 +155,42 @@ func TestARolledBackVersionIsNotRetried(t *testing.T) {
 	}
 	if d := selfupdate.Decide("1.0.0", "2.0.1", true, 1, rolled); d.Action != selfupdate.ActionUpdate {
 		t.Error("a different version must still be attempted")
+	}
+}
+
+// AlreadyRefused is keyed on the item id, not the version string: agent
+// builds are immutable, so the same item id always means the same bytes and
+// the same signature, while a build deleted and re-uploaded correctly signed
+// under the same version gets a new id and must be tried.
+func TestAlreadyRefused(t *testing.T) {
+	cases := map[string]struct {
+		rec   selfupdate.Record
+		found bool
+		id    string
+		want  bool
+	}{
+		"no record at all": {
+			found: false, id: "v1", want: false,
+		},
+		"found, refused, same item id": {
+			rec:   selfupdate.Record{ItemID: "v1", Status: selfupdate.StatusRefused},
+			found: true, id: "v1", want: true,
+		},
+		"found, refused, different item id": {
+			rec:   selfupdate.Record{ItemID: "v1", Status: selfupdate.StatusRefused},
+			found: true, id: "v2", want: false,
+		},
+		"found, same item id, but rolled back rather than refused": {
+			rec:   selfupdate.Record{ItemID: "v1", Status: selfupdate.StatusRolledBack},
+			found: true, id: "v1", want: false,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := selfupdate.AlreadyRefused(tc.rec, tc.found, tc.id); got != tc.want {
+				t.Errorf("AlreadyRefused = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }

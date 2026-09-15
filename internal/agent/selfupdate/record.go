@@ -46,6 +46,11 @@ const (
 	StatusPending    = "pending"
 	StatusSucceeded  = "succeeded"
 	StatusRolledBack = "rolled_back"
+	// StatusRefused is a build this agent will never run: its signature does
+	// not verify against the keys it was built to trust. It is remembered so
+	// the same bytes are not fetched and downloaded again on every check-in
+	// for as long as the build stays assigned.
+	StatusRefused = "refused"
 )
 
 // ReadRecord reads the update record from dir. A missing file is the

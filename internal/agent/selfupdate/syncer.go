@@ -235,9 +235,17 @@ func (s *Syncer) syncOne(ctx context.Context, item protocol.Item) error {
 	if err != nil {
 		return fmt.Errorf("options: %w", err)
 	}
-	rec, _, err := s.readRecord()
+	rec, found, err := s.readRecord()
 	if err != nil {
 		return fmt.Errorf("read record: %w", err)
+	}
+	if AlreadyRefused(rec, found, item.ID) {
+		// This exact build was already downloaded, verified and refused --
+		// its signature does not verify against the keys this agent trusts,
+		// and that will not change on a retry. No fetch, no download, no
+		// report: the refusal was already reported once, when it happened.
+		s.log().Debug("agent build already refused on this device; not fetching it again", "item_id", item.ID)
+		return nil
 	}
 	def, err := s.Client.FetchAgentVersion(ctx, item.ID)
 	if err != nil {
@@ -314,6 +322,7 @@ func (s *Syncer) stage(ctx context.Context, item protocol.Item, opts protocol.Ag
 		if repErr := s.report(ctx, item.ID, def.Version, protocol.ResultFailed, "", detail); repErr != nil {
 			s.log().Error("failed to report signature failure", "error", repErr)
 		}
+		s.rememberRefusal(item.ID, def.Version, detail)
 		return fmt.Errorf("verify signature: %w", err)
 	}
 	if err := release.Verify(s.Trusted,
@@ -328,6 +337,7 @@ func (s *Syncer) stage(ctx context.Context, item protocol.Item, opts protocol.Ag
 		if repErr := s.report(ctx, item.ID, def.Version, protocol.ResultFailed, "", detail); repErr != nil {
 			s.log().Error("failed to report signature failure", "error", repErr)
 		}
+		s.rememberRefusal(item.ID, def.Version, detail)
 		return fmt.Errorf("verify signature: %w", err)
 	}
 
@@ -416,6 +426,28 @@ func (s *Syncer) abandon(ctx context.Context, id, version, versionDir, detail st
 		return fmt.Errorf("%s: %w", detail, cause)
 	}
 	return errors.New(detail)
+}
+
+// rememberRefusal writes a refused record for a build this agent will never
+// run, so the next check-in's syncOne finds it and returns before fetching or
+// downloading the same bytes again. The report has already gone out by the
+// time this is called, so a write failure here is only logged: the cost of a
+// lost record is one more download, not a lost report.
+//
+// This overwrites whatever record was there, exactly as a new attempt already
+// does. An older rolled_back memory for a different version is lost by that,
+// which costs at most one retry of that version.
+//
+// A hash mismatch is deliberately not remembered here: a corrupted transfer
+// is transient, and the next check-in is its retry.
+func (s *Syncer) rememberRefusal(itemID, version, detail string) {
+	rec := Record{
+		ItemID: itemID, FromVersion: s.Running, ToVersion: version,
+		Status: StatusRefused, Detail: detail, Reported: true, StartedAt: s.now(),
+	}
+	if err := s.writeRecord(rec); err != nil {
+		s.log().Error("failed to record a refused build", "item_id", itemID, "error", err)
+	}
 }
 
 // isGone reports whether err is the server telling us, definitively, that

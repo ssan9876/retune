@@ -70,6 +70,15 @@ func Decide(running, assigned string, injected bool, trusted int, attempted Reco
 	return Decision{Action: ActionUpdate}
 }
 
+// AlreadyRefused reports whether rec is a remembered refusal of the very
+// build item id is offering. It is keyed on the item id, not the version
+// string: agent builds are immutable, so the same item id always means the
+// same bytes and the same signature, while a build deleted and re-uploaded
+// correctly signed under the same version gets a new id and must be tried.
+func AlreadyRefused(rec Record, found bool, itemID string) bool {
+	return found && rec.Status == StatusRefused && rec.ItemID == itemID
+}
+
 // ReconcileAction is what a starting agent should do about the record it
 // found on disk.
 type ReconcileAction int
