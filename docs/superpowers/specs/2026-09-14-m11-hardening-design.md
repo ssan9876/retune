@@ -86,9 +86,9 @@ separate milestone.
 ### 3.4 Build integration
 
 - `Makefile` `agent` target: if `RELEASE_KEY` is set (path or `env:` form) it
-  signs `bin/retune-agent.exe` and embeds `RELEASE_PUBKEYS` (defaults to the
-  key's own public key); if unset the binary is unsigned and carries no trust
-  list, and the target prints one line saying so.
+  signs `bin/retune-agent.exe` and embeds `RELEASE_PUBKEYS` (required; the
+  trust list is always stated explicitly); if unset the binary is unsigned
+  and carries no trust list, and the target prints one line saying so.
 - `deploy/msi/build.ps1` takes `-ReleaseKey` / `-TrustedKeys` with the same
   behaviour and copies the `.sig` beside the MSI.
 - CI: each run does `retune-sign keygen` into a temp dir and builds with it,
@@ -105,9 +105,10 @@ separate milestone.
   handled exactly like a hash mismatch: the version directory is removed, the
   outcome is reported `failed` with `"signature did not verify against any
   trusted release key (key <id>)"`, and no record is written.
-- `Decide` gains a refusal ahead of the version comparison: `trusted == 0` →
+- `Decide` gains a refusal after the same-version check, so an agent already
+  on the assigned build stays quiet: `trusted == 0` →
   `"this build has no trusted release keys, so it will not self-update"`,
-  reported once per check-in like the uninjected case. `Decide`'s signature
+  reported like the uninjected case whenever it fires. `Decide`'s signature
   becomes `Decide(running, assigned string, injected bool, trusted int,
   attempted Record)`.
 - The supervisor is unchanged: it only runs what `stage` verified.
