@@ -42,17 +42,21 @@ function UploadDialog({ open, onClose, onUploaded }: { open: boolean; onClose: (
   const [version, setVersion] = useState("");
   const [notes, setNotes] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [sig, setSig] = useState<File | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const sigInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
     setVersion("");
     setNotes("");
     setFile(null);
+    setSig(null);
     setError(null);
     if (fileInput.current) fileInput.current.value = "";
+    if (sigInput.current) sigInput.current.value = "";
   }, [open]);
 
   function pickFile(picked: File | null) {
@@ -64,12 +68,15 @@ function UploadDialog({ open, onClose, onUploaded }: { open: boolean; onClose: (
   }
 
   async function upload() {
-    if (!file) return;
+    if (!file || !sig) return;
     setBusy(true);
     setError(null);
     try {
+      const sigText = await sig.text();
       const params = new URLSearchParams({ version: version.trim(), notes });
-      await api.postBinary(`/agent-versions?${params.toString()}`, file);
+      await api.postBinary(`/agent-versions?${params.toString()}`, file, {
+        "X-Retune-Signature": btoa(sigText),
+      });
       onUploaded();
       onClose();
     } catch (err) {
@@ -83,13 +90,21 @@ function UploadDialog({ open, onClose, onUploaded }: { open: boolean; onClose: (
     <Dialog title="Upload a build" open={open} onClose={onClose}>
       <p className="agent-versions__notice">
         Uploading a build only makes it available to assign. Nothing changes on a device until you assign it to a
-        group.
+        group. Builds must be signed with the release key; the server refuses anything else.
       </p>
       <Field label="Build file">
         <input
           ref={fileInput}
           type="file"
           onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
+        />
+      </Field>
+      <Field label="Signature file" hint="The .sig written by retune-sign beside the build.">
+        <input
+          ref={sigInput}
+          type="file"
+          accept=".sig"
+          onChange={(e) => setSig(e.target.files?.[0] ?? null)}
         />
       </Field>
       <Field label="Version" hint="Filled in from the file name when it carries one; check it before uploading.">
@@ -100,7 +115,7 @@ function UploadDialog({ open, onClose, onUploaded }: { open: boolean; onClose: (
       </Field>
       <ErrorNote error={error} />
       <div className="actions">
-        <Button onClick={() => void upload()} disabled={busy || !file || version.trim() === ""}>
+        <Button onClick={() => void upload()} disabled={busy || !file || !sig || version.trim() === ""}>
           Upload
         </Button>
         <Button variant="quiet" onClick={onClose}>
@@ -296,6 +311,7 @@ export default function AgentVersions() {
               <tr>
                 <th>Version</th>
                 <th className="numeric">Size</th>
+                <th>Key</th>
                 <th>Uploaded by</th>
                 <th>Uploaded</th>
                 <th />
@@ -311,6 +327,9 @@ export default function AgentVersions() {
                     {build.notes ? <div className="agent-versions__notes">{build.notes}</div> : null}
                   </td>
                   <td className="numeric">{formatSize(build.size_bytes)}</td>
+                  <td>
+                    <span className="mono">{build.key_id}</span>
+                  </td>
                   <td>{build.created_by}</td>
                   <td>{relative(build.created_at)}</td>
                   <td className="agent-versions__actions">

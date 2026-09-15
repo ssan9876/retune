@@ -185,6 +185,7 @@ export interface AgentVersion {
   sha256: string;
   size_bytes: number;
   notes: string;
+  key_id: string;
   created_at: string;
   created_by: string;
 }

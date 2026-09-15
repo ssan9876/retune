@@ -61,14 +61,19 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
  * agent build — where base64 in a JSON object would inflate a multi-megabyte
  * binary by a third for no benefit. It follows the same CSRF and credentials
  * handling as `request`, since it bypasses `request` to avoid JSON-encoding
- * the body.
+ * the body. Extra `headers` — such as a signature sidecar — are spread in
+ * ahead of the content type, so a caller can never override it.
  */
-async function postBinary<T>(path: string, body: Blob | ArrayBuffer): Promise<T> {
-  const headers: Record<string, string> = { "Content-Type": "application/octet-stream" };
-  if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
+async function postBinary<T>(
+  path: string,
+  body: Blob | ArrayBuffer,
+  headers: Record<string, string> = {},
+): Promise<T> {
+  const allHeaders: Record<string, string> = { ...headers, "Content-Type": "application/octet-stream" };
+  if (csrfToken) allHeaders["X-CSRF-Token"] = csrfToken;
   const response = await fetch(BASE + path, {
     method: "POST",
-    headers,
+    headers: allHeaders,
     body,
     credentials: "same-origin",
   });
@@ -87,6 +92,7 @@ async function postBinary<T>(path: string, body: Blob | ArrayBuffer): Promise<T>
 export const api = {
   get: <T>(path: string) => request<T>("GET", path),
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
-  postBinary: <T>(path: string, body: Blob | ArrayBuffer) => postBinary<T>(path, body),
+  postBinary: <T>(path: string, body: Blob | ArrayBuffer, headers?: Record<string, string>) =>
+    postBinary<T>(path, body, headers),
   del: <T>(path: string) => request<T>("DELETE", path),
 };
