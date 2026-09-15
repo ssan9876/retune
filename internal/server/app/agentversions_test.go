@@ -23,6 +23,7 @@ type agentVersionResp struct {
 	SizeBytes int64  `json:"size_bytes"`
 	Notes     string `json:"notes"`
 	KeyID     string `json:"key_id"`
+	Signature string `json:"signature"`
 }
 
 // signatureHeader builds the X-Retune-Signature value for body under priv.
@@ -61,6 +62,9 @@ func TestAgentVersionLifecycle(t *testing.T) {
 	if v.KeyID != testReleaseKey.Public().ID() {
 		t.Errorf("key_id = %q, want %q", v.KeyID, testReleaseKey.Public().ID())
 	}
+	if v.Signature == "" {
+		t.Error("signature should not be empty")
+	}
 
 	status, body = admin.do(http.MethodGet, "/agent-versions", nil)
 	if status != http.StatusOK {
@@ -93,6 +97,32 @@ func TestUploadWithoutASignatureIsRefused(t *testing.T) {
 		"application/octet-stream", map[string]string{adminapi.SignatureHeader: "!!not base64"}, bytes.NewReader([]byte("b")))
 	if status != http.StatusBadRequest {
 		t.Fatalf("garbage header: want 400, got %d %s", status, body)
+	}
+
+	// Both refusals above are exactly the kind of probe -- an admin account
+	// posting to /agent-versions with no valid signature -- this milestone
+	// exists to make visible, so each one must leave a trace in the audit
+	// log, not just a 400 to the caller who sent it.
+	status, body = admin.do(http.MethodGet, "/audit", nil)
+	if status != http.StatusOK {
+		t.Fatalf("audit: %d %s", status, body)
+	}
+	var listing struct {
+		Items []struct {
+			Action string `json:"action"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(body, &listing); err != nil {
+		t.Fatal(err)
+	}
+	rejected := 0
+	for _, e := range listing.Items {
+		if e.Action == "agent_version.rejected" {
+			rejected++
+		}
+	}
+	if rejected != 2 {
+		t.Errorf("want 2 agent_version.rejected audit entries, got %d (%s)", rejected, body)
 	}
 }
 

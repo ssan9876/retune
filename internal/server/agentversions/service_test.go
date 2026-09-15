@@ -3,7 +3,9 @@ package agentversions_test
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
 	"strings"
@@ -35,10 +37,28 @@ func service(t *testing.T, st *store.Store) (*agentversions.Service, release.Pri
 // signed builds a valid NewVersion for body under priv.
 func signed(priv release.PrivateKey, version, body, actor string) agentversions.NewVersion {
 	sum := sha256.Sum256([]byte(body))
+	sig := release.Sign(priv, release.Manifest{Version: version, SHA256: hex.EncodeToString(sum[:])})
+	return withSignature(version, actor, sig)
+}
+
+// withSignature builds a NewVersion carrying sig's header form, for tests
+// that need to construct or mutate the release.Signature directly rather
+// than through Sign.
+func withSignature(version, actor string, sig release.Signature) agentversions.NewVersion {
 	return agentversions.NewVersion{
 		Version: version, Actor: actor,
-		Signature: release.Sign(priv, release.Manifest{Version: version, SHA256: hex.EncodeToString(sum[:])}),
+		SignatureHeader: signatureHeader(sig),
 	}
+}
+
+// signatureHeader is the base64-of-JSON form the X-Retune-Signature header
+// carries; Upload decodes it the same way a real request's header does.
+func signatureHeader(sig release.Signature) string {
+	b, err := json.Marshal(sig)
+	if err != nil {
+		panic(err)
+	}
+	return base64.StdEncoding.EncodeToString(b)
 }
 
 func TestUploadRecordsTheHashItComputed(t *testing.T) {
@@ -90,6 +110,25 @@ func TestUploadRefusesADuplicateVersion(t *testing.T) {
 	if !errors.Is(err, agentversions.ErrVersionTaken) {
 		t.Fatalf("want ErrVersionTaken, got %v", err)
 	}
+	assertRejectionAudited(t, st, ctx)
+}
+
+// assertRejectionAudited fails the test unless at least one
+// agent_version.rejected entry exists. It is used by tests whose refusal
+// happens before the signature-table's own audit count, so it does not
+// count entries the way TestUploadRejections does.
+func assertRejectionAudited(t *testing.T, st *store.Store, ctx context.Context) {
+	t.Helper()
+	entries, _, err := st.Q().ListAuditPage(ctx, store.Page{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Action == "agent_version.rejected" {
+			return
+		}
+	}
+	t.Error("a refused upload should write an agent_version.rejected audit entry")
 }
 
 func TestUploadRejectsBadInput(t *testing.T) {
@@ -115,12 +154,14 @@ func TestUploadRejectsBadInput(t *testing.T) {
 // wire ReleaseKeys.
 func TestUploadRefusesWithoutReleaseKeys(t *testing.T) {
 	st := storetest.New(t)
+	ctx := context.Background()
 	svc, priv := service(t, st)
 	svc.ReleaseKeys = nil
-	_, err := svc.Upload(context.Background(), signed(priv, "1.0.0", "b", "ops"), strings.NewReader("b"))
+	_, err := svc.Upload(ctx, signed(priv, "1.0.0", "b", "ops"), strings.NewReader("b"))
 	if !errors.Is(err, agentversions.ErrNoReleaseKeys) {
 		t.Fatalf("want ErrNoReleaseKeys, got %v", err)
 	}
+	assertRejectionAudited(t, st, ctx)
 }
 
 func TestUploadRejections(t *testing.T) {
@@ -134,6 +175,21 @@ func TestUploadRejections(t *testing.T) {
 		body string
 		want string
 	}{
+		"no signature header": {
+			in: agentversions.NewVersion{Version: "1.0.0", Actor: "ops"},
+			body: "b", want: "carried no " + agentversions.SignatureHeader + " header",
+		},
+		"header is not base64": {
+			in: agentversions.NewVersion{Version: "1.0.0", Actor: "ops", SignatureHeader: "!!not base64"},
+			body: "b", want: agentversions.SignatureHeader + " is not base64",
+		},
+		"header is not a sidecar": {
+			in: agentversions.NewVersion{
+				Version: "1.0.0", Actor: "ops",
+				SignatureHeader: base64.StdEncoding.EncodeToString([]byte("not json")),
+			},
+			body: "b", want: agentversions.SignatureHeader + ":",
+		},
 		"unknown key": {
 			in: signed(other, "1.0.0", "b", "ops"), body: "b", want: "not a configured release key",
 		},
@@ -149,9 +205,10 @@ func TestUploadRejections(t *testing.T) {
 		},
 		"forged signature": {
 			in: func() agentversions.NewVersion {
-				n := signed(priv, "1.0.0", "b", "ops")
-				n.Signature.Signature[0] ^= 1
-				return n
+				sum := sha256.Sum256([]byte("b"))
+				sig := release.Sign(priv, release.Manifest{Version: "1.0.0", SHA256: hex.EncodeToString(sum[:])})
+				sig.Signature[0] ^= 1
+				return withSignature("1.0.0", "ops", sig)
 			}(), body: "b", want: "did not verify",
 		},
 	}

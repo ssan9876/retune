@@ -186,6 +186,7 @@ export interface AgentVersion {
   size_bytes: number;
   notes: string;
   key_id: string;
+  signature: string;
   created_at: string;
   created_by: string;
 }

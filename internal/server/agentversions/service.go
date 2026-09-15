@@ -36,6 +36,13 @@ var (
 // not a release.
 const MaxUploadBytes = 128 << 20
 
+// SignatureHeader carries the build's release signature: the base64 of its
+// .sig sidecar. It is defined here, not in adminapi, because the service is
+// what needs the header's name in its own rejection messages, and it must
+// not import the handler package to get it. adminapi.SignatureHeader is the
+// same constant, re-exported for the handler and for tests.
+const SignatureHeader = "X-Retune-Signature"
+
 // Service owns agent builds: their metadata and the bytes it describes.
 type Service struct {
 	Store     *store.Store
@@ -53,12 +60,16 @@ func (s *Service) now() time.Time {
 	return time.Now()
 }
 
-// NewVersion describes a build to upload.
+// NewVersion describes a build to upload. SignatureHeader is the raw header
+// value the caller sent: empty when the header was absent at all. Decoding it
+// into a release.Signature happens inside Upload, not in the handler, because
+// every way that decoding can fail is itself a rejection that must be
+// audited, and the handler has no access to the audit log.
 type NewVersion struct {
-	Version   string
-	Notes     string
-	Actor     string
-	Signature release.Signature
+	Version         string
+	Notes           string
+	Actor           string
+	SignatureHeader string
 }
 
 // Upload stores a build and records what was received. The bytes land first:
@@ -67,18 +78,35 @@ type NewVersion struct {
 func (s *Service) Upload(ctx context.Context, in NewVersion, body io.Reader) (store.AgentVersion, error) {
 	version := strings.TrimSpace(in.Version)
 	if version == "" {
-		return store.AgentVersion{}, fmt.Errorf("%w: a build needs a version", ErrBadRequest)
+		return store.AgentVersion{}, s.reject(ctx, in, ErrBadRequest, "a build needs a version")
 	}
 	if _, err := s.Store.Q().GetAgentVersionByVersion(ctx, version); err == nil {
-		return store.AgentVersion{}, ErrVersionTaken
+		return store.AgentVersion{}, s.reject(ctx, in, ErrVersionTaken, "a build for this version already exists")
 	} else if !errors.Is(err, store.ErrNotFound) {
 		return store.AgentVersion{}, err
 	}
 
 	if len(s.ReleaseKeys) == 0 {
-		return store.AgentVersion{}, ErrNoReleaseKeys
+		return store.AgentVersion{}, s.reject(ctx, in, ErrNoReleaseKeys, "no release keys are configured to verify against")
 	}
-	sig := in.Signature
+
+	// Everything the caller sent about its signature is decoded here, inside
+	// the audited path: a missing header, one that is not base64, or one
+	// whose bytes are not a sidecar is exactly as much a probe worth noticing
+	// as a signature that fails to verify.
+	if in.SignatureHeader == "" {
+		return store.AgentVersion{}, s.reject(ctx, in, ErrBadRequest,
+			"the upload carried no "+SignatureHeader+" header")
+	}
+	raw, err := base64.StdEncoding.DecodeString(in.SignatureHeader)
+	if err != nil {
+		return store.AgentVersion{}, s.reject(ctx, in, ErrBadRequest, SignatureHeader+" is not base64")
+	}
+	sig, err := release.DecodeSidecar(raw)
+	if err != nil {
+		return store.AgentVersion{}, s.reject(ctx, in, ErrBadRequest, SignatureHeader+": "+err.Error())
+	}
+
 	keyKnown := false
 	for _, k := range s.ReleaseKeys {
 		if k.ID() == sig.KeyID {
@@ -87,7 +115,7 @@ func (s *Service) Upload(ctx context.Context, in NewVersion, body io.Reader) (st
 		}
 	}
 	if !keyKnown {
-		return store.AgentVersion{}, s.reject(ctx, in, fmt.Sprintf(
+		return store.AgentVersion{}, s.rejectSig(ctx, in, sig, ErrBadRequest, fmt.Sprintf(
 			"the signature names key %s, which is not a configured release key", sig.KeyID))
 	}
 
@@ -106,17 +134,17 @@ func (s *Service) Upload(ctx context.Context, in NewVersion, body io.Reader) (st
 	// wrong version, then a signature that is simply forged.
 	if !strings.EqualFold(sum, sig.SHA256) {
 		_ = s.Artifacts.Remove(version)
-		return store.AgentVersion{}, s.reject(ctx, in, fmt.Sprintf(
+		return store.AgentVersion{}, s.rejectSig(ctx, in, sig, ErrBadRequest, fmt.Sprintf(
 			"the uploaded bytes hash to %s but the signature is over %s", sum, sig.SHA256))
 	}
 	if version != sig.Version {
 		_ = s.Artifacts.Remove(version)
-		return store.AgentVersion{}, s.reject(ctx, in, fmt.Sprintf(
+		return store.AgentVersion{}, s.rejectSig(ctx, in, sig, ErrBadRequest, fmt.Sprintf(
 			"declared version %q does not match the signed version %q", version, sig.Version))
 	}
 	if err := release.Verify(s.ReleaseKeys, release.Manifest{Version: version, SHA256: sum}, sig); err != nil {
 		_ = s.Artifacts.Remove(version)
-		return store.AgentVersion{}, s.reject(ctx, in, "the signature did not verify")
+		return store.AgentVersion{}, s.rejectSig(ctx, in, sig, ErrBadRequest, "the signature did not verify")
 	}
 
 	v := store.AgentVersion{
@@ -144,20 +172,33 @@ func (s *Service) Upload(ctx context.Context, in NewVersion, body io.Reader) (st
 	return v, nil
 }
 
-// reject records why an upload was refused and returns the error the caller
-// sees. The audit entry is the point: an admin account pushing a build the
-// release key never signed is exactly what this milestone exists to notice,
-// and a 400 alone leaves no trace of it.
-func (s *Service) reject(ctx context.Context, in NewVersion, reason string) error {
+// reject records why an upload was refused and returns sentinel, wrapped with
+// reason, as the error the caller sees. The audit entry is the point: an
+// admin account pushing a build the release key never signed -- or probing
+// the endpoint with no signature at all -- is exactly what this milestone
+// exists to notice, and a 400 alone leaves no trace of it. key_id is empty
+// here: it is only known once a signature has been decoded, and every path
+// that reaches this far never got that far.
+func (s *Service) reject(ctx context.Context, in NewVersion, sentinel error, reason string) error {
+	return s.rejectKey(ctx, in, "", sentinel, reason)
+}
+
+// rejectSig is reject for a failure discovered after the signature was
+// successfully decoded, so the audit entry can name the key it claimed.
+func (s *Service) rejectSig(ctx context.Context, in NewVersion, sig release.Signature, sentinel error, reason string) error {
+	return s.rejectKey(ctx, in, sig.KeyID, sentinel, reason)
+}
+
+func (s *Service) rejectKey(ctx context.Context, in NewVersion, keyID string, sentinel error, reason string) error {
 	if err := s.Store.Q().InsertAudit(ctx, store.AuditEntry{
 		Actor: in.Actor, Action: "agent_version.rejected", TargetKind: "agent_version", TargetID: "",
-		Details: map[string]any{"version": in.Version, "reason": reason, "key_id": in.Signature.KeyID},
+		Details: map[string]any{"version": in.Version, "reason": reason, "key_id": keyID},
 	}); err != nil {
 		// The refusal stands either way; losing the audit row is the lesser
 		// failure, but not a silent one.
-		return fmt.Errorf("%w: %s (and recording the refusal failed: %v)", ErrBadRequest, reason, err)
+		return fmt.Errorf("%w: %s (and recording the refusal failed: %v)", sentinel, reason, err)
 	}
-	return fmt.Errorf("%w: %s", ErrBadRequest, reason)
+	return fmt.Errorf("%w: %s", sentinel, reason)
 }
 
 // uploadError translates what CreateAgentVersion's transaction can fail with
