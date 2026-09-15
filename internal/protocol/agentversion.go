@@ -69,6 +69,10 @@ type AgentVersionResponse struct {
 	Version   string `json:"version"`
 	SHA256    string `json:"sha256"`
 	SizeBytes int64  `json:"size_bytes"`
+	// KeyID and Signature let the agent verify the build against the release
+	// keys it was built to trust, after it has hashed the bytes itself.
+	KeyID     string `json:"key_id"`
+	Signature string `json:"signature"`
 }
 
 // AgentUpdateResult is POSTed to /api/agent/v1/agent-versions/{id}/result.

@@ -491,6 +491,20 @@ func TestAgentSelfUpdateEndToEnd(t *testing.T) {
 		t.Errorf("size = %d, downloaded %d", def.SizeBytes, len(binaryBody))
 	}
 
+	// The definition also carries what the agent needs to verify the build
+	// against the release key it trusts, without a separate round trip.
+	if def.KeyID != priv.Public().ID() {
+		t.Errorf("key_id = %q, want %q", def.KeyID, priv.Public().ID())
+	}
+	rawSig, err := base64.StdEncoding.DecodeString(def.Signature)
+	if err != nil {
+		t.Fatalf("signature is not base64: %v", err)
+	}
+	gotSig := release.Signature{Version: def.Version, SHA256: def.SHA256, KeyID: def.KeyID, Signature: rawSig}
+	if err := release.Verify([]release.PublicKey{priv.Public()}, release.Manifest{Version: def.Version, SHA256: def.SHA256}, gotSig); err != nil {
+		t.Errorf("verify definition signature: %v", err)
+	}
+
 	// A device that was never assigned the build cannot fetch it.
 	if status, _ := send(t, other, http.MethodGet, binaryURL, nil); status != http.StatusNotFound {
 		t.Errorf("an unassigned device must not download a build, got %d", status)
@@ -507,6 +521,21 @@ func TestAgentSelfUpdateEndToEnd(t *testing.T) {
 
 	// What it reports settles the console's rollup.
 	rollup, err := a.Store.Q().ItemStatusRollup(ctx, protocol.ItemKindAgent, versionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rollup[store.ItemSucceeded] != 1 {
+		t.Fatalf("want one succeeded, got %v", rollup)
+	}
+
+	// A later check-in reporting the assigned version is itself proof of
+	// success, with no separate result report required.
+	status, body = send(t, device, http.MethodPost, srv.URL+"/api/agent/v1/checkin",
+		protocol.CheckinRequest{AgentVersion: "1.2.3"})
+	if status != http.StatusOK {
+		t.Fatalf("checkin: %d %s", status, body)
+	}
+	rollup, err = a.Store.Q().ItemStatusRollup(ctx, protocol.ItemKindAgent, versionID)
 	if err != nil {
 		t.Fatal(err)
 	}

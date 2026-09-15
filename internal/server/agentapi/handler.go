@@ -201,6 +201,22 @@ func (h *Handler) checkin(w http.ResponseWriter, r *http.Request) {
 			Kind: it.Kind, ID: it.ID.String(), Version: version, Options: it.Options,
 		})
 
+		// A device that reports the version of an assigned build is running
+		// it, however it got there: by self-update, or by an MSI that already
+		// carried this version. That is the only proof of success there is,
+		// and recording it here is what lets a build's status page show the
+		// devices it reached beside the ones it failed on.
+		if it.Kind == protocol.ItemKindAgent {
+			if v, err := h.AgentVersions.Get(ctx, it.ID); err == nil && v.Version == req.AgentVersion {
+				if err := h.Store.Q().MarkItemSucceededOnce(ctx, store.ItemStatus{
+					DeviceID: a.Device.ID, ItemKind: protocol.ItemKindAgent, ItemID: it.ID,
+					Detail: "running this version", Version: 1, UpdatedAt: h.Now(),
+				}); err != nil {
+					h.Log.Warn("record agent build success", "agent_version_id", it.ID, "error", err)
+				}
+			}
+		}
+
 		// A deployment that needs a signed-in user cannot run on a machine
 		// where nobody is. The check-in says who is signed in, so the server
 		// records that as pending; the agent still receives it, and reports a
@@ -655,6 +671,7 @@ func (h *Handler) agentVersion(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, protocol.AgentVersionResponse{
 		Version: v.Version, SHA256: v.SHA256, SizeBytes: v.SizeBytes,
+		KeyID: v.KeyID, Signature: v.Signature,
 	})
 }
 

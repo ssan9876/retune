@@ -261,3 +261,49 @@ func TestAgentBuildReachesTheAgent(t *testing.T) {
 		t.Fatalf("the build should be offered, got %+v", items)
 	}
 }
+
+// A device that checks in already running the version it was assigned is
+// treated as having succeeded, whether it got there by self-update or by an
+// MSI that already carried that version -- there is no other way to tell.
+func TestADeviceRunningTheAssignedBuildIsRecordedAsSucceeded(t *testing.T) {
+	a, srv := newTestApp(t)
+	admin := signedIn(t, a, srv, store.RoleAdmin)
+	_, agent := enrollDevice(t, a, srv, "DESKTOP-ALREADY-CURRENT")
+
+	_, body := uploadAgentVersion(t, admin, "9.0.0", "bytes stamped 9.0.0")
+	v := decodeJSON[agentVersionResp](t, body)
+	admin.do(http.MethodPost, "/assignments", map[string]any{
+		"item_kind": "agent", "item_id": v.ID,
+		"group_id": store.BuiltinGroupID.String(), "mode": "include",
+	})
+
+	status, body := send(t, agent, http.MethodPost, srv.URL+"/api/agent/v1/checkin",
+		protocol.CheckinRequest{AgentVersion: "9.0.0"})
+	if status != http.StatusOK {
+		t.Fatalf("checkin: %d %s", status, body)
+	}
+
+	status, body = admin.do(http.MethodGet, "/items/agent/"+v.ID+"/status", nil)
+	if status != http.StatusOK {
+		t.Fatalf("status: %d %s", status, body)
+	}
+	resp := decodeJSON[itemStatusResp](t, body)
+	if resp.Rollup[store.ItemSucceeded] != 1 {
+		t.Fatalf("want one succeeded, got %v", resp.Rollup)
+	}
+
+	// A second check-in reporting the same version leaves the rollup as is.
+	status, body = send(t, agent, http.MethodPost, srv.URL+"/api/agent/v1/checkin",
+		protocol.CheckinRequest{AgentVersion: "9.0.0"})
+	if status != http.StatusOK {
+		t.Fatalf("checkin: %d %s", status, body)
+	}
+	status, body = admin.do(http.MethodGet, "/items/agent/"+v.ID+"/status", nil)
+	if status != http.StatusOK {
+		t.Fatalf("status: %d %s", status, body)
+	}
+	resp = decodeJSON[itemStatusResp](t, body)
+	if resp.Rollup[store.ItemSucceeded] != 1 {
+		t.Fatalf("want still one succeeded, got %v", resp.Rollup)
+	}
+}
