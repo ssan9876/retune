@@ -21,18 +21,29 @@ import (
 
 	"retune/internal/config"
 	"retune/internal/protocol"
+	"retune/internal/release"
 	"retune/internal/server/app"
 	"retune/internal/server/enroll"
 	"retune/internal/server/store"
 	"retune/internal/server/store/storetest"
 )
 
+// testReleaseKey is the release key newTestApp configures the app's server
+// with, so agentversions_test.go can sign uploads against it.
+var testReleaseKey release.PrivateKey
+
 func newTestApp(t *testing.T) (*app.App, *httptest.Server) {
 	t.Helper()
+	priv, err := release.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	testReleaseKey = priv
 	cfg := config.Server{
 		DatabaseURL: storetest.DatabaseURL(t), PublicURL: "https://127.0.0.1",
 		TLSMode: "self-signed", DataDir: t.TempDir(),
 		CheckinInterval: 5 * time.Minute, SessionTTL: 12 * time.Hour,
+		AgentReleaseKeys: []release.PublicKey{priv.Public()},
 	}
 	a, err := app.New(context.Background(), cfg, slog.New(slog.DiscardHandler))
 	if err != nil {

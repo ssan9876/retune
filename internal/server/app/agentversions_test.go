@@ -2,11 +2,17 @@ package app_test
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
 
 	"retune/internal/protocol"
+	"retune/internal/release"
+	"retune/internal/server/adminapi"
 	"retune/internal/server/store"
 )
 
@@ -16,16 +22,28 @@ type agentVersionResp struct {
 	SHA256    string `json:"sha256"`
 	SizeBytes int64  `json:"size_bytes"`
 	Notes     string `json:"notes"`
+	KeyID     string `json:"key_id"`
 }
 
-// upload posts a build body. The upload is a raw body rather than JSON,
-// because the payload is a binary and base64 in JSON would inflate it by a
-// third for no benefit.
+// signatureHeader builds the X-Retune-Signature value for body under priv.
+func signatureHeader(t *testing.T, priv release.PrivateKey, version, body string) string {
+	t.Helper()
+	sum := sha256.Sum256([]byte(body))
+	sig := release.Sign(priv, release.Manifest{Version: version, SHA256: hex.EncodeToString(sum[:])})
+	b, err := json.Marshal(sig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return base64.StdEncoding.EncodeToString(b)
+}
+
+// uploadAgentVersion posts a build body signed with the test release key.
 func uploadAgentVersion(t *testing.T, admin *adminClient, version, body string) (int, []byte) {
 	t.Helper()
-	return admin.doRaw(http.MethodPost,
-		"/agent-versions?version="+version+"&notes=test",
-		"application/octet-stream", bytes.NewReader([]byte(body)))
+	return admin.doRawWithHeaders(http.MethodPost,
+		"/agent-versions?version="+version+"&notes=test", "application/octet-stream",
+		map[string]string{adminapi.SignatureHeader: signatureHeader(t, testReleaseKey, version, body)},
+		bytes.NewReader([]byte(body)))
 }
 
 func TestAgentVersionLifecycle(t *testing.T) {
@@ -39,6 +57,9 @@ func TestAgentVersionLifecycle(t *testing.T) {
 	v := decodeJSON[agentVersionResp](t, body)
 	if v.Version != "1.2.3" || v.SHA256 == "" || v.SizeBytes == 0 {
 		t.Fatalf("version = %+v", v)
+	}
+	if v.KeyID != testReleaseKey.Public().ID() {
+		t.Errorf("key_id = %q, want %q", v.KeyID, testReleaseKey.Public().ID())
 	}
 
 	status, body = admin.do(http.MethodGet, "/agent-versions", nil)
@@ -57,6 +78,34 @@ func TestAgentVersionLifecycle(t *testing.T) {
 	status, body = admin.do(http.MethodDelete, "/agent-versions/"+v.ID, nil)
 	if status != http.StatusNoContent {
 		t.Fatalf("delete: %d %s", status, body)
+	}
+}
+
+func TestUploadWithoutASignatureIsRefused(t *testing.T) {
+	a, srv := newTestApp(t)
+	admin := signedIn(t, a, srv, store.RoleAdmin)
+	status, body := admin.doRaw(http.MethodPost, "/agent-versions?version=1.0.0",
+		"application/octet-stream", bytes.NewReader([]byte("b")))
+	if status != http.StatusBadRequest || !strings.Contains(string(body), "X-Retune-Signature") {
+		t.Fatalf("want 400 naming the header, got %d %s", status, body)
+	}
+	status, body = admin.doRawWithHeaders(http.MethodPost, "/agent-versions?version=1.0.0",
+		"application/octet-stream", map[string]string{adminapi.SignatureHeader: "!!not base64"}, bytes.NewReader([]byte("b")))
+	if status != http.StatusBadRequest {
+		t.Fatalf("garbage header: want 400, got %d %s", status, body)
+	}
+}
+
+func TestUploadWithAnUnknownKeyIsRefused(t *testing.T) {
+	a, srv := newTestApp(t)
+	admin := signedIn(t, a, srv, store.RoleAdmin)
+	other, _ := release.GenerateKey()
+	status, body := admin.doRawWithHeaders(http.MethodPost, "/agent-versions?version=1.0.0",
+		"application/octet-stream",
+		map[string]string{adminapi.SignatureHeader: signatureHeader(t, other, "1.0.0", "b")},
+		bytes.NewReader([]byte("b")))
+	if status != http.StatusBadRequest || !strings.Contains(string(body), "not a configured release key") {
+		t.Fatalf("want 400, got %d %s", status, body)
 	}
 }
 

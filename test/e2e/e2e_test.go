@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -26,6 +27,7 @@ import (
 	"retune/internal/config"
 	"retune/internal/pki"
 	"retune/internal/protocol"
+	"retune/internal/release"
 	"retune/internal/server/adminapi"
 	"retune/internal/server/app"
 	"retune/internal/server/apps"
@@ -312,10 +314,15 @@ func TestAppDeploymentEndToEnd(t *testing.T) {
 // device reports settles the console's rollup.
 func TestAgentSelfUpdateEndToEnd(t *testing.T) {
 	ctx := context.Background()
+	priv, err := release.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
 	cfg := config.Server{
 		DatabaseURL: storetest.DatabaseURL(t), PublicURL: "https://127.0.0.1",
 		TLSMode: "self-signed", DataDir: t.TempDir(), CheckinInterval: 2 * time.Minute,
-		SessionTTL: 12 * time.Hour,
+		SessionTTL:       12 * time.Hour,
+		AgentReleaseKeys: []release.PublicKey{priv.Public()},
 	}
 	a, err := app.New(ctx, cfg, slog.New(slog.DiscardHandler))
 	if err != nil {
@@ -361,6 +368,15 @@ func TestAgentSelfUpdateEndToEnd(t *testing.T) {
 	// does not carry the version it was declared as, because a build with no
 	// stamp reports the placeholder for ever and can never succeed anywhere.
 	const buildBytes = "a pretend agent binary 1.2.3, self-update end to end"
+	// The signature is what admits a build: the server refuses anything the
+	// release key did not sign.
+	buildSum := sha256.Sum256([]byte(buildBytes))
+	sig := release.Sign(priv, release.Manifest{Version: "1.2.3", SHA256: hex.EncodeToString(buildSum[:])})
+	sigJSON, err := json.Marshal(sig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sigHeader := base64.StdEncoding.EncodeToString(sigJSON)
 	uploadReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		srv.URL+"/api/admin/v1/agent-versions?version=1.2.3&notes=e2e", strings.NewReader(buildBytes))
 	if err != nil {
@@ -368,6 +384,7 @@ func TestAgentSelfUpdateEndToEnd(t *testing.T) {
 	}
 	uploadReq.Header.Set("Content-Type", "application/octet-stream")
 	uploadReq.Header.Set(adminapi.CSRFHeader, loginResp.CSRFToken)
+	uploadReq.Header.Set(adminapi.SignatureHeader, sigHeader)
 	uploadRes, err := adminHTTP.Do(uploadReq)
 	if err != nil {
 		t.Fatal(err)

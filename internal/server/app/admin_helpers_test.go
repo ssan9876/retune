@@ -96,6 +96,34 @@ func (c *adminClient) doRaw(method, path, contentType string, body io.Reader) (i
 	return res.StatusCode, out
 }
 
+// doRawWithHeaders is doRaw with extra request headers, for uploads that
+// carry a signature beside the body.
+func (c *adminClient) doRawWithHeaders(method, path, contentType string, headers map[string]string, body io.Reader) (int, []byte) {
+	c.t.Helper()
+	req, err := http.NewRequestWithContext(context.Background(), method, c.base+path, body)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", contentType)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	if c.csrf != "" {
+		req.Header.Set(adminapi.CSRFHeader, c.csrf)
+	}
+	res, err := c.http.Do(req)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	defer res.Body.Close()
+	c.setCookies = res.Cookies()
+	out, err := io.ReadAll(res.Body)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	return res.StatusCode, out
+}
+
 // login signs in and remembers the CSRF token.
 func (c *adminClient) login(email, password, code string) (int, []byte) {
 	c.t.Helper()

@@ -102,7 +102,8 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		Store: st, Now: time.Now,
 		// Beside the CA and the secret key: DATA_DIR is already what the
 		// README tells an operator to back up.
-		Artifacts: artifacts.Store{Dir: filepath.Join(cfg.DataDir, "agents")},
+		Artifacts:   artifacts.Store{Dir: filepath.Join(cfg.DataDir, "agents")},
+		ReleaseKeys: cfg.AgentReleaseKeys,
 	}
 	secretKey, err := serverSecret(cfg)
 	if err != nil {
