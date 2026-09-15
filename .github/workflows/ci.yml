@@ -42,8 +42,9 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # The race detector runs here and only here: it needs CGO, which the Windows job does not have.
       - name: Test
-        run: go test ./...
+        run: go test -race ./...
 
       # A throwaway key per run: CI artefacts are for tests, not release, but
       # the signing path itself is exercised every time.
