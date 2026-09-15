@@ -18,6 +18,14 @@ type Decision struct {
 	Action Action
 	// Reason explains a decision not to update, for the agent's log.
 	Reason string
+	// Report says whether a refusal is a build defect worth shouting about:
+	// no injected version, or no trusted release keys. Both would otherwise
+	// refuse silently on every check-in on every affected machine, which is
+	// how a bad build ships unnoticed. Every other refusal -- already
+	// current, an in-flight or already-rolled-back attempt -- is routine and
+	// must stay quiet; syncOne reports a refusal only when this is true,
+	// rather than re-deriving which reasons count from the Reason string.
+	Report bool
 }
 
 // Decide reports whether this agent should replace itself. It is deliberately
@@ -30,7 +38,7 @@ func Decide(running, assigned string, injected bool, trusted int, attempted Reco
 	// that on every check-in on every machine. Refusing is the only safe
 	// answer, and saying so is how somebody finds out why.
 	if !injected {
-		return Decision{Reason: "this build has no injected version, so it will not self-update"}
+		return Decision{Reason: "this build has no injected version, so it will not self-update", Report: true}
 	}
 	if assigned == "" {
 		return Decision{Reason: "the assigned build has no version"}
@@ -49,7 +57,7 @@ func Decide(running, assigned string, injected bool, trusted int, attempted Reco
 	// flapping status nobody could act on anyway, since there is nothing to
 	// update to.
 	if trusted == 0 {
-		return Decision{Reason: "this build has no trusted release keys, so it will not self-update"}
+		return Decision{Reason: "this build has no trusted release keys, so it will not self-update", Report: true}
 	}
 	if attempted.ToVersion == assigned {
 		switch attempted.Status {

@@ -246,11 +246,11 @@ func (s *Syncer) syncOne(ctx context.Context, item protocol.Item) error {
 
 	decision := Decide(s.Running, def.Version, s.Injected, len(s.Trusted), rec)
 	if decision.Action == ActionNone {
-		if !s.Injected || len(s.Trusted) == 0 {
-			// The only refusal reasons worth telling anyone about: a
-			// build with no injected version, or no trusted release keys,
-			// updates on every check-in on every machine unless it is told,
-			// loudly, why it will not.
+		if decision.Report {
+			// Decide marks only the build-defect refusals -- no injected
+			// version, or no trusted release keys -- as worth reporting:
+			// left silent, either would refuse on every check-in on every
+			// affected machine with nobody told why.
 			if err := s.report(ctx, item.ID, def.Version, protocol.ResultFailed, "", decision.Reason); err != nil {
 				return fmt.Errorf("report refusal: %w", err)
 			}

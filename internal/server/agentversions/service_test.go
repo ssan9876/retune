@@ -148,10 +148,9 @@ func TestUploadRejectsBadInput(t *testing.T) {
 	}
 }
 
-// A missing or unrecognized signature is refused before the release keys are
-// even consulted about content: with none configured every upload is
-// refused, so nothing is silently accepted just because a caller forgot to
-// wire ReleaseKeys.
+// With no release keys configured, an upload is refused before its signature
+// header is even looked at: nothing is silently accepted just because a
+// caller forgot to wire ReleaseKeys, however good the signature it carries.
 func TestUploadRefusesWithoutReleaseKeys(t *testing.T) {
 	st := storetest.New(t)
 	ctx := context.Background()

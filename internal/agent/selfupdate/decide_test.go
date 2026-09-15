@@ -15,6 +15,10 @@ func TestDecide(t *testing.T) {
 		attempted         selfupdate.Record
 		want              selfupdate.Action
 		reason            string
+		// report is what a refusal should set Decision.Report to: true only
+		// for the two build-defect reasons, which is what tells syncOne
+		// whether to report the refusal to the server or stay quiet.
+		report bool
 	}{
 		"already on the assigned version": {
 			running: "1.2.3", assigned: "1.2.3", injected: true, trusted: 1,
@@ -30,11 +34,11 @@ func TestDecide(t *testing.T) {
 		},
 		"this build has no injected version": {
 			running: "0.1.0-dev", assigned: "1.3.0", injected: false, trusted: 1,
-			want: selfupdate.ActionNone, reason: "no injected version",
+			want: selfupdate.ActionNone, reason: "no injected version", report: true,
 		},
 		"this build trusts no release key": {
 			running: "1.2.3", assigned: "1.3.0", injected: true, trusted: 0,
-			want: selfupdate.ActionNone, reason: "no trusted release keys",
+			want: selfupdate.ActionNone, reason: "no trusted release keys", report: true,
 		},
 		"already on the assigned version, and trusts no release key: staying quiet wins": {
 			running: "1.2.3", assigned: "1.2.3", injected: true, trusted: 0,
@@ -65,6 +69,9 @@ func TestDecide(t *testing.T) {
 			}
 			if got.Action == selfupdate.ActionNone && got.Reason == "" {
 				t.Error("a decision not to update should say why, for the agent's log")
+			}
+			if got.Report != tc.report {
+				t.Errorf("report = %v, want %v (reason %q)", got.Report, tc.report, got.Reason)
 			}
 		})
 	}

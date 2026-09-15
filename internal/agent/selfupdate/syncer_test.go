@@ -718,3 +718,28 @@ func TestSyncRefusesWhenTheBuildTrustsNoKeys(t *testing.T) {
 		t.Errorf("the detail should say why, got %q", c.reports[0].Detail)
 	}
 }
+
+// A device already on its assigned version must stay quiet even with no
+// trust list configured: there is nothing to download or verify, so the
+// missing trust list is not what is stopping it, and reporting "failed"
+// every check-in here would flap against the server's own inference that
+// this device has succeeded.
+func TestSyncStaysQuietWhenAlreadyOnTheAssignedVersionWithNoTrustList(t *testing.T) {
+	dir := t.TempDir()
+	c := &fakeClient{version: "2.0.0", payload: []byte("bytes")}
+	s := &selfupdate.Syncer{
+		Dir: dir, Client: c, Control: &fakeControl{}, Running: "2.0.0", Injected: true, Trusted: nil,
+		Log: slog.New(slog.DiscardHandler), Now: time.Now,
+		Spawn: func(string) error { t.Fatal("nothing should be handed off"); return nil },
+	}
+
+	if err := s.Sync(context.Background(), []protocol.Item{agentItem("v1", nil)}); err != nil {
+		t.Fatal(err)
+	}
+	if c.downloads != 0 {
+		t.Errorf("it must not download, got %d downloads", c.downloads)
+	}
+	if len(c.reports) != 0 {
+		t.Errorf("staying on the assigned version must not be reported, got %+v", c.reports)
+	}
+}
