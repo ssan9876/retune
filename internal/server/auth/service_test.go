@@ -46,7 +46,7 @@ func TestAuthenticate(t *testing.T) {
 	if err != nil || got.ID != admin.ID {
 		t.Fatalf("Authenticate = %+v, err = %v", got, err)
 	}
-	if cur, _ := svc.Store.Q().GetAdmin(ctx, admin.ID); cur.LastLoginAt == nil {
+	if cur, _ := svc.Store.Q().GetAdmin(ctx, store.DefaultTenantID, admin.ID); cur.LastLoginAt == nil {
 		t.Fatal("a successful login must be recorded")
 	}
 

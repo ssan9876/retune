@@ -30,7 +30,7 @@ func TestListDevicesPage(t *testing.T) {
 	mk("PC-ALPHA", "SN-100", store.DeviceActive)
 	mk("PC-BETA", "SN-200", store.DeviceActive)
 	mk("PC-GAMMA", "SN-300", store.DeviceRetired)
-	if err := q.UpdateDeviceHardware(ctx, mk("PC-DELTA", "SN-400", store.DeviceActive).ID,
+	if err := q.UpdateDeviceHardware(ctx, store.DefaultTenantID, mk("PC-DELTA", "SN-400", store.DeviceActive).ID,
 		store.HardwareInfo{Model: "Latitude 7440"}); err != nil {
 		t.Fatal(err)
 	}

@@ -81,8 +81,9 @@ func (q *Queries) CreateScript(ctx context.Context, s Script) error {
 	return err
 }
 
-func (q *Queries) GetScript(ctx context.Context, id uuid.UUID) (Script, error) {
-	return scanScript(q.db.QueryRow(ctx, `SELECT `+scriptCols+` FROM scripts WHERE id = $1`, id))
+func (q *Queries) GetScript(ctx context.Context, tenantID, id uuid.UUID) (Script, error) {
+	return scanScript(q.db.QueryRow(ctx,
+		`SELECT `+scriptCols+` FROM scripts WHERE tenant_id = $1 AND id = $2`, tenantID, id))
 }
 
 // GetScriptByName finds a script by its case-insensitive name.
@@ -118,16 +119,16 @@ func (q *Queries) ListScripts(ctx context.Context, page Page) ([]Script, int, er
 }
 
 // UpdateScript stores the name, description and current version.
-func (q *Queries) UpdateScript(ctx context.Context, s Script) error {
+func (q *Queries) UpdateScript(ctx context.Context, tenantID uuid.UUID, s Script) error {
 	_, err := q.db.Exec(ctx, `
-		UPDATE scripts SET name = $2, description = $3, current_version = $4, updated_at = $5
-		WHERE id = $1`, s.ID, s.Name, s.Description, s.CurrentVersion, s.UpdatedAt)
+		UPDATE scripts SET name = $3, description = $4, current_version = $5, updated_at = $6
+		WHERE tenant_id = $1 AND id = $2`, tenantID, s.ID, s.Name, s.Description, s.CurrentVersion, s.UpdatedAt)
 	return err
 }
 
 // DeleteScript removes a script and its versions. Its runs are kept.
-func (q *Queries) DeleteScript(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, `DELETE FROM scripts WHERE id = $1`, id)
+func (q *Queries) DeleteScript(ctx context.Context, tenantID, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, `DELETE FROM scripts WHERE tenant_id = $1 AND id = $2`, tenantID, id)
 	return err
 }
 

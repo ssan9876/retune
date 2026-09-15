@@ -34,7 +34,7 @@ func (s *Service) Unenroll(ctx context.Context, id uuid.UUID, actor string) erro
 
 func (s *Service) transition(ctx context.Context, id uuid.UUID, actor, to, action string, from ...string) error {
 	return s.Store.InTx(ctx, func(q *store.Queries) error {
-		d, err := q.GetDevice(ctx, id)
+		d, err := q.GetDevice(ctx, store.DefaultTenantID, id)
 		if errors.Is(err, store.ErrNotFound) {
 			return fmt.Errorf("%w: %s", ErrNotFound, id)
 		}
@@ -44,7 +44,7 @@ func (s *Service) transition(ctx context.Context, id uuid.UUID, actor, to, actio
 		if !slices.Contains(from, d.Status) {
 			return fmt.Errorf("%w: %s cannot go from %s to %s", ErrInvalidTransition, d.Hostname, d.Status, to)
 		}
-		if err := q.SetDeviceStatus(ctx, id, to); err != nil {
+		if err := q.SetDeviceStatus(ctx, store.DefaultTenantID, id, to); err != nil {
 			return err
 		}
 		return q.InsertAudit(ctx, store.AuditEntry{

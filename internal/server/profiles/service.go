@@ -124,7 +124,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewProfile) (stor
 	now := s.now()
 	var out store.Profile
 	err = s.Store.InTx(ctx, func(q *store.Queries) error {
-		p, err := q.GetProfile(ctx, id)
+		p, err := q.GetProfile(ctx, store.DefaultTenantID, id)
 		if errors.Is(err, store.ErrNotFound) {
 			return ErrNotFound
 		}
@@ -160,7 +160,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewProfile) (stor
 			}
 		}
 		p.Name, p.Description, p.UpdatedAt = name, in.Description, now
-		if err := q.UpdateProfile(ctx, p); err != nil {
+		if err := q.UpdateProfile(ctx, store.DefaultTenantID, p); err != nil {
 			return err
 		}
 		out = p
@@ -178,7 +178,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewProfile) (stor
 // Delete removes a profile, its versions and its assignments.
 func (s *Service) Delete(ctx context.Context, id uuid.UUID, actor string) error {
 	return s.Store.InTx(ctx, func(q *store.Queries) error {
-		p, err := q.GetProfile(ctx, id)
+		p, err := q.GetProfile(ctx, store.DefaultTenantID, id)
 		if errors.Is(err, store.ErrNotFound) {
 			return ErrNotFound
 		}
@@ -188,7 +188,7 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID, actor string) error 
 		if err := q.DeleteAssignmentsForItem(ctx, protocol.ItemKindProfile, id); err != nil {
 			return err
 		}
-		if err := q.DeleteProfile(ctx, id); err != nil {
+		if err := q.DeleteProfile(ctx, store.DefaultTenantID, id); err != nil {
 			return err
 		}
 		return q.InsertAudit(ctx, store.AuditEntry{
@@ -199,7 +199,7 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID, actor string) error 
 }
 
 func (s *Service) Get(ctx context.Context, id uuid.UUID) (store.Profile, error) {
-	p, err := s.Store.Q().GetProfile(ctx, id)
+	p, err := s.Store.Q().GetProfile(ctx, store.DefaultTenantID, id)
 	if errors.Is(err, store.ErrNotFound) {
 		return store.Profile{}, ErrNotFound
 	}
@@ -341,7 +341,7 @@ func (s *Service) nameProfiles(ctx context.Context, q *store.Queries, detail str
 		if err != nil {
 			return raw
 		}
-		p, err := q.GetProfile(ctx, id)
+		p, err := q.GetProfile(ctx, store.DefaultTenantID, id)
 		if err != nil {
 			// The profile has gone; the id is still better than nothing.
 			return raw

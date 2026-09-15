@@ -85,7 +85,7 @@ func deviceList(ctx context.Context, st *store.Store, out io.Writer) error {
 
 func deviceShow(ctx context.Context, st *store.Store, id uuid.UUID, out io.Writer) error {
 	q := st.Q()
-	d, err := q.GetDevice(ctx, id)
+	d, err := q.GetDevice(ctx, store.DefaultTenantID, id)
 	if errors.Is(err, store.ErrNotFound) {
 		return fmt.Errorf("no device %s", id)
 	}

@@ -79,8 +79,9 @@ func (q *Queries) CreateApp(ctx context.Context, a App) error {
 	return err
 }
 
-func (q *Queries) GetApp(ctx context.Context, id uuid.UUID) (App, error) {
-	return scanApp(q.db.QueryRow(ctx, `SELECT `+appCols+` FROM apps WHERE id = $1`, id))
+func (q *Queries) GetApp(ctx context.Context, tenantID, id uuid.UUID) (App, error) {
+	return scanApp(q.db.QueryRow(ctx,
+		`SELECT `+appCols+` FROM apps WHERE tenant_id = $1 AND id = $2`, tenantID, id))
 }
 
 // GetAppByName finds an app by its case-insensitive name.
@@ -116,16 +117,16 @@ func (q *Queries) ListApps(ctx context.Context, page Page) ([]App, int, error) {
 }
 
 // UpdateApp stores the name, description and current version.
-func (q *Queries) UpdateApp(ctx context.Context, a App) error {
+func (q *Queries) UpdateApp(ctx context.Context, tenantID uuid.UUID, a App) error {
 	_, err := q.db.Exec(ctx, `
-		UPDATE apps SET name = $2, description = $3, current_version = $4, updated_at = $5
-		WHERE id = $1`, a.ID, a.Name, a.Description, a.CurrentVersion, a.UpdatedAt)
+		UPDATE apps SET name = $3, description = $4, current_version = $5, updated_at = $6
+		WHERE tenant_id = $1 AND id = $2`, tenantID, a.ID, a.Name, a.Description, a.CurrentVersion, a.UpdatedAt)
 	return err
 }
 
 // DeleteApp removes an app and its versions. Its installs are kept.
-func (q *Queries) DeleteApp(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, `DELETE FROM apps WHERE id = $1`, id)
+func (q *Queries) DeleteApp(ctx context.Context, tenantID, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, `DELETE FROM apps WHERE tenant_id = $1 AND id = $2`, tenantID, id)
 	return err
 }
 

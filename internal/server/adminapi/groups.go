@@ -284,7 +284,7 @@ func (h *Handler) listAssignments(w http.ResponseWriter, r *http.Request) {
 	items := make([]assignmentJSON, 0, len(rows))
 	for _, a := range rows {
 		name := ""
-		if g, err := h.Store.Q().GetGroup(ctx, a.GroupID); err == nil {
+		if g, err := h.Store.Q().GetGroup(ctx, store.DefaultTenantID, a.GroupID); err == nil {
 			name = g.Name
 		}
 		items = append(items, assignmentJSON{
@@ -350,7 +350,7 @@ func (h *Handler) createAssignment(w http.ResponseWriter, r *http.Request) {
 	var resultID uuid.UUID
 	ctx := r.Context()
 	err = h.Store.InTx(ctx, func(q *store.Queries) error {
-		g, err := q.GetGroup(ctx, groupID)
+		g, err := q.GetGroup(ctx, store.DefaultTenantID, groupID)
 		if err != nil {
 			return err
 		}
@@ -395,11 +395,11 @@ func (h *Handler) deleteAssignment(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	err := h.Store.InTx(ctx, func(q *store.Queries) error {
-		a, err := q.GetAssignment(ctx, id)
+		a, err := q.GetAssignment(ctx, store.DefaultTenantID, id)
 		if err != nil {
 			return err
 		}
-		if err := q.DeleteAssignment(ctx, id); err != nil {
+		if err := q.DeleteAssignment(ctx, store.DefaultTenantID, id); err != nil {
 			return err
 		}
 		return q.InsertAudit(ctx, store.AuditEntry{

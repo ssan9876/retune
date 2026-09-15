@@ -104,7 +104,7 @@ func (s *Service) Ingest(ctx context.Context, deviceID uuid.UUID, inv protocol.I
 				return err
 			}
 		}
-		return q.UpdateDeviceHardware(ctx, deviceID, store.HardwareInfo{
+		return q.UpdateDeviceHardware(ctx, store.DefaultTenantID, deviceID, store.HardwareInfo{
 			Hostname:     inv.Hostname,
 			Serial:       inv.Hardware.Serial,
 			SMBIOSUUID:   inv.Hardware.SMBIOSUUID,

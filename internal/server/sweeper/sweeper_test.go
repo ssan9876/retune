@@ -64,7 +64,7 @@ func TestExpireCommandsJob(t *testing.T) {
 	}
 
 	// The point of the sweeper: this happened with no device check-in.
-	got, err := st.Q().GetCommand(ctx, cmdID)
+	got, err := st.Q().GetCommand(ctx, store.DefaultTenantID, cmdID)
 	if err != nil {
 		t.Fatal(err)
 	}

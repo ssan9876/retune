@@ -75,6 +75,30 @@ func TestScriptNamesAreUnique(t *testing.T) {
 	}
 }
 
+func TestScriptQueriesAreScopedByTenant(t *testing.T) {
+	st := storetest.New(t)
+	ctx := context.Background()
+	s := newScript(t, st, "Scoped Script")
+	other := uuid.Must(uuid.NewV7())
+
+	if _, err := st.Q().GetScript(ctx, other, s.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("another tenant must not see the row: %v", err)
+	}
+	changed := s
+	changed.Name = "Hacked"
+	if err := st.Q().UpdateScript(ctx, other, changed); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Q().DeleteScript(ctx, other, s.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := st.Q().GetScript(ctx, store.DefaultTenantID, s.ID)
+	if err != nil || got.Name != "Scoped Script" {
+		t.Errorf("another tenant must not change or delete the row: %+v %v", got, err)
+	}
+}
+
 func TestScriptRunsOutliveTheScript(t *testing.T) {
 	st := storetest.New(t)
 	ctx := context.Background()
@@ -91,7 +115,7 @@ func TestScriptRunsOutliveTheScript(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := st.Q().DeleteScript(ctx, s.ID); err != nil {
+	if err := st.Q().DeleteScript(ctx, store.DefaultTenantID, s.ID); err != nil {
 		t.Fatal(err)
 	}
 	runs, total, err := st.Q().ListScriptRuns(ctx, s.ID, nil, store.Page{})

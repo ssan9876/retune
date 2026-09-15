@@ -62,7 +62,7 @@ func TestDeviceEndpoints(t *testing.T) {
 	if status, body = c.do(http.MethodPost, "/devices/"+id.String()+"/retire", nil); status != http.StatusNoContent {
 		t.Fatalf("retire: %d %s", status, body)
 	}
-	if d, _ := a.Store.Q().GetDevice(ctx, id); d.Status != store.DeviceRetired {
+	if d, _ := a.Store.Q().GetDevice(ctx, store.DefaultTenantID, id); d.Status != store.DeviceRetired {
 		t.Fatalf("status after retire = %s", d.Status)
 	}
 	if status, body = c.do(http.MethodPost, "/devices/"+id.String()+"/retire", nil); status != http.StatusConflict {
@@ -71,7 +71,7 @@ func TestDeviceEndpoints(t *testing.T) {
 	if status, body = c.do(http.MethodPost, "/devices/"+id.String()+"/unenroll", nil); status != http.StatusNoContent {
 		t.Fatalf("unenroll: %d %s", status, body)
 	}
-	if d, _ := a.Store.Q().GetDevice(ctx, id); d.Status != store.DeviceUnenrolled {
+	if d, _ := a.Store.Q().GetDevice(ctx, store.DefaultTenantID, id); d.Status != store.DeviceUnenrolled {
 		t.Fatalf("status after unenroll = %s", d.Status)
 	}
 }
@@ -211,7 +211,7 @@ func TestTokenAuditAndAdminEndpoints(t *testing.T) {
 	if status, body = c.do(http.MethodPost, "/admins/"+newAdmin.ID+"/disabled", map[string]any{"disabled": true}); status != http.StatusNoContent {
 		t.Fatalf("disable admin: %d %s", status, body)
 	}
-	if cur, _ := a.Store.Q().GetAdmin(ctx, uuid.MustParse(newAdmin.ID)); cur.DisabledAt == nil {
+	if cur, _ := a.Store.Q().GetAdmin(ctx, store.DefaultTenantID, uuid.MustParse(newAdmin.ID)); cur.DisabledAt == nil {
 		t.Fatal("admin must be disabled")
 	}
 	// The signed-in admin is the only enabled admin, so disabling them fails.

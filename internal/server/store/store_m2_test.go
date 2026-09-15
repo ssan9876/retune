@@ -26,6 +26,44 @@ func newDevice(t *testing.T, q *store.Queries, hostname string) store.Device {
 	return d
 }
 
+func TestDeviceQueriesAreScopedByTenant(t *testing.T) {
+	st := storetest.New(t)
+	ctx := context.Background()
+	q := st.Q()
+	dev := newDevice(t, q, "scoped")
+	replacement := newDevice(t, q, "scoped-replacement")
+	other := uuid.Must(uuid.NewV7())
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	if _, err := q.GetDevice(ctx, other, dev.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("another tenant must not see the row: %v", err)
+	}
+	if err := q.SetDeviceStatus(ctx, other, dev.ID, "retired"); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.MarkDeviceReplaced(ctx, other, dev.ID, replacement.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.RecordCheckin(ctx, other, dev.ID, "9.9.9", now); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.UpdateDeviceHardware(ctx, other, dev.ID, store.HardwareInfo{Hostname: "hacked"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.UpdateDeviceCert(ctx, other, dev.ID, "c1", "hacked", now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.ClearPrevCertSerial(ctx, other, dev.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := q.GetDevice(ctx, store.DefaultTenantID, dev.ID)
+	if err != nil || got.Status == "retired" || got.ReplacedBy != nil || got.AgentVersion == "9.9.9" ||
+		got.Hostname == "hacked" || got.CertSerial == "hacked" {
+		t.Errorf("another tenant must not change the row: %+v %v", got, err)
+	}
+}
+
 func TestInventoryAndDeviceUpdates(t *testing.T) {
 	ctx := context.Background()
 	s := storetest.New(t)
@@ -88,13 +126,13 @@ func TestInventoryAndDeviceUpdates(t *testing.T) {
 		t.Fatalf("software after empty replace = %+v", list)
 	}
 
-	if err := q.UpdateDeviceHardware(ctx, d.ID, store.HardwareInfo{
+	if err := q.UpdateDeviceHardware(ctx, store.DefaultTenantID, d.ID, store.HardwareInfo{
 		Hostname: "PC-RENAMED", OSVersion: "Windows 11 Pro 10.0.26200", OSBuild: "26200",
 		Manufacturer: "Dell Inc.", Model: "Latitude 7440",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	cur, err := q.GetDevice(ctx, d.ID)
+	cur, err := q.GetDevice(ctx, store.DefaultTenantID, d.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,20 +144,20 @@ func TestInventoryAndDeviceUpdates(t *testing.T) {
 	}
 
 	expires := now.Add(90 * 24 * time.Hour)
-	if err := q.UpdateDeviceCert(ctx, d.ID, "c1", "c2", expires); err != nil {
+	if err := q.UpdateDeviceCert(ctx, store.DefaultTenantID, d.ID, "c1", "c2", expires); err != nil {
 		t.Fatal(err)
 	}
-	if cur, _ = q.GetDevice(ctx, d.ID); cur.CertSerial != "c2" || cur.PrevCertSerial != "c1" || !cur.CertExpiresAt.Equal(expires) {
+	if cur, _ = q.GetDevice(ctx, store.DefaultTenantID, d.ID); cur.CertSerial != "c2" || cur.PrevCertSerial != "c1" || !cur.CertExpiresAt.Equal(expires) {
 		t.Fatalf("after renew = %+v", cur)
 	}
-	if err := q.ClearPrevCertSerial(ctx, d.ID); err != nil {
+	if err := q.ClearPrevCertSerial(ctx, store.DefaultTenantID, d.ID); err != nil {
 		t.Fatal(err)
 	}
-	if cur, _ = q.GetDevice(ctx, d.ID); cur.PrevCertSerial != "" {
+	if cur, _ = q.GetDevice(ctx, store.DefaultTenantID, d.ID); cur.PrevCertSerial != "" {
 		t.Fatalf("prev serial = %q", cur.PrevCertSerial)
 	}
 
-	if err := q.SetDeviceStatus(ctx, d.ID, store.DeviceUnenrolled); err != nil {
+	if err := q.SetDeviceStatus(ctx, store.DefaultTenantID, d.ID, store.DeviceUnenrolled); err != nil {
 		t.Fatalf("unenrolled must be an allowed status: %v", err)
 	}
 	newDevice(t, q, "PC-2")

@@ -70,14 +70,14 @@ func (s *Service) CreateToken(ctx context.Context, o TokenOptions) (string, stor
 func (s *Service) RevokeToken(ctx context.Context, id uuid.UUID, actor string) error {
 	now := s.Now()
 	return s.Store.InTx(ctx, func(q *store.Queries) error {
-		tok, err := q.GetEnrollmentToken(ctx, id)
+		tok, err := q.GetEnrollmentToken(ctx, store.DefaultTenantID, id)
 		if errors.Is(err, store.ErrNotFound) {
 			return fmt.Errorf("%w: %s", ErrTokenNotFound, id)
 		}
 		if err != nil {
 			return err
 		}
-		if err := q.RevokeEnrollmentToken(ctx, id, now); err != nil {
+		if err := q.RevokeEnrollmentToken(ctx, store.DefaultTenantID, id, now); err != nil {
 			return err
 		}
 		return q.InsertAudit(ctx, store.AuditEntry{
@@ -138,12 +138,12 @@ func (s *Service) Enroll(ctx context.Context, req protocol.EnrollRequest) (proto
 		}
 		details := map[string]any{"token_id": tok.ID.String(), "hostname": req.Device.Hostname}
 		if replacing {
-			if err := q.MarkDeviceReplaced(ctx, prev.ID, deviceID); err != nil {
+			if err := q.MarkDeviceReplaced(ctx, store.DefaultTenantID, prev.ID, deviceID); err != nil {
 				return err
 			}
 			details["replaced_device_id"] = prev.ID.String()
 		}
-		if err := q.IncrementTokenUse(ctx, tok.ID); err != nil {
+		if err := q.IncrementTokenUse(ctx, store.DefaultTenantID, tok.ID); err != nil {
 			return err
 		}
 		// Every device is in the built-in group from the moment it enrols, so

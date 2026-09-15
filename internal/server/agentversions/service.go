@@ -174,7 +174,7 @@ func uploadError(err error) error {
 
 // Get looks up a build by id.
 func (s *Service) Get(ctx context.Context, id uuid.UUID) (store.AgentVersion, error) {
-	v, err := s.Store.Q().GetAgentVersion(ctx, id)
+	v, err := s.Store.Q().GetAgentVersion(ctx, store.DefaultTenantID, id)
 	if errors.Is(err, store.ErrNotFound) {
 		return store.AgentVersion{}, ErrNotFound
 	}
@@ -193,7 +193,7 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID, actor string) error 
 	var v store.AgentVersion
 	err := s.Store.InTx(ctx, func(q *store.Queries) error {
 		var err error
-		v, err = q.GetAgentVersion(ctx, id)
+		v, err = q.GetAgentVersion(ctx, store.DefaultTenantID, id)
 		if errors.Is(err, store.ErrNotFound) {
 			return ErrNotFound
 		}
@@ -203,7 +203,7 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID, actor string) error 
 		if err := q.DeleteAssignmentsForItem(ctx, protocol.ItemKindAgent, id); err != nil {
 			return err
 		}
-		if err := q.DeleteAgentVersion(ctx, id); err != nil {
+		if err := q.DeleteAgentVersion(ctx, store.DefaultTenantID, id); err != nil {
 			return err
 		}
 		return q.InsertAudit(ctx, store.AuditEntry{

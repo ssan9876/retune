@@ -74,8 +74,9 @@ func (q *Queries) CreateGroup(ctx context.Context, g Group) error {
 	return err
 }
 
-func (q *Queries) GetGroup(ctx context.Context, id uuid.UUID) (Group, error) {
-	return scanGroup(q.db.QueryRow(ctx, `SELECT `+groupCols+` FROM device_groups WHERE id = $1`, id))
+func (q *Queries) GetGroup(ctx context.Context, tenantID, id uuid.UUID) (Group, error) {
+	return scanGroup(q.db.QueryRow(ctx,
+		`SELECT `+groupCols+` FROM device_groups WHERE tenant_id = $1 AND id = $2`, tenantID, id))
 }
 
 // GetGroupByName finds a group by its case-insensitive name.
@@ -115,16 +116,16 @@ func (q *Queries) ListGroups(ctx context.Context) ([]GroupWithCount, error) {
 	return out, rows.Err()
 }
 
-func (q *Queries) UpdateGroup(ctx context.Context, g Group) error {
+func (q *Queries) UpdateGroup(ctx context.Context, tenantID uuid.UUID, g Group) error {
 	_, err := q.db.Exec(ctx, `
-		UPDATE device_groups SET name = $2, description = $3, rule = $4, updated_at = $5
-		WHERE id = $1`, g.ID, g.Name, g.Description, g.Rule, g.UpdatedAt)
+		UPDATE device_groups SET name = $3, description = $4, rule = $5, updated_at = $6
+		WHERE tenant_id = $1 AND id = $2`, tenantID, g.ID, g.Name, g.Description, g.Rule, g.UpdatedAt)
 	return err
 }
 
 // DeleteGroup removes a group; its membership and assignments cascade.
-func (q *Queries) DeleteGroup(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, `DELETE FROM device_groups WHERE id = $1`, id)
+func (q *Queries) DeleteGroup(ctx context.Context, tenantID, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, `DELETE FROM device_groups WHERE tenant_id = $1 AND id = $2`, tenantID, id)
 	return err
 }
 
@@ -160,7 +161,7 @@ func (q *Queries) SetGroupMembers(ctx context.Context, groupID uuid.UUID, device
 		return err
 	}
 	if len(deviceIDs) == 0 {
-		return q.markGroupEvaluated(ctx, groupID, now)
+		return q.markGroupEvaluated(ctx, DefaultTenantID, groupID, now)
 	}
 	if _, err := q.db.Exec(ctx, `
 		INSERT INTO group_members (group_id, device_id, tenant_id, added_at)
@@ -169,11 +170,12 @@ func (q *Queries) SetGroupMembers(ctx context.Context, groupID uuid.UUID, device
 		groupID, deviceIDs, DefaultTenantID, now); err != nil {
 		return err
 	}
-	return q.markGroupEvaluated(ctx, groupID, now)
+	return q.markGroupEvaluated(ctx, DefaultTenantID, groupID, now)
 }
 
-func (q *Queries) markGroupEvaluated(ctx context.Context, groupID uuid.UUID, now time.Time) error {
-	_, err := q.db.Exec(ctx, `UPDATE device_groups SET evaluated_at = $2 WHERE id = $1`, groupID, now)
+func (q *Queries) markGroupEvaluated(ctx context.Context, tenantID, groupID uuid.UUID, now time.Time) error {
+	_, err := q.db.Exec(ctx,
+		`UPDATE device_groups SET evaluated_at = $3 WHERE tenant_id = $1 AND id = $2`, tenantID, groupID, now)
 	return err
 }
 
@@ -342,16 +344,16 @@ func (q *Queries) DeleteAssignmentsForItem(ctx context.Context, kind string, ite
 	return err
 }
 
-func (q *Queries) DeleteAssignment(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, `DELETE FROM assignments WHERE id = $1`, id)
+func (q *Queries) DeleteAssignment(ctx context.Context, tenantID, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, `DELETE FROM assignments WHERE tenant_id = $1 AND id = $2`, tenantID, id)
 	return err
 }
 
-func (q *Queries) GetAssignment(ctx context.Context, id uuid.UUID) (Assignment, error) {
+func (q *Queries) GetAssignment(ctx context.Context, tenantID, id uuid.UUID) (Assignment, error) {
 	var a Assignment
 	err := q.db.QueryRow(ctx, `
 		SELECT id, item_kind, item_id, group_id, mode, created_at, created_by, options
-		FROM assignments WHERE id = $1`, id).
+		FROM assignments WHERE tenant_id = $1 AND id = $2`, tenantID, id).
 		Scan(&a.ID, &a.ItemKind, &a.ItemID, &a.GroupID, &a.Mode, &a.CreatedAt, &a.CreatedBy, &a.Options)
 	return a, notFound(err)
 }

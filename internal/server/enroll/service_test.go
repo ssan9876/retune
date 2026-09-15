@@ -64,7 +64,7 @@ func TestEnroll(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		d, err := q.GetDevice(ctx, uuid.MustParse(resp.DeviceID))
+		d, err := q.GetDevice(ctx, store.DefaultTenantID, uuid.MustParse(resp.DeviceID))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -86,7 +86,7 @@ func TestEnroll(t *testing.T) {
 		if resp.CAPEM != string(svc.CA.CertPEM()) {
 			t.Fatal("response must include CA PEM")
 		}
-		got, _ := q.GetEnrollmentToken(ctx, tok.ID)
+		got, _ := q.GetEnrollmentToken(ctx, store.DefaultTenantID, tok.ID)
 		if got.UseCount != 1 {
 			t.Fatalf("use count = %d", got.UseCount)
 		}
@@ -103,7 +103,7 @@ func TestEnroll(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		old, _ := q.GetDevice(ctx, uuid.MustParse(first.DeviceID))
+		old, _ := q.GetDevice(ctx, store.DefaultTenantID, uuid.MustParse(first.DeviceID))
 		if old.Status != store.DeviceReplaced || old.ReplacedBy == nil || old.ReplacedBy.String() != second.DeviceID {
 			t.Fatalf("old device = %+v", old)
 		}
@@ -116,7 +116,7 @@ func TestEnroll(t *testing.T) {
 		want error
 	}{
 		{name: "revoked token", prep: func(t *testing.T, tok store.EnrollmentToken, _ string) {
-			if err := q.RevokeEnrollmentToken(ctx, tok.ID, now); err != nil {
+			if err := q.RevokeEnrollmentToken(ctx, store.DefaultTenantID, tok.ID, now); err != nil {
 				t.Fatal(err)
 			}
 		}, want: enroll.ErrTokenRevoked},
@@ -153,7 +153,7 @@ func TestEnroll(t *testing.T) {
 		if !errors.Is(err, ca.ErrBadCSR) {
 			t.Fatalf("err = %v", err)
 		}
-		got, _ := q.GetEnrollmentToken(ctx, tok.ID)
+		got, _ := q.GetEnrollmentToken(ctx, store.DefaultTenantID, tok.ID)
 		if got.UseCount != 0 {
 			t.Fatalf("use count = %d, want 0", got.UseCount)
 		}

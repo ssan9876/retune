@@ -48,8 +48,9 @@ func (q *Queries) CreateAgentVersion(ctx context.Context, v AgentVersion) error 
 }
 
 // GetAgentVersion looks up a build by its id.
-func (q *Queries) GetAgentVersion(ctx context.Context, id uuid.UUID) (AgentVersion, error) {
-	return scanAgentVersion(q.db.QueryRow(ctx, `SELECT `+agentVersionCols+` FROM agent_versions WHERE id = $1`, id))
+func (q *Queries) GetAgentVersion(ctx context.Context, tenantID, id uuid.UUID) (AgentVersion, error) {
+	return scanAgentVersion(q.db.QueryRow(ctx,
+		`SELECT `+agentVersionCols+` FROM agent_versions WHERE tenant_id = $1 AND id = $2`, tenantID, id))
 }
 
 // GetAgentVersionByVersion looks up a build by its version string.
@@ -87,7 +88,7 @@ func (q *Queries) ListAgentVersions(ctx context.Context, page Page) ([]AgentVers
 }
 
 // DeleteAgentVersion removes an uploaded build's metadata.
-func (q *Queries) DeleteAgentVersion(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, `DELETE FROM agent_versions WHERE id = $1`, id)
+func (q *Queries) DeleteAgentVersion(ctx context.Context, tenantID, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, `DELETE FROM agent_versions WHERE tenant_id = $1 AND id = $2`, tenantID, id)
 	return err
 }

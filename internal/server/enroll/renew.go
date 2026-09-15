@@ -21,7 +21,7 @@ func (s *Service) Renew(ctx context.Context, deviceID uuid.UUID, presentedSerial
 		return protocol.RenewResponse{}, err
 	}
 	err = s.Store.InTx(ctx, func(q *store.Queries) error {
-		if err := q.UpdateDeviceCert(ctx, deviceID, presentedSerial, issued.Serial, issued.NotAfter); err != nil {
+		if err := q.UpdateDeviceCert(ctx, store.DefaultTenantID, deviceID, presentedSerial, issued.Serial, issued.NotAfter); err != nil {
 			return err
 		}
 		return q.InsertAudit(ctx, store.AuditEntry{

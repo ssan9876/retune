@@ -37,7 +37,7 @@ func device(t *testing.T, st *store.Store, hostname string, ramGB float64, softw
 			t.Fatal(err)
 		}
 	}
-	if err := st.Q().RecordCheckin(ctx, d.ID, "1.0.0", now); err != nil {
+	if err := st.Q().RecordCheckin(ctx, store.DefaultTenantID, d.ID, "1.0.0", now); err != nil {
 		t.Fatal(err)
 	}
 	return d

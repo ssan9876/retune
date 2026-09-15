@@ -125,7 +125,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewApp) (store.Ap
 	now := s.now()
 	var out store.App
 	err := s.Store.InTx(ctx, func(q *store.Queries) error {
-		a, err := q.GetApp(ctx, id)
+		a, err := q.GetApp(ctx, store.DefaultTenantID, id)
 		if errors.Is(err, store.ErrNotFound) {
 			return ErrNotFound
 		}
@@ -155,7 +155,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewApp) (store.Ap
 			}
 		}
 		a.Name, a.Description, a.UpdatedAt = name, in.Description, now
-		if err := q.UpdateApp(ctx, a); err != nil {
+		if err := q.UpdateApp(ctx, store.DefaultTenantID, a); err != nil {
 			return err
 		}
 		out = a
@@ -173,7 +173,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewApp) (store.Ap
 // Delete removes an app, its versions and its assignments. Installs are kept.
 func (s *Service) Delete(ctx context.Context, id uuid.UUID, actor string) error {
 	return s.Store.InTx(ctx, func(q *store.Queries) error {
-		a, err := q.GetApp(ctx, id)
+		a, err := q.GetApp(ctx, store.DefaultTenantID, id)
 		if errors.Is(err, store.ErrNotFound) {
 			return ErrNotFound
 		}
@@ -183,7 +183,7 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID, actor string) error 
 		if err := q.DeleteAssignmentsForItem(ctx, protocol.ItemKindApp, id); err != nil {
 			return err
 		}
-		if err := q.DeleteApp(ctx, id); err != nil {
+		if err := q.DeleteApp(ctx, store.DefaultTenantID, id); err != nil {
 			return err
 		}
 		return q.InsertAudit(ctx, store.AuditEntry{
@@ -194,7 +194,7 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID, actor string) error 
 }
 
 func (s *Service) Get(ctx context.Context, id uuid.UUID) (store.App, error) {
-	a, err := s.Store.Q().GetApp(ctx, id)
+	a, err := s.Store.Q().GetApp(ctx, store.DefaultTenantID, id)
 	if errors.Is(err, store.ErrNotFound) {
 		return store.App{}, ErrNotFound
 	}

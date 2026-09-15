@@ -22,6 +22,11 @@ var ErrDuplicate = errors.New("duplicate")
 // DefaultTenantID is the single tenant used until multi-tenancy ships.
 var DefaultTenantID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
 
+// Every single-row query (get, update, delete) below takes a tenantID as its
+// first argument after ctx and includes it in the WHERE clause: an id alone
+// is enough to find a row, and that is precisely the problem once there is
+// more than one tenant. Callers pass DefaultTenantID until multi-tenancy ships.
+
 // DBTX is satisfied by both *pgxpool.Pool and pgx.Tx.
 type DBTX interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)

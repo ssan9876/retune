@@ -93,7 +93,7 @@ func TestEnrollAndCheckin(t *testing.T) {
 	if err != nil || resp.IntervalSeconds != 120 {
 		t.Fatalf("checkin: %+v, %v", resp, err)
 	}
-	d1, _ := a.Store.Q().GetDevice(ctx, uuid.MustParse(id1.DeviceID))
+	d1, _ := a.Store.Q().GetDevice(ctx, store.DefaultTenantID, uuid.MustParse(id1.DeviceID))
 	if d1.LastSeenAt == nil || d1.AgentVersion != "e2e" || d1.Hostname != "PC-001" {
 		t.Fatalf("device after checkin: %+v", d1)
 	}
@@ -103,7 +103,7 @@ func TestEnrollAndCheckin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d1, _ = a.Store.Q().GetDevice(ctx, uuid.MustParse(id1.DeviceID)); d1.Status != store.DeviceReplaced {
+	if d1, _ = a.Store.Q().GetDevice(ctx, store.DefaultTenantID, uuid.MustParse(id1.DeviceID)); d1.Status != store.DeviceReplaced {
 		t.Fatalf("old device status = %s", d1.Status)
 	}
 	var he *client.HTTPError
@@ -124,7 +124,7 @@ func TestEnrollAndCheckin(t *testing.T) {
 	if _, err := c2.Checkin(ctx, protocol.CheckinRequest{}); err != nil {
 		t.Fatalf("new device checkin: %v", err)
 	}
-	if err := a.Store.Q().SetDeviceStatus(ctx, uuid.MustParse(id2.DeviceID), store.DeviceRetired); err != nil {
+	if err := a.Store.Q().SetDeviceStatus(ctx, store.DefaultTenantID, uuid.MustParse(id2.DeviceID), store.DeviceRetired); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := c2.Checkin(ctx, protocol.CheckinRequest{}); !errors.As(err, &he) || he.Status != http.StatusUnauthorized {
@@ -248,7 +248,7 @@ func TestAppDeploymentEndToEnd(t *testing.T) {
 	// device succeeded, with a detail that says it was removed. The old
 	// include assignment has to go first: the unique index on
 	// (item_kind, item_id, group_id, mode) would otherwise collide with it.
-	if err := a.Store.Q().DeleteAssignment(ctx, installAssignment); err != nil {
+	if err := a.Store.Q().DeleteAssignment(ctx, store.DefaultTenantID, installAssignment); err != nil {
 		t.Fatal(err)
 	}
 	uninstallOptions, err := protocol.AppOptions{Intent: protocol.IntentUninstall, TimeoutSeconds: 900}.Marshal()

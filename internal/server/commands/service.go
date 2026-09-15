@@ -64,7 +64,7 @@ func (s *Service) Queue(ctx context.Context, o QueueOptions) (store.Command, err
 		CreatedBy: o.CreatedBy, CreatedAt: now, ExpiresAt: now.Add(ttl),
 	}
 	err = s.Store.InTx(ctx, func(q *store.Queries) error {
-		d, err := q.GetDevice(ctx, o.DeviceID)
+		d, err := q.GetDevice(ctx, store.DefaultTenantID, o.DeviceID)
 		if errors.Is(err, store.ErrNotFound) {
 			return fmt.Errorf("%w: no device %s", ErrNotFound, o.DeviceID)
 		}
@@ -172,7 +172,7 @@ func (s *Service) Start(ctx context.Context, deviceID, commandID uuid.UUID) erro
 		if err != nil || ok {
 			return err
 		}
-		c, err := q.GetCommand(ctx, commandID)
+		c, err := q.GetCommand(ctx, store.DefaultTenantID, commandID)
 		if errors.Is(err, store.ErrNotFound) || (err == nil && c.DeviceID != deviceID) {
 			return fmt.Errorf("%w: %s", ErrNotFound, commandID)
 		}
@@ -199,7 +199,7 @@ func (s *Service) Complete(ctx context.Context, deviceID, commandID uuid.UUID, r
 			return err
 		}
 		if !ok {
-			c, err := q.GetCommand(ctx, commandID)
+			c, err := q.GetCommand(ctx, store.DefaultTenantID, commandID)
 			if errors.Is(err, store.ErrNotFound) || (err == nil && c.DeviceID != deviceID) {
 				return fmt.Errorf("%w: %s", ErrNotFound, commandID)
 			}
@@ -220,14 +220,14 @@ func (s *Service) Complete(ctx context.Context, deviceID, commandID uuid.UUID, r
 // Get returns a command and its result, if it has one.
 func (s *Service) Get(ctx context.Context, commandID uuid.UUID) (store.Command, *store.CommandResult, error) {
 	q := s.Store.Q()
-	c, err := q.GetCommand(ctx, commandID)
+	c, err := q.GetCommand(ctx, store.DefaultTenantID, commandID)
 	if errors.Is(err, store.ErrNotFound) {
 		return store.Command{}, nil, fmt.Errorf("%w: %s", ErrNotFound, commandID)
 	}
 	if err != nil {
 		return store.Command{}, nil, err
 	}
-	r, err := q.GetCommandResult(ctx, commandID)
+	r, err := q.GetCommandResult(ctx, store.DefaultTenantID, commandID)
 	if errors.Is(err, store.ErrNotFound) {
 		return c, nil, nil
 	}

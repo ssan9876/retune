@@ -66,8 +66,9 @@ func (q *Queries) CreateProfile(ctx context.Context, p Profile) error {
 	return err
 }
 
-func (q *Queries) GetProfile(ctx context.Context, id uuid.UUID) (Profile, error) {
-	return scanProfile(q.db.QueryRow(ctx, `SELECT `+profileCols+` FROM profiles WHERE id = $1`, id))
+func (q *Queries) GetProfile(ctx context.Context, tenantID, id uuid.UUID) (Profile, error) {
+	return scanProfile(q.db.QueryRow(ctx,
+		`SELECT `+profileCols+` FROM profiles WHERE tenant_id = $1 AND id = $2`, tenantID, id))
 }
 
 func (q *Queries) GetProfileByName(ctx context.Context, name string) (Profile, error) {
@@ -100,16 +101,16 @@ func (q *Queries) ListProfiles(ctx context.Context, page Page) ([]Profile, int, 
 	return out, total, rows.Err()
 }
 
-func (q *Queries) UpdateProfile(ctx context.Context, p Profile) error {
+func (q *Queries) UpdateProfile(ctx context.Context, tenantID uuid.UUID, p Profile) error {
 	_, err := q.db.Exec(ctx, `
-		UPDATE profiles SET name = $2, description = $3, current_version = $4, updated_at = $5
-		WHERE id = $1`, p.ID, p.Name, p.Description, p.CurrentVersion, p.UpdatedAt)
+		UPDATE profiles SET name = $3, description = $4, current_version = $5, updated_at = $6
+		WHERE tenant_id = $1 AND id = $2`, tenantID, p.ID, p.Name, p.Description, p.CurrentVersion, p.UpdatedAt)
 	return err
 }
 
 // DeleteProfile removes a profile and its versions. Reported statuses are kept.
-func (q *Queries) DeleteProfile(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, `DELETE FROM profiles WHERE id = $1`, id)
+func (q *Queries) DeleteProfile(ctx context.Context, tenantID, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, `DELETE FROM profiles WHERE tenant_id = $1 AND id = $2`, tenantID, id)
 	return err
 }
 

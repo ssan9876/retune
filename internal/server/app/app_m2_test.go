@@ -13,6 +13,7 @@ import (
 
 	"retune/internal/protocol"
 	"retune/internal/server/commands"
+	"retune/internal/server/store"
 )
 
 func TestInventoryEndpoint(t *testing.T) {
@@ -44,7 +45,7 @@ func TestInventoryEndpoint(t *testing.T) {
 	if hash != protocol.InventoryHash(inv) {
 		t.Fatalf("hash = %s", hash)
 	}
-	if d, _ := a.Store.Q().GetDevice(ctx, id); d.Manufacturer != "Contoso" {
+	if d, _ := a.Store.Q().GetDevice(ctx, store.DefaultTenantID, id); d.Manufacturer != "Contoso" {
 		t.Fatalf("device not refreshed from inventory: %+v", d)
 	}
 
@@ -109,7 +110,7 @@ func TestRenewAndUnenroll(t *testing.T) {
 	a, srv := newTestApp(t)
 	id, oldClient := enrollDevice(t, a, srv, "PC-RENEW")
 	base := srv.URL + "/api/agent/v1"
-	before, _ := a.Store.Q().GetDevice(ctx, id)
+	before, _ := a.Store.Q().GetDevice(ctx, store.DefaultTenantID, id)
 
 	newKey, csrPEM := newKeyAndCSR(t)
 	status, body := send(t, oldClient, http.MethodPost, base+"/renew", protocol.RenewRequest{CSRPEM: csrPEM})
@@ -117,7 +118,7 @@ func TestRenewAndUnenroll(t *testing.T) {
 		t.Fatalf("renew: %d %s", status, body)
 	}
 	renewed := decodeJSON[protocol.RenewResponse](t, body)
-	after, _ := a.Store.Q().GetDevice(ctx, id)
+	after, _ := a.Store.Q().GetDevice(ctx, store.DefaultTenantID, id)
 	if after.CertSerial == before.CertSerial || after.PrevCertSerial != before.CertSerial {
 		t.Fatalf("device after renew = %+v", after)
 	}
@@ -130,7 +131,7 @@ func TestRenewAndUnenroll(t *testing.T) {
 	if status, _ := send(t, newClient, http.MethodPost, base+"/checkin", protocol.CheckinRequest{}); status != http.StatusOK {
 		t.Fatal("renewed certificate must be accepted")
 	}
-	if cur, _ := a.Store.Q().GetDevice(ctx, id); cur.PrevCertSerial != "" {
+	if cur, _ := a.Store.Q().GetDevice(ctx, store.DefaultTenantID, id); cur.PrevCertSerial != "" {
 		t.Fatalf("prev serial must be cleared once the new certificate is used: %q", cur.PrevCertSerial)
 	}
 	if status, _ := send(t, oldClient, http.MethodPost, base+"/checkin", protocol.CheckinRequest{}); status != http.StatusUnauthorized {

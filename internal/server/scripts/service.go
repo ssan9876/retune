@@ -116,7 +116,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewScript) (store
 	now := s.now()
 	var out store.Script
 	err := s.Store.InTx(ctx, func(q *store.Queries) error {
-		sc, err := q.GetScript(ctx, id)
+		sc, err := q.GetScript(ctx, store.DefaultTenantID, id)
 		if errors.Is(err, store.ErrNotFound) {
 			return ErrNotFound
 		}
@@ -145,7 +145,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewScript) (store
 			}
 		}
 		sc.Name, sc.Description, sc.UpdatedAt = name, in.Description, now
-		if err := q.UpdateScript(ctx, sc); err != nil {
+		if err := q.UpdateScript(ctx, store.DefaultTenantID, sc); err != nil {
 			return err
 		}
 		out = sc
@@ -163,7 +163,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewScript) (store
 // Delete removes a script, its versions and its assignments. Runs are kept.
 func (s *Service) Delete(ctx context.Context, id uuid.UUID, actor string) error {
 	return s.Store.InTx(ctx, func(q *store.Queries) error {
-		sc, err := q.GetScript(ctx, id)
+		sc, err := q.GetScript(ctx, store.DefaultTenantID, id)
 		if errors.Is(err, store.ErrNotFound) {
 			return ErrNotFound
 		}
@@ -173,7 +173,7 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID, actor string) error 
 		if err := q.DeleteAssignmentsForItem(ctx, protocol.ItemKindScript, id); err != nil {
 			return err
 		}
-		if err := q.DeleteScript(ctx, id); err != nil {
+		if err := q.DeleteScript(ctx, store.DefaultTenantID, id); err != nil {
 			return err
 		}
 		return q.InsertAudit(ctx, store.AuditEntry{
@@ -184,7 +184,7 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID, actor string) error 
 }
 
 func (s *Service) Get(ctx context.Context, id uuid.UUID) (store.Script, error) {
-	sc, err := s.Store.Q().GetScript(ctx, id)
+	sc, err := s.Store.Q().GetScript(ctx, store.DefaultTenantID, id)
 	if errors.Is(err, store.ErrNotFound) {
 		return store.Script{}, ErrNotFound
 	}

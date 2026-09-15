@@ -13,6 +13,7 @@ import (
 	"retune/internal/protocol"
 	"retune/internal/server/ca"
 	"retune/internal/server/enroll"
+	"retune/internal/server/store"
 )
 
 func TestRenew(t *testing.T) {
@@ -31,7 +32,7 @@ func TestRenew(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := uuid.MustParse(resp.DeviceID)
-	before, err := q.GetDevice(ctx, id)
+	before, err := q.GetDevice(ctx, store.DefaultTenantID, id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +56,7 @@ func TestRenew(t *testing.T) {
 		t.Fatalf("renewed cert must verify: %v", err)
 	}
 
-	after, err := q.GetDevice(ctx, id)
+	after, err := q.GetDevice(ctx, store.DefaultTenantID, id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +74,7 @@ func TestRenew(t *testing.T) {
 	if _, err := svc.Renew(ctx, id, after.PrevCertSerial, protocol.RenewRequest{CSRPEM: newCSR(t)}); err != nil {
 		t.Fatal(err)
 	}
-	if again, _ := q.GetDevice(ctx, id); again.PrevCertSerial != before.CertSerial {
+	if again, _ := q.GetDevice(ctx, store.DefaultTenantID, id); again.PrevCertSerial != before.CertSerial {
 		t.Fatalf("prev serial = %s, want the certificate the agent still holds", again.PrevCertSerial)
 	}
 

@@ -101,7 +101,7 @@ func (s *Service) Authenticate(ctx context.Context, email, password, totpCode st
 	}
 	now := s.Now()
 	err = s.Store.InTx(ctx, func(q *store.Queries) error {
-		if err := q.RecordAdminLogin(ctx, admin.ID, now); err != nil {
+		if err := q.RecordAdminLogin(ctx, store.DefaultTenantID, admin.ID, now); err != nil {
 			return err
 		}
 		return q.InsertAudit(ctx, store.AuditEntry{
@@ -223,14 +223,14 @@ func (s *Service) SetPassword(ctx context.Context, id uuid.UUID, password, actor
 		return err
 	}
 	return s.Store.InTx(ctx, func(q *store.Queries) error {
-		admin, err := q.GetAdmin(ctx, id)
+		admin, err := q.GetAdmin(ctx, store.DefaultTenantID, id)
 		if errors.Is(err, store.ErrNotFound) {
 			return fmt.Errorf("%w: %s", ErrNotFound, id)
 		}
 		if err != nil {
 			return err
 		}
-		if err := q.UpdateAdminPassword(ctx, id, hash); err != nil {
+		if err := q.UpdateAdminPassword(ctx, store.DefaultTenantID, id, hash); err != nil {
 			return err
 		}
 		if err := q.DeleteSessionsForAdmin(ctx, id); err != nil {
@@ -247,7 +247,7 @@ func (s *Service) SetPassword(ctx context.Context, id uuid.UUID, password, actor
 func (s *Service) EnableTOTP(ctx context.Context, id uuid.UUID, actor string) (string, string, error) {
 	var secret, url string
 	err := s.Store.InTx(ctx, func(q *store.Queries) error {
-		admin, err := q.GetAdmin(ctx, id)
+		admin, err := q.GetAdmin(ctx, store.DefaultTenantID, id)
 		if errors.Is(err, store.ErrNotFound) {
 			return fmt.Errorf("%w: %s", ErrNotFound, id)
 		}
@@ -257,7 +257,7 @@ func (s *Service) EnableTOTP(ctx context.Context, id uuid.UUID, actor string) (s
 		if secret, url, err = NewTOTPSecret(s.Issuer, admin.Email); err != nil {
 			return err
 		}
-		if err := q.UpdateAdminTOTP(ctx, id, secret); err != nil {
+		if err := q.UpdateAdminTOTP(ctx, store.DefaultTenantID, id, secret); err != nil {
 			return err
 		}
 		return q.InsertAudit(ctx, store.AuditEntry{
@@ -273,12 +273,12 @@ func (s *Service) EnableTOTP(ctx context.Context, id uuid.UUID, actor string) (s
 // DisableTOTP turns two-factor authentication off for an admin.
 func (s *Service) DisableTOTP(ctx context.Context, id uuid.UUID, actor string) error {
 	return s.Store.InTx(ctx, func(q *store.Queries) error {
-		if _, err := q.GetAdmin(ctx, id); errors.Is(err, store.ErrNotFound) {
+		if _, err := q.GetAdmin(ctx, store.DefaultTenantID, id); errors.Is(err, store.ErrNotFound) {
 			return fmt.Errorf("%w: %s", ErrNotFound, id)
 		} else if err != nil {
 			return err
 		}
-		if err := q.UpdateAdminTOTP(ctx, id, ""); err != nil {
+		if err := q.UpdateAdminTOTP(ctx, store.DefaultTenantID, id, ""); err != nil {
 			return err
 		}
 		return q.InsertAudit(ctx, store.AuditEntry{
@@ -292,7 +292,7 @@ func (s *Service) DisableTOTP(ctx context.Context, id uuid.UUID, actor string) e
 func (s *Service) SetDisabled(ctx context.Context, id uuid.UUID, disabled bool, actor string) error {
 	now := s.Now()
 	return s.Store.InTx(ctx, func(q *store.Queries) error {
-		admin, err := q.GetAdmin(ctx, id)
+		admin, err := q.GetAdmin(ctx, store.DefaultTenantID, id)
 		if errors.Is(err, store.ErrNotFound) {
 			return fmt.Errorf("%w: %s", ErrNotFound, id)
 		}
@@ -319,7 +319,7 @@ func (s *Service) SetDisabled(ctx context.Context, id uuid.UUID, disabled bool, 
 		if disabled {
 			at, action = &now, "admin.disabled"
 		}
-		if err := q.SetAdminDisabled(ctx, id, at); err != nil {
+		if err := q.SetAdminDisabled(ctx, store.DefaultTenantID, id, at); err != nil {
 			return err
 		}
 		if disabled {

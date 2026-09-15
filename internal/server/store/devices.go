@@ -26,8 +26,9 @@ func (q *Queries) CreateDevice(ctx context.Context, d Device) error {
 	return err
 }
 
-func (q *Queries) GetDevice(ctx context.Context, id uuid.UUID) (Device, error) {
-	return scanDevice(q.db.QueryRow(ctx, `SELECT `+deviceCols+` FROM devices WHERE id = $1`, id))
+func (q *Queries) GetDevice(ctx context.Context, tenantID, id uuid.UUID) (Device, error) {
+	return scanDevice(q.db.QueryRow(ctx,
+		`SELECT `+deviceCols+` FROM devices WHERE tenant_id = $1 AND id = $2`, tenantID, id))
 }
 
 // FindActiveDeviceByHardware finds an active device with the same non-empty
@@ -44,18 +45,23 @@ func (q *Queries) FindActiveDeviceByHardware(ctx context.Context, serial, smbios
 		LIMIT 1`, smbiosUUID, serial))
 }
 
-func (q *Queries) MarkDeviceReplaced(ctx context.Context, oldID, newID uuid.UUID) error {
-	_, err := q.db.Exec(ctx, `UPDATE devices SET status = 'replaced', replaced_by = $2 WHERE id = $1`, oldID, newID)
+func (q *Queries) MarkDeviceReplaced(ctx context.Context, tenantID, oldID, newID uuid.UUID) error {
+	_, err := q.db.Exec(ctx,
+		`UPDATE devices SET status = 'replaced', replaced_by = $3 WHERE tenant_id = $1 AND id = $2`,
+		tenantID, oldID, newID)
 	return err
 }
 
-func (q *Queries) SetDeviceStatus(ctx context.Context, id uuid.UUID, status string) error {
-	_, err := q.db.Exec(ctx, `UPDATE devices SET status = $2 WHERE id = $1`, id, status)
+func (q *Queries) SetDeviceStatus(ctx context.Context, tenantID, id uuid.UUID, status string) error {
+	_, err := q.db.Exec(ctx,
+		`UPDATE devices SET status = $3 WHERE tenant_id = $1 AND id = $2`, tenantID, id, status)
 	return err
 }
 
-func (q *Queries) RecordCheckin(ctx context.Context, id uuid.UUID, agentVersion string, at time.Time) error {
-	_, err := q.db.Exec(ctx, `UPDATE devices SET last_seen_at = $2, agent_version = $3 WHERE id = $1`, id, at, agentVersion)
+func (q *Queries) RecordCheckin(ctx context.Context, tenantID, id uuid.UUID, agentVersion string, at time.Time) error {
+	_, err := q.db.Exec(ctx,
+		`UPDATE devices SET last_seen_at = $3, agent_version = $4 WHERE tenant_id = $1 AND id = $2`,
+		tenantID, id, at, agentVersion)
 	return err
 }
 
@@ -79,33 +85,35 @@ func (q *Queries) ListDevices(ctx context.Context) ([]Device, error) {
 
 // UpdateDeviceHardware applies non-empty inventory values; empty values leave
 // the existing column untouched.
-func (q *Queries) UpdateDeviceHardware(ctx context.Context, id uuid.UUID, h HardwareInfo) error {
+func (q *Queries) UpdateDeviceHardware(ctx context.Context, tenantID, id uuid.UUID, h HardwareInfo) error {
 	_, err := q.db.Exec(ctx, `
 		UPDATE devices SET
-			hostname     = COALESCE(NULLIF($2, ''), hostname),
-			serial       = COALESCE(NULLIF($3, ''), serial),
-			smbios_uuid  = COALESCE(NULLIF($4, ''), smbios_uuid),
-			os_version   = COALESCE(NULLIF($5, ''), os_version),
-			os_build     = COALESCE(NULLIF($6, ''), os_build),
-			manufacturer = COALESCE(NULLIF($7, ''), manufacturer),
-			model        = COALESCE(NULLIF($8, ''), model)
-		WHERE id = $1`,
-		id, h.Hostname, h.Serial, h.SMBIOSUUID, h.OSVersion, h.OSBuild, h.Manufacturer, h.Model)
+			hostname     = COALESCE(NULLIF($3, ''), hostname),
+			serial       = COALESCE(NULLIF($4, ''), serial),
+			smbios_uuid  = COALESCE(NULLIF($5, ''), smbios_uuid),
+			os_version   = COALESCE(NULLIF($6, ''), os_version),
+			os_build     = COALESCE(NULLIF($7, ''), os_build),
+			manufacturer = COALESCE(NULLIF($8, ''), manufacturer),
+			model        = COALESCE(NULLIF($9, ''), model)
+		WHERE tenant_id = $1 AND id = $2`,
+		tenantID, id, h.Hostname, h.Serial, h.SMBIOSUUID, h.OSVersion, h.OSBuild, h.Manufacturer, h.Model)
 	return err
 }
 
 // UpdateDeviceCert records a reissued certificate. prevSerial is the serial the
 // renewal request authenticated with; it stays acceptable until the device uses
 // the new certificate.
-func (q *Queries) UpdateDeviceCert(ctx context.Context, id uuid.UUID, prevSerial, newSerial string, expiresAt time.Time) error {
+func (q *Queries) UpdateDeviceCert(ctx context.Context, tenantID, id uuid.UUID, prevSerial, newSerial string, expiresAt time.Time) error {
 	_, err := q.db.Exec(ctx, `
-		UPDATE devices SET prev_cert_serial = $2, cert_serial = $3, cert_expires_at = $4 WHERE id = $1`,
-		id, prevSerial, newSerial, expiresAt)
+		UPDATE devices SET prev_cert_serial = $3, cert_serial = $4, cert_expires_at = $5
+		WHERE tenant_id = $1 AND id = $2`,
+		tenantID, id, prevSerial, newSerial, expiresAt)
 	return err
 }
 
 // ClearPrevCertSerial drops the superseded certificate serial.
-func (q *Queries) ClearPrevCertSerial(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, `UPDATE devices SET prev_cert_serial = '' WHERE id = $1`, id)
+func (q *Queries) ClearPrevCertSerial(ctx context.Context, tenantID, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx,
+		`UPDATE devices SET prev_cert_serial = '' WHERE tenant_id = $1 AND id = $2`, tenantID, id)
 	return err
 }

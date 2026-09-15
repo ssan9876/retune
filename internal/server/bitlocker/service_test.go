@@ -93,7 +93,7 @@ func TestTheStoredKeyIsEncrypted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stored, err := st.Q().GetBitLockerKey(ctx, keys[0].ID)
+	stored, err := st.Q().GetBitLockerKey(ctx, store.DefaultTenantID, keys[0].ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestAKeyCannotBeMovedBetweenDevices(t *testing.T) {
 		t.Fatal(err)
 	}
 	keys, _ := svc.List(ctx, a.ID)
-	stolen, err := st.Q().GetBitLockerKey(ctx, keys[0].ID)
+	stolen, err := st.Q().GetBitLockerKey(ctx, store.DefaultTenantID, keys[0].ID)
 	if err != nil {
 		t.Fatal(err)
 	}

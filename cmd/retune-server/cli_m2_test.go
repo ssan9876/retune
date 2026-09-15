@@ -89,11 +89,11 @@ func TestDeviceAndCommandCLI(t *testing.T) {
 	}
 
 	runOut(t, e, "device", "retire", id.String())
-	if d, _ := st.Q().GetDevice(ctx, id); d.Status != store.DeviceRetired {
+	if d, _ := st.Q().GetDevice(ctx, store.DefaultTenantID, id); d.Status != store.DeviceRetired {
 		t.Fatalf("status after retire = %s", d.Status)
 	}
 	runOut(t, e, "device", "unenroll", id.String())
-	if d, _ := st.Q().GetDevice(ctx, id); d.Status != store.DeviceUnenrolled {
+	if d, _ := st.Q().GetDevice(ctx, store.DefaultTenantID, id); d.Status != store.DeviceUnenrolled {
 		t.Fatalf("status after unenroll = %s", d.Status)
 	}
 	if err := run(ctx, []string{"device", "retire", id.String()}, e, io.Discard); err == nil {

@@ -54,8 +54,9 @@ func (q *Queries) CreateAdmin(ctx context.Context, a Admin) error {
 	return err
 }
 
-func (q *Queries) GetAdmin(ctx context.Context, id uuid.UUID) (Admin, error) {
-	return scanAdmin(q.db.QueryRow(ctx, `SELECT `+adminCols+` FROM admins WHERE id = $1`, id))
+func (q *Queries) GetAdmin(ctx context.Context, tenantID, id uuid.UUID) (Admin, error) {
+	return scanAdmin(q.db.QueryRow(ctx,
+		`SELECT `+adminCols+` FROM admins WHERE tenant_id = $1 AND id = $2`, tenantID, id))
 }
 
 // GetAdminByEmail looks an admin up case-insensitively.
@@ -86,25 +87,29 @@ func (q *Queries) CountAdmins(ctx context.Context) (int, error) {
 	return n, err
 }
 
-func (q *Queries) UpdateAdminPassword(ctx context.Context, id uuid.UUID, hash string) error {
-	_, err := q.db.Exec(ctx, `UPDATE admins SET password_hash = $2 WHERE id = $1`, id, hash)
+func (q *Queries) UpdateAdminPassword(ctx context.Context, tenantID, id uuid.UUID, hash string) error {
+	_, err := q.db.Exec(ctx,
+		`UPDATE admins SET password_hash = $3 WHERE tenant_id = $1 AND id = $2`, tenantID, id, hash)
 	return err
 }
 
 // UpdateAdminTOTP stores a new TOTP secret, or "" to turn TOTP off.
-func (q *Queries) UpdateAdminTOTP(ctx context.Context, id uuid.UUID, secret string) error {
-	_, err := q.db.Exec(ctx, `UPDATE admins SET totp_secret = $2 WHERE id = $1`, id, secret)
+func (q *Queries) UpdateAdminTOTP(ctx context.Context, tenantID, id uuid.UUID, secret string) error {
+	_, err := q.db.Exec(ctx,
+		`UPDATE admins SET totp_secret = $3 WHERE tenant_id = $1 AND id = $2`, tenantID, id, secret)
 	return err
 }
 
 // SetAdminDisabled disables an admin, or re-enables it with a nil time.
-func (q *Queries) SetAdminDisabled(ctx context.Context, id uuid.UUID, at *time.Time) error {
-	_, err := q.db.Exec(ctx, `UPDATE admins SET disabled_at = $2 WHERE id = $1`, id, at)
+func (q *Queries) SetAdminDisabled(ctx context.Context, tenantID, id uuid.UUID, at *time.Time) error {
+	_, err := q.db.Exec(ctx,
+		`UPDATE admins SET disabled_at = $3 WHERE tenant_id = $1 AND id = $2`, tenantID, id, at)
 	return err
 }
 
-func (q *Queries) RecordAdminLogin(ctx context.Context, id uuid.UUID, at time.Time) error {
-	_, err := q.db.Exec(ctx, `UPDATE admins SET last_login_at = $2 WHERE id = $1`, id, at)
+func (q *Queries) RecordAdminLogin(ctx context.Context, tenantID, id uuid.UUID, at time.Time) error {
+	_, err := q.db.Exec(ctx,
+		`UPDATE admins SET last_login_at = $3 WHERE tenant_id = $1 AND id = $2`, tenantID, id, at)
 	return err
 }
 

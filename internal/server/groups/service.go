@@ -131,7 +131,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewGroup) (store.
 		} else if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return err
 		}
-		if err := q.UpdateGroup(ctx, g); err != nil {
+		if err := q.UpdateGroup(ctx, store.DefaultTenantID, g); err != nil {
 			return err
 		}
 		return q.InsertAudit(ctx, store.AuditEntry{
@@ -160,7 +160,7 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID, actor string) error 
 		return ErrBuiltinGroup
 	}
 	return s.Store.InTx(ctx, func(q *store.Queries) error {
-		if err := q.DeleteGroup(ctx, id); err != nil {
+		if err := q.DeleteGroup(ctx, store.DefaultTenantID, id); err != nil {
 			return err
 		}
 		return q.InsertAudit(ctx, store.AuditEntry{
@@ -171,7 +171,7 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID, actor string) error 
 }
 
 func (s *Service) Get(ctx context.Context, id uuid.UUID) (store.Group, error) {
-	return s.Store.Q().GetGroup(ctx, id)
+	return s.Store.Q().GetGroup(ctx, store.DefaultTenantID, id)
 }
 
 func (s *Service) List(ctx context.Context) ([]store.GroupWithCount, error) {
@@ -188,7 +188,7 @@ func (s *Service) AddMember(ctx context.Context, groupID, deviceID uuid.UUID, ac
 		return ErrDerivedMembership
 	}
 	return s.Store.InTx(ctx, func(q *store.Queries) error {
-		if _, err := q.GetDevice(ctx, deviceID); err != nil {
+		if _, err := q.GetDevice(ctx, store.DefaultTenantID, deviceID); err != nil {
 			return err
 		}
 		if err := q.AddGroupMember(ctx, groupID, deviceID, s.now()); err != nil {
@@ -324,7 +324,7 @@ func (s *Service) EvaluateDevice(ctx context.Context, deviceID uuid.UUID) error 
 // deviceMatches reports whether one device belongs in one derived group.
 func (s *Service) deviceMatches(ctx context.Context, g store.Group, deviceID uuid.UUID) (bool, error) {
 	if g.Kind == store.GroupBuiltin {
-		d, err := s.Store.Q().GetDevice(ctx, deviceID)
+		d, err := s.Store.Q().GetDevice(ctx, store.DefaultTenantID, deviceID)
 		if err != nil {
 			return false, err
 		}

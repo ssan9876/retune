@@ -32,7 +32,7 @@ func TestAppRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := q.GetApp(ctx, a.ID)
+	got, err := q.GetApp(ctx, store.DefaultTenantID, a.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,8 +56,40 @@ func TestAppRoundTrip(t *testing.T) {
 		t.Error("a duplicate name should be refused")
 	}
 
-	if _, err := q.GetApp(ctx, uuid.Must(uuid.NewV7())); !errors.Is(err, store.ErrNotFound) {
+	if _, err := q.GetApp(ctx, store.DefaultTenantID, uuid.Must(uuid.NewV7())); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("a missing app should be ErrNotFound, got %v", err)
+	}
+}
+
+func TestAppQueriesAreScopedByTenant(t *testing.T) {
+	st := storetest.New(t)
+	ctx := context.Background()
+	q := st.Q()
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	a := store.App{
+		ID: uuid.Must(uuid.NewV7()), Name: "Scoped App", CurrentVersion: 1,
+		CreatedAt: now, UpdatedAt: now, CreatedBy: "ops",
+	}
+	if err := q.CreateApp(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	other := uuid.Must(uuid.NewV7())
+
+	if _, err := q.GetApp(ctx, other, a.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("another tenant must not see the row: %v", err)
+	}
+	changed := a
+	changed.Name = "Hacked"
+	if err := q.UpdateApp(ctx, other, changed); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.DeleteApp(ctx, other, a.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := q.GetApp(ctx, store.DefaultTenantID, a.ID)
+	if err != nil || got.Name != "Scoped App" {
+		t.Errorf("another tenant must not change or delete the row: %+v %v", got, err)
 	}
 }
 
@@ -140,7 +172,7 @@ func TestAppInstallsSurviveDeletion(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := q.DeleteApp(ctx, a.ID); err != nil {
+	if err := q.DeleteApp(ctx, store.DefaultTenantID, a.ID); err != nil {
 		t.Fatal(err)
 	}
 	rows, total, err := q.ListAppInstalls(ctx, a.ID, nil, store.Page{})

@@ -81,8 +81,9 @@ func (q *Queries) CreateCommand(ctx context.Context, c Command) error {
 	return err
 }
 
-func (q *Queries) GetCommand(ctx context.Context, id uuid.UUID) (Command, error) {
-	return scanCommand(q.db.QueryRow(ctx, `SELECT `+commandCols+` FROM commands WHERE id = $1`, id))
+func (q *Queries) GetCommand(ctx context.Context, tenantID, id uuid.UUID) (Command, error) {
+	return scanCommand(q.db.QueryRow(ctx,
+		`SELECT `+commandCols+` FROM commands WHERE tenant_id = $1 AND id = $2`, tenantID, id))
 }
 
 // ExpireCommands marks undelivered and delivered commands past their TTL as
@@ -149,11 +150,11 @@ func (q *Queries) InsertCommandResult(ctx context.Context, r CommandResult) erro
 	return err
 }
 
-func (q *Queries) GetCommandResult(ctx context.Context, id uuid.UUID) (CommandResult, error) {
+func (q *Queries) GetCommandResult(ctx context.Context, tenantID, id uuid.UUID) (CommandResult, error) {
 	var r CommandResult
 	err := q.db.QueryRow(ctx, `
 		SELECT command_id, exit_code, stdout, stderr, stdout_truncated, stderr_truncated, error, started_at, finished_at
-		FROM command_results WHERE command_id = $1`, id).
+		FROM command_results WHERE tenant_id = $1 AND command_id = $2`, tenantID, id).
 		Scan(&r.CommandID, &r.ExitCode, &r.Stdout, &r.Stderr, &r.StdoutTruncated, &r.StderrTruncated, &r.Error, &r.StartedAt, &r.FinishedAt)
 	return r, notFound(err)
 }

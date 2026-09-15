@@ -101,7 +101,7 @@ func (s *Service) Reveal(ctx context.Context, id uuid.UUID, actor, reason string
 	if s.Key == nil {
 		return store.BitLockerKey{}, "", errors.New("this server has no key to read recovery keys with")
 	}
-	k, err := s.Store.Q().GetBitLockerKey(ctx, id)
+	k, err := s.Store.Q().GetBitLockerKey(ctx, store.DefaultTenantID, id)
 	if errors.Is(err, store.ErrNotFound) {
 		return store.BitLockerKey{}, "", ErrNotFound
 	}

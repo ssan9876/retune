@@ -36,13 +36,13 @@ func (q *Queries) UpsertBitLockerKey(ctx context.Context, k BitLockerKey) error 
 }
 
 // GetBitLockerKey returns one escrowed key, including its ciphertext.
-func (q *Queries) GetBitLockerKey(ctx context.Context, id uuid.UUID) (BitLockerKey, error) {
+func (q *Queries) GetBitLockerKey(ctx context.Context, tenantID, id uuid.UUID) (BitLockerKey, error) {
 	var k BitLockerKey
 	err := q.db.QueryRow(ctx, `
 		SELECT k.id, k.device_id, d.hostname, k.volume_id, k.method, k.ciphertext, k.nonce, k.created_at, k.updated_at
 		FROM bitlocker_keys k
 		JOIN devices d ON d.id = k.device_id
-		WHERE k.id = $1`, id).
+		WHERE k.tenant_id = $1 AND k.id = $2`, tenantID, id).
 		Scan(&k.ID, &k.DeviceID, &k.Hostname, &k.VolumeID, &k.Method, &k.Ciphertext, &k.Nonce, &k.CreatedAt, &k.UpdatedAt)
 	return k, notFound(err)
 }

@@ -54,37 +54,68 @@ func TestAdminQueries(t *testing.T) {
 		t.Fatal("duplicate email must be rejected regardless of case")
 	}
 
-	if err := q.UpdateAdminPassword(ctx, a.ID, "new-hash"); err != nil {
+	if err := q.UpdateAdminPassword(ctx, store.DefaultTenantID, a.ID, "new-hash"); err != nil {
 		t.Fatal(err)
 	}
-	if err := q.UpdateAdminTOTP(ctx, a.ID, "SECRET"); err != nil {
+	if err := q.UpdateAdminTOTP(ctx, store.DefaultTenantID, a.ID, "SECRET"); err != nil {
 		t.Fatal(err)
 	}
-	if err := q.RecordAdminLogin(ctx, a.ID, now); err != nil {
+	if err := q.RecordAdminLogin(ctx, store.DefaultTenantID, a.ID, now); err != nil {
 		t.Fatal(err)
 	}
-	cur, err := q.GetAdmin(ctx, a.ID)
+	cur, err := q.GetAdmin(ctx, store.DefaultTenantID, a.ID)
 	if err != nil || cur.PasswordHash != "new-hash" || cur.TOTPSecret != "SECRET" ||
 		cur.LastLoginAt == nil || !cur.LastLoginAt.Equal(now) {
 		t.Fatalf("admin = %+v, err = %v", cur, err)
 	}
 
-	if err := q.SetAdminDisabled(ctx, a.ID, &now); err != nil {
+	if err := q.SetAdminDisabled(ctx, store.DefaultTenantID, a.ID, &now); err != nil {
 		t.Fatal(err)
 	}
-	if cur, _ = q.GetAdmin(ctx, a.ID); cur.DisabledAt == nil {
+	if cur, _ = q.GetAdmin(ctx, store.DefaultTenantID, a.ID); cur.DisabledAt == nil {
 		t.Fatal("admin must be disabled")
 	}
-	if err := q.SetAdminDisabled(ctx, a.ID, nil); err != nil {
+	if err := q.SetAdminDisabled(ctx, store.DefaultTenantID, a.ID, nil); err != nil {
 		t.Fatal(err)
 	}
-	if cur, _ = q.GetAdmin(ctx, a.ID); cur.DisabledAt != nil {
+	if cur, _ = q.GetAdmin(ctx, store.DefaultTenantID, a.ID); cur.DisabledAt != nil {
 		t.Fatal("admin must be enabled again")
 	}
 
 	list, err := q.ListAdmins(ctx)
 	if err != nil || len(list) != 2 || list[0].Email != "Ops@example.com" {
 		t.Fatalf("ListAdmins = %+v, err = %v", list, err)
+	}
+}
+
+func TestAdminQueriesAreScopedByTenant(t *testing.T) {
+	ctx := context.Background()
+	st := storetest.New(t)
+	q := st.Q()
+	a := newAdmin(t, q, "scoped@example.com", store.RoleAdmin)
+	other := uuid.Must(uuid.NewV7())
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	if _, err := q.GetAdmin(ctx, other, a.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("another tenant must not see the row: %v", err)
+	}
+	if err := q.UpdateAdminPassword(ctx, other, a.ID, "hacked"); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.UpdateAdminTOTP(ctx, other, a.ID, "HACKED"); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.SetAdminDisabled(ctx, other, a.ID, &now); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.RecordAdminLogin(ctx, other, a.ID, now); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := q.GetAdmin(ctx, store.DefaultTenantID, a.ID)
+	if err != nil || got.PasswordHash == "hacked" || got.TOTPSecret == "HACKED" ||
+		got.DisabledAt != nil || got.LastLoginAt != nil {
+		t.Errorf("another tenant must not change the row: %+v %v", got, err)
 	}
 }
 

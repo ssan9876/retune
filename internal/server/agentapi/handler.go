@@ -125,7 +125,7 @@ func (h *Handler) requireDevice(next http.HandlerFunc) http.Handler {
 			return
 		}
 		ctx := r.Context()
-		d, err := h.Store.Q().GetDevice(ctx, id)
+		d, err := h.Store.Q().GetDevice(ctx, store.DefaultTenantID, id)
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			h.Log.Error("load device", "device_id", id, "error", err)
 			writeError(w, http.StatusInternalServerError, "internal", "internal server error")
@@ -146,7 +146,7 @@ func (h *Handler) requireDevice(next http.HandlerFunc) http.Handler {
 			return
 		}
 		if serial == d.CertSerial && d.PrevCertSerial != "" {
-			if err := h.Store.Q().ClearPrevCertSerial(ctx, d.ID); err != nil {
+			if err := h.Store.Q().ClearPrevCertSerial(ctx, store.DefaultTenantID, d.ID); err != nil {
 				h.Log.Error("clear superseded certificate serial", "device_id", d.ID, "error", err)
 			} else {
 				d.PrevCertSerial = ""
@@ -165,7 +165,7 @@ func (h *Handler) checkin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	if err := h.Store.Q().RecordCheckin(ctx, a.Device.ID, req.AgentVersion, h.Now()); err != nil {
+	if err := h.Store.Q().RecordCheckin(ctx, store.DefaultTenantID, a.Device.ID, req.AgentVersion, h.Now()); err != nil {
 		h.Log.Error("record checkin", "device_id", a.Device.ID, "error", err)
 		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
 		return
@@ -250,7 +250,7 @@ func (h *Handler) itemVersion(ctx context.Context, it store.Item) (int, bool) {
 	case protocol.ItemKindScript:
 		// The agent needs the version to know whether its cached copy is
 		// current; it fetches the body separately, once per version.
-		sc, err := h.Store.Q().GetScript(ctx, it.ID)
+		sc, err := h.Store.Q().GetScript(ctx, store.DefaultTenantID, it.ID)
 		if err != nil {
 			// A script that has gone missing is simply not offered.
 			h.Log.Warn("assigned script is missing", "script_id", it.ID, "error", err)

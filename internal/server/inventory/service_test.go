@@ -77,7 +77,7 @@ func TestInventoryService(t *testing.T) {
 	}
 	clock = now
 
-	dev, err := q.GetDevice(ctx, d.ID)
+	dev, err := q.GetDevice(ctx, store.DefaultTenantID, d.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

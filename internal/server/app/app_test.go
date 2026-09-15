@@ -123,11 +123,11 @@ func TestAgentAPI(t *testing.T) {
 		t.Fatalf("checkin response %s, err %v", body, err)
 	}
 	id := uuid.MustParse(enrolled.DeviceID)
-	if d, _ := a.Store.Q().GetDevice(ctx, id); d.LastSeenAt == nil || d.AgentVersion != "0.1.0" {
+	if d, _ := a.Store.Q().GetDevice(ctx, store.DefaultTenantID, id); d.LastSeenAt == nil || d.AgentVersion != "0.1.0" {
 		t.Fatalf("device after checkin = %+v", d)
 	}
 
-	if err := a.Store.Q().SetDeviceStatus(ctx, id, store.DeviceRetired); err != nil {
+	if err := a.Store.Q().SetDeviceStatus(ctx, store.DefaultTenantID, id, store.DeviceRetired); err != nil {
 		t.Fatal(err)
 	}
 	status, body = post(t, mtls, srv.URL+"/api/agent/v1/checkin", protocol.CheckinRequest{})

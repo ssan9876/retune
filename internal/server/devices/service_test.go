@@ -35,7 +35,7 @@ func TestRetireAndUnenroll(t *testing.T) {
 	if err := svc.Retire(ctx, d.ID, "admin"); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := st.Q().GetDevice(ctx, d.ID); got.Status != store.DeviceRetired {
+	if got, _ := st.Q().GetDevice(ctx, store.DefaultTenantID, d.ID); got.Status != store.DeviceRetired {
 		t.Fatalf("status = %s", got.Status)
 	}
 	if err := svc.Retire(ctx, d.ID, "admin"); !errors.Is(err, devices.ErrInvalidTransition) {
@@ -45,7 +45,7 @@ func TestRetireAndUnenroll(t *testing.T) {
 	if err := svc.Unenroll(ctx, d.ID, "admin"); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := st.Q().GetDevice(ctx, d.ID); got.Status != store.DeviceUnenrolled {
+	if got, _ := st.Q().GetDevice(ctx, store.DefaultTenantID, d.ID); got.Status != store.DeviceUnenrolled {
 		t.Fatalf("status = %s", got.Status)
 	}
 	if err := svc.Unenroll(ctx, d.ID, "admin"); !errors.Is(err, devices.ErrInvalidTransition) {

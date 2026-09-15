@@ -27,7 +27,7 @@ func TestAgentVersionRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := q.GetAgentVersion(ctx, v.ID)
+	got, err := q.GetAgentVersion(ctx, store.DefaultTenantID, v.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,15 +52,39 @@ func TestAgentVersionRoundTrip(t *testing.T) {
 		t.Errorf("want ErrDuplicate, got %v", err)
 	}
 
-	if _, err := q.GetAgentVersion(ctx, uuid.Must(uuid.NewV7())); !errors.Is(err, store.ErrNotFound) {
+	if _, err := q.GetAgentVersion(ctx, store.DefaultTenantID, uuid.Must(uuid.NewV7())); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("a missing build should be ErrNotFound, got %v", err)
 	}
 
-	if err := q.DeleteAgentVersion(ctx, v.ID); err != nil {
+	if err := q.DeleteAgentVersion(ctx, store.DefaultTenantID, v.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q.GetAgentVersion(ctx, v.ID); !errors.Is(err, store.ErrNotFound) {
+	if _, err := q.GetAgentVersion(ctx, store.DefaultTenantID, v.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("after deletion it should be gone, got %v", err)
+	}
+}
+
+func TestAgentVersionQueriesAreScopedByTenant(t *testing.T) {
+	st := storetest.New(t)
+	ctx := context.Background()
+	q := st.Q()
+	v := store.AgentVersion{
+		ID: uuid.Must(uuid.NewV7()), Version: "9.9.9", SHA256: "x", SizeBytes: 1,
+		CreatedAt: time.Now(), CreatedBy: "t",
+	}
+	if err := q.CreateAgentVersion(ctx, v); err != nil {
+		t.Fatal(err)
+	}
+	other := uuid.Must(uuid.NewV7())
+
+	if _, err := q.GetAgentVersion(ctx, other, v.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("another tenant must not see the row: %v", err)
+	}
+	if err := q.DeleteAgentVersion(ctx, other, v.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.GetAgentVersion(ctx, store.DefaultTenantID, v.ID); err != nil {
+		t.Errorf("another tenant must not delete the row: %v", err)
 	}
 }
 
@@ -74,7 +98,7 @@ func TestAgentVersionSignatureRoundTrips(t *testing.T) {
 	if err := st.Q().CreateAgentVersion(ctx, v); err != nil {
 		t.Fatal(err)
 	}
-	got, err := st.Q().GetAgentVersion(ctx, v.ID)
+	got, err := st.Q().GetAgentVersion(ctx, store.DefaultTenantID, v.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

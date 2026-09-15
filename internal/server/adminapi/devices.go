@@ -90,7 +90,7 @@ func (h *Handler) getDevice(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	q := h.Store.Q()
-	d, err := q.GetDevice(ctx, id)
+	d, err := q.GetDevice(ctx, store.DefaultTenantID, id)
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not_found", "no such device")
 		return

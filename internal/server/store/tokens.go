@@ -27,8 +27,9 @@ func (q *Queries) CreateEnrollmentToken(ctx context.Context, t EnrollmentToken) 
 	return err
 }
 
-func (q *Queries) GetEnrollmentToken(ctx context.Context, id uuid.UUID) (EnrollmentToken, error) {
-	return scanToken(q.db.QueryRow(ctx, `SELECT `+tokenCols+` FROM enrollment_tokens WHERE id = $1`, id))
+func (q *Queries) GetEnrollmentToken(ctx context.Context, tenantID, id uuid.UUID) (EnrollmentToken, error) {
+	return scanToken(q.db.QueryRow(ctx,
+		`SELECT `+tokenCols+` FROM enrollment_tokens WHERE tenant_id = $1 AND id = $2`, tenantID, id))
 }
 
 // GetEnrollmentTokenByHashForUpdate locks the token row; call inside InTx.
@@ -36,12 +37,15 @@ func (q *Queries) GetEnrollmentTokenByHashForUpdate(ctx context.Context, hash []
 	return scanToken(q.db.QueryRow(ctx, `SELECT `+tokenCols+` FROM enrollment_tokens WHERE token_hash = $1 FOR UPDATE`, hash))
 }
 
-func (q *Queries) IncrementTokenUse(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, `UPDATE enrollment_tokens SET use_count = use_count + 1 WHERE id = $1`, id)
+func (q *Queries) IncrementTokenUse(ctx context.Context, tenantID, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx,
+		`UPDATE enrollment_tokens SET use_count = use_count + 1 WHERE tenant_id = $1 AND id = $2`, tenantID, id)
 	return err
 }
 
-func (q *Queries) RevokeEnrollmentToken(ctx context.Context, id uuid.UUID, at time.Time) error {
-	_, err := q.db.Exec(ctx, `UPDATE enrollment_tokens SET revoked_at = $2 WHERE id = $1 AND revoked_at IS NULL`, id, at)
+func (q *Queries) RevokeEnrollmentToken(ctx context.Context, tenantID, id uuid.UUID, at time.Time) error {
+	_, err := q.db.Exec(ctx,
+		`UPDATE enrollment_tokens SET revoked_at = $3 WHERE tenant_id = $1 AND id = $2 AND revoked_at IS NULL`,
+		tenantID, id, at)
 	return err
 }

@@ -12,6 +12,33 @@ import (
 	"retune/internal/server/store/storetest"
 )
 
+func TestTokenQueriesAreScopedByTenant(t *testing.T) {
+	ctx := context.Background()
+	st := storetest.New(t)
+	q := st.Q()
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	tok := store.EnrollmentToken{ID: uuid.Must(uuid.NewV7()), TokenHash: []byte("hash-scoped"), Label: "scoped", CreatedBy: "test"}
+	if err := q.CreateEnrollmentToken(ctx, tok); err != nil {
+		t.Fatal(err)
+	}
+	other := uuid.Must(uuid.NewV7())
+
+	if _, err := q.GetEnrollmentToken(ctx, other, tok.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("another tenant must not see the row: %v", err)
+	}
+	if err := q.IncrementTokenUse(ctx, other, tok.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.RevokeEnrollmentToken(ctx, other, tok.ID, now); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := q.GetEnrollmentToken(ctx, store.DefaultTenantID, tok.ID)
+	if err != nil || got.UseCount != 0 || got.RevokedAt != nil {
+		t.Errorf("another tenant must not change the row: %+v %v", got, err)
+	}
+}
+
 func TestStore(t *testing.T) {
 	ctx := context.Background()
 	url := storetest.DatabaseURL(t)
@@ -35,7 +62,7 @@ func TestStore(t *testing.T) {
 	if err := q.CreateEnrollmentToken(ctx, tok); err != nil {
 		t.Fatal(err)
 	}
-	if err := q.IncrementTokenUse(ctx, tok.ID); err != nil {
+	if err := q.IncrementTokenUse(ctx, store.DefaultTenantID, tok.ID); err != nil {
 		t.Fatal(err)
 	}
 	err = s.InTx(ctx, func(q *store.Queries) error {
@@ -54,10 +81,10 @@ func TestStore(t *testing.T) {
 	if _, err := q.GetEnrollmentTokenByHashForUpdate(ctx, []byte("missing")); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("missing token err = %v", err)
 	}
-	if err := q.RevokeEnrollmentToken(ctx, tok.ID, now); err != nil {
+	if err := q.RevokeEnrollmentToken(ctx, store.DefaultTenantID, tok.ID, now); err != nil {
 		t.Fatal(err)
 	}
-	got, err := q.GetEnrollmentToken(ctx, tok.ID)
+	got, err := q.GetEnrollmentToken(ctx, store.DefaultTenantID, tok.ID)
 	if err != nil || got.RevokedAt == nil || !got.RevokedAt.Equal(now) {
 		t.Fatalf("revoked token = %+v, err = %v", got, err)
 	}
@@ -84,29 +111,29 @@ func TestStore(t *testing.T) {
 	if err := q.CreateDevice(ctx, d2); err != nil {
 		t.Fatal(err)
 	}
-	if err := q.MarkDeviceReplaced(ctx, d1.ID, d2.ID); err != nil {
+	if err := q.MarkDeviceReplaced(ctx, store.DefaultTenantID, d1.ID, d2.ID); err != nil {
 		t.Fatal(err)
 	}
-	old, err := q.GetDevice(ctx, d1.ID)
+	old, err := q.GetDevice(ctx, store.DefaultTenantID, d1.ID)
 	if err != nil || old.Status != store.DeviceReplaced || old.ReplacedBy == nil || *old.ReplacedBy != d2.ID {
 		t.Fatalf("replaced device = %+v, err = %v", old, err)
 	}
 
-	if err := q.RecordCheckin(ctx, d2.ID, "1.2.3", now); err != nil {
+	if err := q.RecordCheckin(ctx, store.DefaultTenantID, d2.ID, "1.2.3", now); err != nil {
 		t.Fatal(err)
 	}
-	cur, err := q.GetDevice(ctx, d2.ID)
+	cur, err := q.GetDevice(ctx, store.DefaultTenantID, d2.ID)
 	if err != nil || cur.LastSeenAt == nil || !cur.LastSeenAt.Equal(now) || cur.AgentVersion != "1.2.3" {
 		t.Fatalf("after checkin = %+v, err = %v", cur, err)
 	}
-	if _, err := q.GetDevice(ctx, uuid.Must(uuid.NewV7())); !errors.Is(err, store.ErrNotFound) {
+	if _, err := q.GetDevice(ctx, store.DefaultTenantID, uuid.Must(uuid.NewV7())); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("missing device err = %v", err)
 	}
 
 	// Transactions roll back on error.
 	boom := errors.New("boom")
 	err = s.InTx(ctx, func(q *store.Queries) error {
-		if err := q.SetDeviceStatus(ctx, d2.ID, store.DeviceRetired); err != nil {
+		if err := q.SetDeviceStatus(ctx, store.DefaultTenantID, d2.ID, store.DeviceRetired); err != nil {
 			return err
 		}
 		return boom
@@ -114,7 +141,7 @@ func TestStore(t *testing.T) {
 	if !errors.Is(err, boom) {
 		t.Fatalf("InTx err = %v", err)
 	}
-	if cur, _ := q.GetDevice(ctx, d2.ID); cur.Status != store.DeviceActive {
+	if cur, _ := q.GetDevice(ctx, store.DefaultTenantID, d2.ID); cur.Status != store.DeviceActive {
 		t.Fatalf("status after rollback = %s", cur.Status)
 	}
 

@@ -144,7 +144,7 @@ func TestInventoryCommandsRenewalUnenroll(t *testing.T) {
 	if err != nil || !resp.InventoryDue {
 		t.Fatalf("first check-in = %+v, err = %v", resp, err)
 	}
-	dev, err := q.GetDevice(ctx, deviceID)
+	dev, err := q.GetDevice(ctx, store.DefaultTenantID, deviceID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +250,7 @@ func TestInventoryCommandsRenewalUnenroll(t *testing.T) {
 	}
 
 	// 5. The certificate renews, and the superseded one stops working.
-	before, err := q.GetDevice(ctx, deviceID)
+	before, err := q.GetDevice(ctx, store.DefaultTenantID, deviceID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +258,7 @@ func TestInventoryCommandsRenewalUnenroll(t *testing.T) {
 	if _, err := renewing.Checkin(ctx, protocol.CheckinRequest{}); err != nil {
 		t.Fatal(err)
 	}
-	after, err := q.GetDevice(ctx, deviceID)
+	after, err := q.GetDevice(ctx, store.DefaultTenantID, deviceID)
 	if err != nil {
 		t.Fatal(err)
 	}
