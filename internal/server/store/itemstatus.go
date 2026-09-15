@@ -82,6 +82,32 @@ func (q *Queries) ItemStatusRollup(ctx context.Context, itemKind string, itemID 
 	return out, rows.Err()
 }
 
+// DeleteItemStatusForItem removes every device's status row for one item,
+// used when the item itself is deleted (e.g. a compliance policy), in the
+// same transaction as the item row.
+func (q *Queries) DeleteItemStatusForItem(ctx context.Context, kind string, itemID uuid.UUID) error {
+	_, err := q.db.Exec(ctx,
+		`DELETE FROM device_item_status WHERE item_kind = $1 AND item_id = $2`, kind, itemID)
+	return err
+}
+
+// DeleteItemStatusExcept removes a device's status rows of one kind for every
+// item not in keep, mirroring DeleteDeviceComplianceExcept: an item no longer
+// assigned to the device should not leave a stale status row behind. An
+// empty/nil keep removes every row of that kind for the device.
+func (q *Queries) DeleteItemStatusExcept(ctx context.Context, deviceID uuid.UUID, kind string, keep []uuid.UUID) error {
+	if keep == nil {
+		// A nil slice binds as SQL NULL, and ANY(NULL) is NULL rather than
+		// false, which would make NOT (...) match nothing instead of every row.
+		keep = []uuid.UUID{}
+	}
+	_, err := q.db.Exec(ctx, `
+		DELETE FROM device_item_status
+		WHERE device_id = $1 AND item_kind = $2 AND NOT (item_id = ANY($3))`,
+		deviceID, kind, keep)
+	return err
+}
+
 // ListItemStatus returns one page of devices for an item, optionally narrowed
 // to a single status, for drilling into a rollup.
 func (q *Queries) ListItemStatus(ctx context.Context, itemKind string, itemID uuid.UUID, status string, page Page) ([]ItemStatus, int, error) {
