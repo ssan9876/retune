@@ -306,16 +306,25 @@ func (s *Syncer) stage(ctx context.Context, item protocol.Item, opts protocol.Ag
 	// the release key promised it. The server verified this at upload, but the
 	// server is exactly what this check does not trust.
 	sigBytes, err := base64.StdEncoding.DecodeString(def.Signature)
-	if err == nil {
-		err = release.Verify(s.Trusted,
-			release.Manifest{Version: def.Version, SHA256: def.SHA256},
-			release.Signature{Version: def.Version, SHA256: def.SHA256, KeyID: def.KeyID, Signature: sigBytes})
-	}
 	if err != nil {
 		if rmErr := os.RemoveAll(versionDir); rmErr != nil {
 			s.log().Error("failed to remove unverified download", "error", rmErr)
 		}
-		detail := fmt.Sprintf("signature did not verify against any trusted release key (key %s): %v", def.KeyID, err)
+		detail := fmt.Sprintf("the build's signature is not valid base64: %v", err)
+		if repErr := s.report(ctx, item.ID, def.Version, protocol.ResultFailed, "", detail); repErr != nil {
+			s.log().Error("failed to report signature failure", "error", repErr)
+		}
+		return fmt.Errorf("verify signature: %w", err)
+	}
+	if err := release.Verify(s.Trusted,
+		release.Manifest{Version: def.Version, SHA256: def.SHA256},
+		release.Signature{Version: def.Version, SHA256: def.SHA256, KeyID: def.KeyID, Signature: sigBytes}); err != nil {
+		if rmErr := os.RemoveAll(versionDir); rmErr != nil {
+			s.log().Error("failed to remove unverified download", "error", rmErr)
+		}
+		// release.Verify's own error already names the key for the untrusted
+		// case, so it is not repeated here.
+		detail := fmt.Sprintf("signature did not verify against any trusted release key: %v", err)
 		if repErr := s.report(ctx, item.ID, def.Version, protocol.ResultFailed, "", detail); repErr != nil {
 			s.log().Error("failed to report signature failure", "error", repErr)
 		}
