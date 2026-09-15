@@ -5,7 +5,6 @@
 package compliance
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -91,22 +90,6 @@ type Rule struct {
 	ProfileID  uuid.UUID // profile_applied
 }
 
-// wireRule is the strict JSON shape ParseRules decodes each element into.
-// DisallowUnknownFields on this rejects any key that is not a parameter of
-// some rule type, which is what "unknown field" means here.
-type wireRule struct {
-	Type       string `json:"type"`
-	Build      string `json:"build"`
-	Version    string `json:"version"`
-	Volumes    string `json:"volumes"`
-	MinVersion string `json:"min_version"`
-	Hours      int    `json:"hours"`
-	Days       int    `json:"days"`
-	Count      int    `json:"count"`
-	Name       string `json:"name"`
-	ProfileID  string `json:"profile_id"`
-}
-
 // ParseRules strictly decodes a policy's rules JSON: 1-50 objects, unknown
 // types and unknown fields rejected, every bound checked. It is the single
 // place that turns untrusted JSON (a create/update request body, or a row
@@ -131,85 +114,203 @@ func ParseRules(raw []byte) ([]Rule, error) {
 	return rules, nil
 }
 
+// allowedFields lists the JSON keys (besides "type") that mean something for
+// one rule type. A flat Rule struct is fine for evaluation, since "hours"
+// means the same thing for both within-rules and "name" for both software
+// rules, but parsing must not let a field meant for one type quietly apply to
+// another (a "hours" on a no_pending_reboot rule, say) - that is exactly the
+// kind of typo strict parsing exists to catch. ok is false for an
+// unsupported (or missing) type.
+func allowedFields(ruleType string) (fields map[string]bool, ok bool) {
+	one := func(name string) map[string]bool { return map[string]bool{name: true} }
+	switch ruleType {
+	case RuleOSBuildMin:
+		return one("build"), true
+	case RuleAgentVersionMin:
+		return one("version"), true
+	case RuleBitLocker:
+		return one("volumes"), true
+	case RuleTPM:
+		return one("min_version"), true
+	case RuleCheckedInWithin, RuleInventoryWithin:
+		return one("hours"), true
+	case RuleUpdatesWithin:
+		return one("days"), true
+	case RuleNoPendingReboot:
+		return map[string]bool{}, true
+	case RuleMaxLocalAdmins:
+		return one("count"), true
+	case RuleForbiddenSoftware, RuleRequiredSoftware:
+		return one("name"), true
+	case RuleProfileApplied:
+		return one("profile_id"), true
+	}
+	return nil, false
+}
+
 func parseRule(raw json.RawMessage) (Rule, error) {
-	var w wireRule
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&w); err != nil {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &m); err != nil {
 		return Rule{}, fmt.Errorf("%w: %v", ErrBadRules, err)
 	}
 
-	switch w.Type {
-	case RuleOSBuildMin:
-		if !dottedNumeric(w.Build) {
-			return Rule{}, fmt.Errorf("%w: build must be digits, optionally dotted, not %q", ErrBadRules, w.Build)
+	var ruleType string
+	if v, ok := m["type"]; ok {
+		if err := json.Unmarshal(v, &ruleType); err != nil {
+			return Rule{}, fmt.Errorf("%w: type must be a string: %v", ErrBadRules, err)
 		}
-		return Rule{Type: w.Type, Build: w.Build}, nil
+		delete(m, "type")
+	}
+
+	allowed, known := allowedFields(ruleType)
+	if !known {
+		if ruleType == "" {
+			return Rule{}, fmt.Errorf("%w: every rule needs a type", ErrBadRules)
+		}
+		return Rule{}, fmt.Errorf("%w: unsupported rule type %q", ErrBadRules, ruleType)
+	}
+	// A field present but not among this type's own parameters is rejected
+	// by name and type, distinct from a field no type recognises at all -
+	// both are still "unknown" in the sense DisallowUnknownFields caught
+	// before, but naming the type here is what makes a leaked field (e.g.
+	// "hours" on a no_pending_reboot rule) as loud as a typo'd key.
+	for field := range m {
+		if !allowed[field] {
+			return Rule{}, fmt.Errorf("%w: field %q does not apply to rule type %q", ErrBadRules, field, ruleType)
+		}
+	}
+
+	switch ruleType {
+	case RuleOSBuildMin:
+		build, _, err := stringField(m, "build")
+		if err != nil {
+			return Rule{}, err
+		}
+		if !dottedNumeric(build) {
+			return Rule{}, fmt.Errorf("%w: build must be digits, optionally dotted, not %q", ErrBadRules, build)
+		}
+		return Rule{Type: ruleType, Build: build}, nil
 
 	case RuleAgentVersionMin:
-		if !dottedNumeric(w.Version) {
-			return Rule{}, fmt.Errorf("%w: version must be a dotted numeric version, not %q", ErrBadRules, w.Version)
+		version, _, err := stringField(m, "version")
+		if err != nil {
+			return Rule{}, err
 		}
-		return Rule{Type: w.Type, Version: w.Version}, nil
+		if !dottedNumeric(version) {
+			return Rule{}, fmt.Errorf("%w: version must be a dotted numeric version, not %q", ErrBadRules, version)
+		}
+		return Rule{Type: ruleType, Version: version}, nil
 
 	case RuleBitLocker:
-		if w.Volumes != VolumesSystem && w.Volumes != VolumesAll {
-			return Rule{}, fmt.Errorf("%w: volumes must be %q or %q, not %q", ErrBadRules, VolumesSystem, VolumesAll, w.Volumes)
+		volumes, _, err := stringField(m, "volumes")
+		if err != nil {
+			return Rule{}, err
 		}
-		return Rule{Type: w.Type, Volumes: w.Volumes}, nil
+		if volumes != VolumesSystem && volumes != VolumesAll {
+			return Rule{}, fmt.Errorf("%w: volumes must be %q or %q, not %q", ErrBadRules, VolumesSystem, VolumesAll, volumes)
+		}
+		return Rule{Type: ruleType, Volumes: volumes}, nil
 
 	case RuleTPM:
-		if w.MinVersion != "" && !dottedNumeric(w.MinVersion) {
-			return Rule{}, fmt.Errorf("%w: min_version must be a dotted numeric version, not %q", ErrBadRules, w.MinVersion)
+		minVersion, present, err := stringField(m, "min_version")
+		if err != nil {
+			return Rule{}, err
 		}
-		return Rule{Type: w.Type, MinVersion: w.MinVersion}, nil
+		if present && minVersion != "" && !dottedNumeric(minVersion) {
+			return Rule{}, fmt.Errorf("%w: min_version must be a dotted numeric version, not %q", ErrBadRules, minVersion)
+		}
+		return Rule{Type: ruleType, MinVersion: minVersion}, nil
 
-	case RuleCheckedInWithin:
-		if w.Hours < MinHours || w.Hours > MaxHours {
-			return Rule{}, fmt.Errorf("%w: hours must be between %d and %d, not %d", ErrBadRules, MinHours, MaxHours, w.Hours)
+	case RuleCheckedInWithin, RuleInventoryWithin:
+		hours, present, err := intField(m, "hours")
+		if err != nil {
+			return Rule{}, err
 		}
-		return Rule{Type: w.Type, Hours: w.Hours}, nil
-
-	case RuleInventoryWithin:
-		if w.Hours < MinHours || w.Hours > MaxHours {
-			return Rule{}, fmt.Errorf("%w: hours must be between %d and %d, not %d", ErrBadRules, MinHours, MaxHours, w.Hours)
+		if !present || hours < MinHours || hours > MaxHours {
+			return Rule{}, fmt.Errorf("%w: hours must be between %d and %d, not %d", ErrBadRules, MinHours, MaxHours, hours)
 		}
-		return Rule{Type: w.Type, Hours: w.Hours}, nil
+		return Rule{Type: ruleType, Hours: hours}, nil
 
 	case RuleUpdatesWithin:
-		if w.Days < MinDays || w.Days > MaxDays {
-			return Rule{}, fmt.Errorf("%w: days must be between %d and %d, not %d", ErrBadRules, MinDays, MaxDays, w.Days)
+		days, present, err := intField(m, "days")
+		if err != nil {
+			return Rule{}, err
 		}
-		return Rule{Type: w.Type, Days: w.Days}, nil
+		if !present || days < MinDays || days > MaxDays {
+			return Rule{}, fmt.Errorf("%w: days must be between %d and %d, not %d", ErrBadRules, MinDays, MaxDays, days)
+		}
+		return Rule{Type: ruleType, Days: days}, nil
 
 	case RuleNoPendingReboot:
-		return Rule{Type: w.Type}, nil
+		return Rule{Type: ruleType}, nil
 
 	case RuleMaxLocalAdmins:
-		if w.Count < MinAdmins || w.Count > MaxAdmins {
-			return Rule{}, fmt.Errorf("%w: count must be between %d and %d, not %d", ErrBadRules, MinAdmins, MaxAdmins, w.Count)
+		count, present, err := intField(m, "count")
+		if err != nil {
+			return Rule{}, err
 		}
-		return Rule{Type: w.Type, Count: w.Count}, nil
+		if !present || count < MinAdmins || count > MaxAdmins {
+			return Rule{}, fmt.Errorf("%w: count must be between %d and %d, not %d", ErrBadRules, MinAdmins, MaxAdmins, count)
+		}
+		return Rule{Type: ruleType, Count: count}, nil
 
 	case RuleForbiddenSoftware, RuleRequiredSoftware:
-		if len(w.Name) < MinNameLen || len(w.Name) > MaxNameLen {
-			return Rule{}, fmt.Errorf("%w: name must be between %d and %d characters, got %d",
-				ErrBadRules, MinNameLen, MaxNameLen, len(w.Name))
+		name, _, err := stringField(m, "name")
+		if err != nil {
+			return Rule{}, err
 		}
-		return Rule{Type: w.Type, Name: w.Name}, nil
+		if len(name) < MinNameLen || len(name) > MaxNameLen {
+			return Rule{}, fmt.Errorf("%w: name must be between %d and %d characters, got %d",
+				ErrBadRules, MinNameLen, MaxNameLen, len(name))
+		}
+		return Rule{Type: ruleType, Name: name}, nil
 
 	case RuleProfileApplied:
-		id, err := uuid.Parse(w.ProfileID)
+		profileID, present, err := stringField(m, "profile_id")
+		if err != nil {
+			return Rule{}, err
+		}
+		if !present {
+			return Rule{}, fmt.Errorf("%w: profile_id is required", ErrBadRules)
+		}
+		id, err := uuid.Parse(profileID)
 		if err != nil {
 			return Rule{}, fmt.Errorf("%w: profile_id must be a uuid: %v", ErrBadRules, err)
 		}
-		return Rule{Type: w.Type, ProfileID: id}, nil
-
-	case "":
-		return Rule{}, fmt.Errorf("%w: every rule needs a type", ErrBadRules)
-	default:
-		return Rule{}, fmt.Errorf("%w: unsupported rule type %q", ErrBadRules, w.Type)
+		return Rule{Type: ruleType, ProfileID: id}, nil
 	}
+	// allowedFields already rejected any other ruleType.
+	panic("unreachable")
+}
+
+// stringField reads a string-typed key from a rule's raw fields. present is
+// false when the key was absent, distinct from it being set to "" - which
+// matters for max_local_admins-style callers... except no string field is
+// legitimately optional-but-zero-meaningful here; min_version is the one
+// caller that reads present to tell "not given" from "given as empty".
+func stringField(m map[string]json.RawMessage, key string) (value string, present bool, err error) {
+	raw, ok := m[key]
+	if !ok {
+		return "", false, nil
+	}
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return "", true, fmt.Errorf("%w: %s must be a string: %v", ErrBadRules, key, err)
+	}
+	return value, true, nil
+}
+
+// intField reads a number-typed key. present is false when the key was
+// absent, which is what lets max_local_admins accept an explicit count: 0
+// while still rejecting a rule that never mentions count at all.
+func intField(m map[string]json.RawMessage, key string) (value int, present bool, err error) {
+	raw, ok := m[key]
+	if !ok {
+		return 0, false, nil
+	}
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return 0, true, fmt.Errorf("%w: %s must be a whole number: %v", ErrBadRules, key, err)
+	}
+	return value, true, nil
 }
 
 // MarshalJSON writes only the parameters that matter for this rule's type, so
@@ -422,8 +523,14 @@ func evalBitLocker(r Rule, f Facts) (Failure, bool) {
 		}
 		return bitlockerFailure(r.Type, d)
 	}
-	// volumes: all. A volume reporting unknown outranks one reporting off,
-	// since "unknown" means the agent could not tell either way, and an
+	// volumes: all. Zero reported fixed volumes is not vacuously compliant -
+	// it means inventory did not tell us anything about disks at all, which
+	// is the same kind of gap as no inventory being received.
+	if len(f.Inventory.Disks) == 0 {
+		return unknownFailure(r.Type, "the device reported no fixed volumes"), true
+	}
+	// A volume reporting unknown outranks one reporting off, since
+	// "unknown" means the agent could not tell either way, and an
 	// administrator should learn that before being told a specific drive is
 	// unencrypted.
 	for _, d := range f.Inventory.Disks {

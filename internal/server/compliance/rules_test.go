@@ -54,6 +54,23 @@ func TestParseRulesRejections(t *testing.T) {
 		{"required_software empty name", `[{"type":"required_software","name":""}]`},
 		{"profile_applied bad uuid", `[{"type":"profile_applied","profile_id":"not-a-uuid"}]`},
 		{"51 rules", "[" + strings.TrimSuffix(strings.Repeat(`{"type":"no_pending_reboot"},`, 51), ",") + "]"},
+
+		// Cross-type field leakage: a field that is a legitimate parameter
+		// of some other rule type must still be rejected for this one -
+		// DisallowUnknownFields on a single flat struct would silently drop
+		// these rather than reject them.
+		{"os_build_min leaks version", `[{"type":"os_build_min","build":"26100","version":"1.0"}]`},
+		{"agent_version_min leaks build", `[{"type":"agent_version_min","version":"1.0","build":"26100"}]`},
+		{"bitlocker leaks hours", `[{"type":"bitlocker","volumes":"system","hours":24}]`},
+		{"tpm leaks count", `[{"type":"tpm","min_version":"2.0","count":1}]`},
+		{"checked_in_within leaks days", `[{"type":"checked_in_within","hours":24,"days":1}]`},
+		{"inventory_within leaks name", `[{"type":"inventory_within","hours":24,"name":"x"}]`},
+		{"updates_within leaks build", `[{"type":"updates_within","days":30,"build":"26100"}]`},
+		{"no_pending_reboot leaks hours", `[{"type":"no_pending_reboot","hours":999}]`},
+		{"max_local_admins leaks name", `[{"type":"max_local_admins","count":1,"name":"x"}]`},
+		{"forbidden_software leaks count", `[{"type":"forbidden_software","name":"x","count":1}]`},
+		{"required_software leaks volumes", `[{"type":"required_software","name":"x","volumes":"all"}]`},
+		{"profile_applied leaks name", `[{"type":"profile_applied","profile_id":"` + uuid.Must(uuid.NewV7()).String() + `","name":"x"}]`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -65,6 +82,37 @@ func TestParseRulesRejections(t *testing.T) {
 				t.Fatalf("expected error to wrap ErrBadRules, got %v", err)
 			}
 		})
+	}
+}
+
+// TestParseRulesLeakedFieldNamesTypeAndField checks the exact wording the
+// review asked for, on top of the generic rejection covered above.
+func TestParseRulesLeakedFieldNamesTypeAndField(t *testing.T) {
+	_, err := compliance.ParseRules([]byte(`[{"type":"no_pending_reboot","hours":999}]`))
+	if err == nil || !errors.Is(err, compliance.ErrBadRules) {
+		t.Fatalf("expected an ErrBadRules error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), `field "hours" does not apply to rule type "no_pending_reboot"`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// TestParseRulesMaxLocalAdminsZeroCount checks that an explicit 0 - a
+// meaningful value distinct from the field being absent - is accepted, since
+// the per-type field check must not confuse "present but zero" with "absent".
+func TestParseRulesMaxLocalAdminsZeroCount(t *testing.T) {
+	rules := mustParse(t, `[{"type":"max_local_admins","count":0}]`)
+	if len(rules) != 1 || rules[0].Count != 0 {
+		t.Fatalf("got %+v, want one rule with count 0", rules)
+	}
+	now := time.Now()
+	noAdmins := compliance.Evaluate(rules, compliance.Facts{Inventory: &protocol.Inventory{}}, now)
+	if noAdmins.State != compliance.StateCompliant {
+		t.Fatalf("zero admins against count:0: got %v, want compliant", noAdmins)
+	}
+	oneAdmin := compliance.Evaluate(rules, compliance.Facts{Inventory: &protocol.Inventory{LocalAdmins: []string{"a"}}}, now)
+	if oneAdmin.State != compliance.StateNonCompliant {
+		t.Fatalf("one admin against count:0: got %v, want non_compliant", oneAdmin)
 	}
 }
 
@@ -141,6 +189,9 @@ func TestEvaluateOSBuildMin(t *testing.T) {
 	if unknown.State != compliance.StateUnknown {
 		t.Fatalf("no build: got %v, want unknown", unknown)
 	}
+	if unknown.Failures[0].Detail != "the device has not reported an OS build" {
+		t.Fatalf("unexpected detail: %q", unknown.Failures[0].Detail)
+	}
 }
 
 func TestEvaluateAgentVersionMin(t *testing.T) {
@@ -155,12 +206,18 @@ func TestEvaluateAgentVersionMin(t *testing.T) {
 	}
 	if got := compliance.Evaluate(rules, compliance.Facts{Device: store.Device{AgentVersion: "2.4.9"}}, now); got.State != compliance.StateNonCompliant {
 		t.Fatalf("below: got %v", got)
+	} else if got.Failures[0].Detail != "the agent version is 2.4.9, below the required 2.5.0" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 	if got := compliance.Evaluate(rules, compliance.Facts{Device: store.Device{AgentVersion: ""}}, now); got.State != compliance.StateUnknown {
 		t.Fatalf("empty: got %v", got)
+	} else if got.Failures[0].Detail != "the agent version is not reported" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 	if got := compliance.Evaluate(rules, compliance.Facts{Device: store.Device{AgentVersion: "nightly"}}, now); got.State != compliance.StateUnknown {
 		t.Fatalf("non-dotted: got %v", got)
+	} else if got.Failures[0].Detail != `the agent version "nightly" is not a dotted version number` {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 }
 
@@ -191,15 +248,21 @@ func TestEvaluateBitLockerSystem(t *testing.T) {
 	unknownVol := &protocol.Inventory{Disks: []protocol.Disk{{Name: "C:", BitLocker: "unknown"}}}
 	if got := compliance.Evaluate(rules, compliance.Facts{Inventory: unknownVol}, now); got.State != compliance.StateUnknown {
 		t.Fatalf("unknown status: got %v", got)
+	} else if got.Failures[0].Detail != "BitLocker status is unknown for C:" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 
 	noVol := &protocol.Inventory{Disks: []protocol.Disk{{Name: "D:", BitLocker: "on"}}}
 	if got := compliance.Evaluate(rules, compliance.Facts{Inventory: noVol}, now); got.State != compliance.StateUnknown {
 		t.Fatalf("no system volume: got %v", got)
+	} else if got.Failures[0].Detail != "no system volume was reported" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 
 	if got := compliance.Evaluate(rules, compliance.Facts{Inventory: nil}, now); got.State != compliance.StateUnknown {
 		t.Fatalf("no inventory: got %v", got)
+	} else if got.Failures[0].Detail != "no inventory has been received" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 }
 
@@ -215,15 +278,28 @@ func TestEvaluateBitLockerAll(t *testing.T) {
 	oneOff := &protocol.Inventory{Disks: []protocol.Disk{{Name: "C:", BitLocker: "on"}, {Name: "D:", BitLocker: "off"}}}
 	if got := compliance.Evaluate(rules, compliance.Facts{Inventory: oneOff}, now); got.State != compliance.StateNonCompliant {
 		t.Fatalf("one off: got %v", got)
+	} else if got.Failures[0].Detail != "BitLocker is off on D:" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 
 	oneUnknown := &protocol.Inventory{Disks: []protocol.Disk{{Name: "C:", BitLocker: "on"}, {Name: "D:", BitLocker: "unknown"}}}
 	if got := compliance.Evaluate(rules, compliance.Facts{Inventory: oneUnknown}, now); got.State != compliance.StateUnknown {
 		t.Fatalf("one unknown: got %v", got)
+	} else if got.Failures[0].Detail != "BitLocker status is unknown for D:" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
+	}
+
+	noDisks := &protocol.Inventory{}
+	if got := compliance.Evaluate(rules, compliance.Facts{Inventory: noDisks}, now); got.State != compliance.StateUnknown {
+		t.Fatalf("no fixed volumes reported: got %v, want unknown", got)
+	} else if got.Failures[0].Detail != "the device reported no fixed volumes" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 
 	if got := compliance.Evaluate(rules, compliance.Facts{Inventory: nil}, now); got.State != compliance.StateUnknown {
 		t.Fatalf("no inventory: got %v", got)
+	} else if got.Failures[0].Detail != "no inventory has been received" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 }
 
@@ -238,9 +314,13 @@ func TestEvaluateTPM(t *testing.T) {
 	absent := &protocol.Inventory{Hardware: protocol.Hardware{TPMPresent: false}}
 	if got := compliance.Evaluate(presence, compliance.Facts{Inventory: absent}, now); got.State != compliance.StateNonCompliant {
 		t.Fatalf("absent: got %v", got)
+	} else if got.Failures[0].Detail != "no TPM is present" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 	if got := compliance.Evaluate(presence, compliance.Facts{Inventory: nil}, now); got.State != compliance.StateUnknown {
 		t.Fatalf("no inventory: got %v", got)
+	} else if got.Failures[0].Detail != "no inventory has been received" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 
 	versioned := mustParse(t, `[{"type":"tpm","min_version":"2.0"}]`)
@@ -255,6 +335,8 @@ func TestEvaluateTPM(t *testing.T) {
 	below := &protocol.Inventory{Hardware: protocol.Hardware{TPMPresent: true, TPMVersion: "1.2"}}
 	if got := compliance.Evaluate(versioned, compliance.Facts{Inventory: below}, now); got.State != compliance.StateNonCompliant {
 		t.Fatalf("below min version: got %v", got)
+	} else if got.Failures[0].Detail != "the TPM version is 1.2, below the required 2.0" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 }
 
@@ -283,6 +365,8 @@ func TestEvaluateCheckedInWithin(t *testing.T) {
 
 	if got := compliance.Evaluate(rules, compliance.Facts{Device: store.Device{}}, now); got.State != compliance.StateUnknown {
 		t.Fatalf("never seen: got %v", got)
+	} else if got.Failures[0].Detail != "the device has never checked in" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 }
 
@@ -301,9 +385,13 @@ func TestEvaluateInventoryWithin(t *testing.T) {
 	stale := ts(48, now)
 	if got := compliance.Evaluate(rules, compliance.Facts{InventoryReceivedAt: stale}, now); got.State != compliance.StateNonCompliant {
 		t.Fatalf("stale: got %v", got)
+	} else if got.Failures[0].Detail != "inventory was last received 2 days ago (limit 24 hours)" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 	if got := compliance.Evaluate(rules, compliance.Facts{InventoryReceivedAt: nil}, now); got.State != compliance.StateUnknown {
 		t.Fatalf("never: got %v", got)
+	} else if got.Failures[0].Detail != "inventory has never been received" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 }
 
@@ -329,9 +417,13 @@ func TestEvaluateUpdatesWithin(t *testing.T) {
 	}
 	if got := compliance.Evaluate(rules, compliance.Facts{Inventory: &protocol.Inventory{}}, now); got.State != compliance.StateUnknown {
 		t.Fatalf("no date: got %v", got)
+	} else if got.Failures[0].Detail != "no update installation date has been reported" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 	if got := compliance.Evaluate(rules, compliance.Facts{Inventory: nil}, now); got.State != compliance.StateUnknown {
 		t.Fatalf("no inventory: got %v", got)
+	} else if got.Failures[0].Detail != "no update installation date has been reported" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 }
 
@@ -351,6 +443,8 @@ func TestEvaluateNoPendingReboot(t *testing.T) {
 	}
 	if got := compliance.Evaluate(rules, compliance.Facts{Inventory: nil}, now); got.State != compliance.StateUnknown {
 		t.Fatalf("no inventory: got %v", got)
+	} else if got.Failures[0].Detail != "no inventory has been received" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 }
 
@@ -376,6 +470,8 @@ func TestEvaluateMaxLocalAdmins(t *testing.T) {
 	}
 	if got := compliance.Evaluate(rules, compliance.Facts{Inventory: nil}, now); got.State != compliance.StateUnknown {
 		t.Fatalf("no inventory: got %v", got)
+	} else if got.Failures[0].Detail != "no inventory has been received" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 }
 
@@ -398,6 +494,8 @@ func TestEvaluateForbiddenSoftware(t *testing.T) {
 	}
 	if got := compliance.Evaluate(rules, compliance.Facts{Inventory: nil}, now); got.State != compliance.StateUnknown {
 		t.Fatalf("no inventory: got %v", got)
+	} else if got.Failures[0].Detail != "no inventory has been received" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 }
 
@@ -419,6 +517,8 @@ func TestEvaluateRequiredSoftware(t *testing.T) {
 	}
 	if got := compliance.Evaluate(rules, compliance.Facts{Inventory: nil}, now); got.State != compliance.StateUnknown {
 		t.Fatalf("no inventory: got %v", got)
+	} else if got.Failures[0].Detail != "no inventory has been received" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 }
 
@@ -439,14 +539,21 @@ func TestEvaluateProfileApplied(t *testing.T) {
 	if got.State != compliance.StateNonCompliant {
 		t.Fatalf("failed: got %v", got)
 	}
+	if got.Failures[0].Detail != "the profile's status is failed, not succeeded" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
+	}
 
 	pending := map[uuid.UUID]string{pid: store.ItemPending}
 	if got := compliance.Evaluate(rules, compliance.Facts{ProfileStatus: pending}, now); got.State != compliance.StateUnknown {
 		t.Fatalf("pending: got %v", got)
+	} else if got.Failures[0].Detail != "the profile has not finished applying" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 
 	if got := compliance.Evaluate(rules, compliance.Facts{ProfileStatus: nil}, now); got.State != compliance.StateUnknown {
 		t.Fatalf("no status row: got %v", got)
+	} else if got.Failures[0].Detail != "the profile has not finished applying" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 }
 
