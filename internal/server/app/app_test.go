@@ -29,7 +29,11 @@ import (
 )
 
 // testReleaseKey is the release key newTestApp configures the app's server
-// with, so agentversions_test.go can sign uploads against it.
+// with, so agentversions_test.go can sign uploads against it. newTestApp
+// rewrites it every time it runs, so any test that uploads must read it after
+// its own call to newTestApp, not cache it earlier; this package must
+// therefore stay non-parallel (no t.Parallel() in these tests), or two tests'
+// keys would race on this one variable.
 var testReleaseKey release.PrivateKey
 
 func newTestApp(t *testing.T) (*app.App, *httptest.Server) {
