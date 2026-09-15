@@ -148,6 +148,66 @@ func TestUploadRejectsBadInput(t *testing.T) {
 	}
 }
 
+// A bad version string that slips past every check earlier in Upload is
+// still caught, since it is Artifacts.Put that knows which strings are
+// usable as a directory name -- and that refusal must be audited exactly
+// like every other rejection, not returned as a silent 400.
+func TestUploadAuditsABadVersionFromPut(t *testing.T) {
+	st := storetest.New(t)
+	ctx := context.Background()
+	svc, priv := service(t, st)
+
+	before := countRejections(t, st, ctx)
+	_, err := svc.Upload(ctx, signed(priv, "../evil", "x", "ops"), strings.NewReader("x"))
+	if !errors.Is(err, agentversions.ErrBadRequest) {
+		t.Fatalf("want ErrBadRequest, got %v", err)
+	}
+	if got := countRejections(t, st, ctx) - before; got != 1 {
+		t.Errorf("%d new rejection audit entries, want 1", got)
+	}
+}
+
+// countRejections returns how many agent_version.rejected audit entries
+// exist, so a test can check that exactly one more was written by the call
+// under test.
+func countRejections(t *testing.T, st *store.Store, ctx context.Context) int {
+	t.Helper()
+	entries, _, err := st.Q().ListAuditPage(ctx, store.Page{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, e := range entries {
+		if e.Action == "agent_version.rejected" {
+			n++
+		}
+	}
+	return n
+}
+
+// A concurrent upload of the same version can pass Upload's own pre-check
+// before either writes bytes; Artifacts.Put's ErrExists is what actually
+// catches that collision, and the refusal must be audited exactly like every
+// other rejection, not silently returned as ErrVersionTaken.
+func TestUploadAuditsAConcurrentUploadRace(t *testing.T) {
+	st := storetest.New(t)
+	ctx := context.Background()
+	svc, priv := service(t, st)
+
+	// Pre-seed the version directory the way a racing upload would, for a
+	// version the DB has not seen yet -- so Upload's pre-check passes and
+	// Put is what discovers the collision.
+	if _, _, err := svc.Artifacts.Put("9.0.0", strings.NewReader("already there"), 1<<20); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := svc.Upload(ctx, signed(priv, "9.0.0", "new bytes", "ops"), strings.NewReader("new bytes"))
+	if !errors.Is(err, agentversions.ErrVersionTaken) {
+		t.Fatalf("want ErrVersionTaken, got %v", err)
+	}
+	assertRejectionAudited(t, st, ctx)
+}
+
 // With no release keys configured, an upload is refused before its signature
 // header is even looked at: nothing is silently accepted just because a
 // caller forgot to wire ReleaseKeys, however good the signature it carries.

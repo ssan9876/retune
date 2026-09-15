@@ -21,6 +21,12 @@ var ErrNotFound = errors.New("artifact not found")
 // ErrExists is returned by Put when the version is already stored.
 var ErrExists = errors.New("that version is already stored")
 
+// ErrBadVersion is returned by Put and Open when the version string cannot
+// be used as a directory name -- a distinct sentinel from ErrExists, so a
+// caller can tell a bad string from a legitimate collision and audit or
+// report each one differently.
+var ErrBadVersion = errors.New("invalid version")
+
 // binaryName is the filename every version stores its build under.
 const binaryName = "retune-agent.exe"
 
@@ -36,7 +42,7 @@ type Store struct {
 
 func validateVersion(version string) error {
 	if version == "" || version == "." || version == ".." || !versionPattern.MatchString(version) {
-		return fmt.Errorf("invalid version %q", version)
+		return fmt.Errorf("%w: %q", ErrBadVersion, version)
 	}
 	return nil
 }

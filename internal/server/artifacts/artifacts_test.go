@@ -90,13 +90,15 @@ func TestOpenAndRemoveMissing(t *testing.T) {
 }
 
 // A version string arrives from an administrator and becomes a path segment,
-// so it must not be able to escape the directory.
+// so it must not be able to escape the directory. ErrBadVersion is a distinct
+// sentinel from ErrExists, so a caller can map each to its own audited
+// rejection rather than treating a bad string like a legitimate collision.
 func TestPutRejectsAPathTraversingVersion(t *testing.T) {
 	dir := t.TempDir()
 	s := artifacts.Store{Dir: dir}
 	for _, bad := range []string{"../evil", "a/b", `a\b`, "", "."} {
-		if _, _, err := s.Put(bad, strings.NewReader("x"), 1<<20); err == nil {
-			t.Errorf("version %q should be refused", bad)
+		if _, _, err := s.Put(bad, strings.NewReader("x"), 1<<20); !errors.Is(err, artifacts.ErrBadVersion) {
+			t.Errorf("version %q: want ErrBadVersion, got %v", bad, err)
 		}
 		// Rejection must happen before any filesystem call, not just before
 		// the return -- nothing should ever be created under Dir.

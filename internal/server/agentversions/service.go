@@ -120,13 +120,22 @@ func (s *Service) Upload(ctx context.Context, in NewVersion, body io.Reader) (st
 	}
 
 	sum, size, err := s.Artifacts.Put(version, body, MaxUploadBytes)
-	if errors.Is(err, artifacts.ErrExists) {
-		return store.AgentVersion{}, ErrVersionTaken
-	}
-	if err != nil {
+	switch {
+	case errors.Is(err, artifacts.ErrExists):
+		// The pre-check above is racy against a concurrent upload of the
+		// same version: both can pass it before either writes bytes. Put's
+		// ErrExists is what actually catches that, and the collision is
+		// exactly as worth noticing as the ordinary duplicate rejected above.
+		return store.AgentVersion{}, s.reject(ctx, in, ErrVersionTaken, "that version has already been uploaded")
+	case errors.Is(err, artifacts.ErrBadVersion):
 		// A bad version string is the caller's to fix, and Put is what knows
 		// which strings are usable as a directory name.
-		return store.AgentVersion{}, fmt.Errorf("%w: %v", ErrBadRequest, err)
+		return store.AgentVersion{}, s.reject(ctx, in, ErrBadRequest, err.Error())
+	case err != nil:
+		// Anything else -- disk full, permission denied -- is a server fault,
+		// not something the caller can fix by resubmitting, so it stays an
+		// internal error rather than a 400.
+		return store.AgentVersion{}, err
 	}
 
 	// The bytes are on disk; from here every refusal removes them. The checks
@@ -167,7 +176,16 @@ func (s *Service) Upload(ctx context.Context, in NewVersion, body io.Reader) (st
 		// an artifact with no metadata pointing at it, indistinguishable from
 		// a completed upload once someone looks at the disk.
 		_ = s.Artifacts.Remove(version)
-		return store.AgentVersion{}, uploadError(err)
+		mapped := uploadError(err)
+		if errors.Is(mapped, ErrVersionTaken) {
+			// Same race as the Artifacts.Put case above, caught here instead
+			// because the unique index is what actually serialises two
+			// concurrent uploads through the pre-check at the same instant.
+			return store.AgentVersion{}, s.reject(ctx, in, ErrVersionTaken, "that version has already been uploaded")
+		}
+		// Every other transaction failure is a server fault, not the
+		// caller's to fix, and stays an unaudited internal error.
+		return store.AgentVersion{}, mapped
 	}
 	return v, nil
 }
