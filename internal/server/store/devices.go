@@ -83,6 +83,74 @@ func (q *Queries) ListDevices(ctx context.Context) ([]Device, error) {
 	return out, rows.Err()
 }
 
+// DeviceBucketCounts returns the dashboard's three FleetBar buckets - active,
+// stale and retired - computed in one aggregate query over the whole fleet
+// rather than by pulling every device's row into Go: retired is anything not
+// active, stale is active with no check-in since cutoff (or none on record),
+// and active is active with a check-in at or after cutoff. The caller passes
+// cutoff (now minus the console's staleAfter window) so this stays the same
+// "how long since last seen" definition the device list's own Stale flag
+// uses, rather than a second copy of the threshold living in SQL. The three
+// always partition every device, so their sum is the total device count.
+func (q *Queries) DeviceBucketCounts(ctx context.Context, cutoff time.Time) (active, stale, retired int, err error) {
+	err = q.db.QueryRow(ctx, `
+		SELECT
+			count(*) FILTER (WHERE status = $2 AND last_seen_at >= $3),
+			count(*) FILTER (WHERE status = $2 AND (last_seen_at IS NULL OR last_seen_at < $3)),
+			count(*) FILTER (WHERE status <> $2)
+		FROM devices WHERE tenant_id = $1`, DefaultTenantID, DeviceActive, cutoff).Scan(&active, &stale, &retired)
+	return active, stale, retired, err
+}
+
+// ActiveAgentVersionCounts groups active devices by their reported agent
+// version, for the dashboard's top-10 list. Unlike DeviceBucketCounts this
+// does need one row per device, but only two narrow columns of it
+// (agent_version here, os_build in ActiveOSBuildCounts) rather than the full
+// device row ListDevices returns.
+func (q *Queries) ActiveAgentVersionCounts(ctx context.Context) (map[string]int, error) {
+	rows, err := q.db.Query(ctx, `
+		SELECT agent_version, count(*) FROM devices
+		WHERE tenant_id = $1 AND status = $2 AND agent_version <> ''
+		GROUP BY agent_version`, DefaultTenantID, DeviceActive)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var version string
+		var n int
+		if err := rows.Scan(&version, &n); err != nil {
+			return nil, err
+		}
+		out[version] = n
+	}
+	return out, rows.Err()
+}
+
+// ActiveOSBuildCounts groups active devices by their reported OS build, for
+// the dashboard's top-10 list. See ActiveAgentVersionCounts.
+func (q *Queries) ActiveOSBuildCounts(ctx context.Context) (map[string]int, error) {
+	rows, err := q.db.Query(ctx, `
+		SELECT os_build, count(*) FROM devices
+		WHERE tenant_id = $1 AND status = $2 AND os_build <> ''
+		GROUP BY os_build`, DefaultTenantID, DeviceActive)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var build string
+		var n int
+		if err := rows.Scan(&build, &n); err != nil {
+			return nil, err
+		}
+		out[build] = n
+	}
+	return out, rows.Err()
+}
+
 // UpdateDeviceHardware applies non-empty inventory values; empty values leave
 // the existing column untouched.
 func (q *Queries) UpdateDeviceHardware(ctx context.Context, tenantID, id uuid.UUID, h HardwareInfo) error {

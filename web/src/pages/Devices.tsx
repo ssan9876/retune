@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api } from "../api/client";
-import type { Device, ListResponse } from "../api/types";
+import type { Dashboard, Device } from "../api/types";
 import { FleetBar } from "../components/FleetBar";
 import type { FleetCounts } from "../components/FleetBar";
 import { StatusDot } from "../components/StatusDot";
@@ -44,21 +44,20 @@ export default function Devices() {
     status,
   });
 
-  // The fleet bar summarises the whole fleet, not just the current page.
+  // The fleet bar summarises the whole fleet, not just the current page, so
+  // it comes from the dashboard's SQL-computed buckets rather than a capped
+  // device page - and for the same reason it is fetched once on mount rather
+  // than following `items`, which would re-run five fleet-wide aggregates on
+  // every search keystroke and every page turn.
   useEffect(() => {
     api
-      .get<ListResponse<Device>>("/devices?limit=200")
-      .then((page) => {
-        const summary: FleetCounts = { active: 0, stale: 0, retired: 0 };
-        for (const device of page.items) {
-          if (device.status !== "active") summary.retired++;
-          else if (device.stale) summary.stale++;
-          else summary.active++;
-        }
-        setCounts(summary);
+      .get<Dashboard>("/dashboard")
+      .then((dashboard) => {
+        const { active, stale, retired } = dashboard.devices;
+        setCounts({ active, stale, retired });
       })
       .catch(() => setCounts({ active: 0, stale: 0, retired: 0 }));
-  }, [items]);
+  }, []);
 
   const shown = filter === "stale" ? items.filter((device) => device.stale) : items;
 
@@ -66,17 +65,22 @@ export default function Devices() {
     <>
       <div className="content__head">
         <h1>Devices</h1>
-        <input
-          className="devices__search"
-          type="search"
-          aria-label="Search devices"
-          placeholder="Hostname, serial or model"
-          value={search}
-          onChange={(event) => {
-            setOffset(0);
-            setSearch(event.target.value);
-          }}
-        />
+        <div className="devices__head-actions">
+          <input
+            className="devices__search"
+            type="search"
+            aria-label="Search devices"
+            placeholder="Hostname, serial or model"
+            value={search}
+            onChange={(event) => {
+              setOffset(0);
+              setSearch(event.target.value);
+            }}
+          />
+          <a className="button" href="/api/admin/v1/devices/export.csv">
+            Export CSV
+          </a>
+        </div>
       </div>
 
       <FleetBar
@@ -111,6 +115,7 @@ export default function Devices() {
               <tr>
                 <th>Hostname</th>
                 <th>Status</th>
+                <th>Compliance</th>
                 <th>Operating system</th>
                 <th>Last seen</th>
                 <th>Agent</th>
@@ -126,6 +131,9 @@ export default function Devices() {
                     <StatusDot
                       status={device.status === "active" && device.stale ? "stale" : device.status}
                     />
+                  </td>
+                  <td>
+                    <StatusDot status={device.compliance} />
                   </td>
                   <td>{device.os_version || "—"}</td>
                   <td>{relative(device.last_seen_at)}</td>

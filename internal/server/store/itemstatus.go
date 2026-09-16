@@ -82,6 +82,86 @@ func (q *Queries) ItemStatusRollup(ctx context.Context, itemKind string, itemID 
 	return out, rows.Err()
 }
 
+// DeleteItemStatusForItem removes every device's status row for one item,
+// used when the item itself is deleted (e.g. a compliance policy), in the
+// same transaction as the item row.
+func (q *Queries) DeleteItemStatusForItem(ctx context.Context, kind string, itemID uuid.UUID) error {
+	_, err := q.db.Exec(ctx,
+		`DELETE FROM device_item_status WHERE item_kind = $1 AND item_id = $2`, kind, itemID)
+	return err
+}
+
+// DeleteItemStatusExcept removes a device's status rows of one kind for every
+// item not in keep, mirroring DeleteDeviceComplianceExcept: an item no longer
+// assigned to the device should not leave a stale status row behind. An
+// empty/nil keep removes every row of that kind for the device.
+func (q *Queries) DeleteItemStatusExcept(ctx context.Context, deviceID uuid.UUID, kind string, keep []uuid.UUID) error {
+	if keep == nil {
+		// A nil slice binds as SQL NULL, and ANY(NULL) is NULL rather than
+		// false, which would make NOT (...) match nothing instead of every row.
+		keep = []uuid.UUID{}
+	}
+	_, err := q.db.Exec(ctx, `
+		DELETE FROM device_item_status
+		WHERE device_id = $1 AND item_kind = $2 AND NOT (item_id = ANY($3))`,
+		deviceID, kind, keep)
+	return err
+}
+
+// ListDeviceItemStatus returns one device's status for every item of one
+// kind, keyed by item id. Compliance evaluation uses this to build
+// Facts.ProfileStatus (kind "profile") without a per-policy round trip for
+// each profile_applied rule.
+func (q *Queries) ListDeviceItemStatus(ctx context.Context, deviceID uuid.UUID, kind string) (map[uuid.UUID]string, error) {
+	rows, err := q.db.Query(ctx, `
+		SELECT item_id, status FROM device_item_status
+		WHERE tenant_id = $1 AND device_id = $2 AND item_kind = $3`, DefaultTenantID, deviceID, kind)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[uuid.UUID]string{}
+	for rows.Next() {
+		var id uuid.UUID
+		var status string
+		if err := rows.Scan(&id, &status); err != nil {
+			return nil, err
+		}
+		out[id] = status
+	}
+	return out, rows.Err()
+}
+
+// FailedDeploymentCounts counts active devices with at least one failed
+// status, grouped by item kind, for the dashboard's failed-deployment bar. A
+// device counts once per kind no matter how many items of that kind are
+// failing on it: the number that matters there is "how many devices need
+// attention", not "how many failing rows exist". The result also carries
+// whatever other kinds (e.g. "compliance") happen to have failed rows; the
+// dashboard simply reads the four keys it cares about and ignores the rest.
+func (q *Queries) FailedDeploymentCounts(ctx context.Context) (map[string]int, error) {
+	rows, err := q.db.Query(ctx, `
+		SELECT s.item_kind, count(DISTINCT s.device_id)
+		FROM device_item_status s
+		JOIN devices d ON d.id = s.device_id AND d.tenant_id = s.tenant_id
+		WHERE s.tenant_id = $1 AND d.status = $2 AND s.status = $3
+		GROUP BY s.item_kind`, DefaultTenantID, DeviceActive, ItemFailed)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var kind string
+		var n int
+		if err := rows.Scan(&kind, &n); err != nil {
+			return nil, err
+		}
+		out[kind] = n
+	}
+	return out, rows.Err()
+}
+
 // ListItemStatus returns one page of devices for an item, optionally narrowed
 // to a single status, for drilling into a rollup.
 func (q *Queries) ListItemStatus(ctx context.Context, itemKind string, itemID uuid.UUID, status string, page Page) ([]ItemStatus, int, error) {

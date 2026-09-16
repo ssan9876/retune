@@ -7,10 +7,12 @@ import AgentVersions from "./pages/AgentVersions";
 import Apps from "./pages/Apps";
 import Audit from "./pages/Audit";
 import Commands from "./pages/Commands";
+import Compliance from "./pages/Compliance";
 import DeviceDetail from "./pages/DeviceDetail";
 import Devices from "./pages/Devices";
 import Groups from "./pages/Groups";
 import Login from "./pages/Login";
+import Overview from "./pages/Overview";
 import Profiles from "./pages/Profiles";
 import Scripts from "./pages/Scripts";
 import Tokens from "./pages/Tokens";
@@ -23,7 +25,7 @@ export default function App() {
   return (
     <Shell>
       <Routes>
-        <Route path="/" element={<Navigate to="/devices" replace />} />
+        <Route path="/" element={<Overview />} />
         <Route path="/devices" element={<Devices />} />
         <Route path="/devices/:id" element={<DeviceDetail />} />
         <Route path="/groups" element={<Groups />} />
@@ -31,6 +33,7 @@ export default function App() {
         <Route path="/apps" element={<Apps />} />
         <Route path="/agent-versions" element={<AgentVersions />} />
         <Route path="/profiles" element={<Profiles />} />
+        <Route path="/compliance" element={<Compliance />} />
         <Route path="/commands" element={<Commands />} />
         <Route path="/tokens" element={<Tokens />} />
         <Route path="/audit" element={<Audit />} />

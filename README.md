@@ -28,6 +28,12 @@ Go agent runs on each machine.
 - **Agent self-update.** Agent builds assigned to groups, verified by hash,
   swapped under supervision, and rolled back automatically if the new build
   cannot check in.
+- **Compliance.** Policies assigned to groups that say what a healthy device
+  looks like — encryption, patch level, check-in recency, forbidden or
+  required software and more — evaluated server-side from what is already
+  reported, with no agent involvement.
+- **Overview dashboard and CSV export.** A fleet-wide landing page, and CSV
+  export of the device list and of one policy's results.
 - **Packaging.** A container image and Compose stack for the server, and an MSI
   that installs the agent as a Windows service which enrolls itself.
 
@@ -399,6 +405,56 @@ A device's escrowed volumes appear on its page in the console. The key itself is
 never part of that listing: showing one is a separate, deliberate action that
 requires the admin role and is written to the audit log every time, with who
 asked and why. A read-only account can see that a key exists and cannot have it.
+
+## Compliance
+
+A **compliance policy** states what a healthy device looks like, as a list of
+rules, and is assigned to groups the same way profiles and apps are. Nothing
+runs on the agent for this: every rule is evaluated server-side from what
+inventory, the device row and item statuses already report, right after
+inventory arrives and again every 15 minutes so a device that has simply gone
+quiet is caught even with no new inventory to react to. "Evaluate now" on a
+policy runs it on demand against every device it currently applies to.
+
+| Rule | Checks |
+|---|---|
+| `os_build_min`, `agent_version_min` | a minimum OS build or agent version |
+| `bitlocker` | the system drive, or every fixed volume, encrypted |
+| `tpm` | a TPM present, optionally at a minimum version |
+| `checked_in_within`, `inventory_within` | recent check-in or inventory, in hours |
+| `updates_within` | an update installed within some number of days |
+| `no_pending_reboot` | no reboot outstanding |
+| `max_local_admins` | a ceiling on local administrator accounts |
+| `forbidden_software`, `required_software` | a package name absent, or present |
+| `profile_applied` | a configuration profile currently `succeeded` on the device |
+
+A policy scores each rule as compliant, non-compliant or unknown (a rule with
+nothing to evaluate — no inventory yet, say — is unknown rather than a guess
+in either direction) and the policy's own state is the worst of its rules. A
+device's **overall** compliance is the worst state across every policy
+assigned to it, or `not_evaluated` if none applies. Each result is also
+mirrored into the same per-device item status apps and profiles use, so a
+policy's rollup and a device's page show compliance the same way they show
+everything else.
+
+The **Compliance** page lists policies with their compliant/non-compliant
+split, an editor for their rules, and per-policy device results filterable by
+state. The compliance column on **Devices**, and the compliance section on a
+device's own page, both read the same overall and per-policy state.
+
+## Overview and export
+
+The console's landing page (`/`) is a fleet-wide overview: device counts by
+status, the same compliance split, deployments currently failing by kind, and
+the top agent versions and OS builds in use — all computed for active devices
+only, so a pile of retired machines never skews the picture.
+
+**Devices** and a compliance policy's device list both have an **Export CSV**
+link (`GET /devices/export.csv`, `GET
+/compliance-policies/{id}/devices/export.csv` on the admin API). Any cell that
+would otherwise start with `=`, `+`, `-`, `@`, a tab or a carriage return is
+given a leading apostrophe first, so a hostname or failure detail a device
+reported can never be read as a spreadsheet formula by whoever opens the file.
 
 ## Command-line reference
 

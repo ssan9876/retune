@@ -1,0 +1,30 @@
+.overview__section {
+  margin-bottom: var(--space-8);
+}
+
+.overview__section h2 {
+  margin-bottom: var(--space-3);
+}
+
+.overview__hint {
+  margin: 0 0 var(--space-3);
+  color: var(--ink-muted);
+  font-size: var(--text-xs);
+}
+
+.overview__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  font-size: var(--text-sm);
+}
+
+.overview__stat b {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.overview__muted {
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+}

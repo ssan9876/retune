@@ -51,3 +51,46 @@ func TestMarkItemSucceededOnceDoesNotOverwriteAnExistingVerdict(t *testing.T) {
 		t.Fatalf("rollup %v", rollup)
 	}
 }
+
+func TestListDeviceItemStatus(t *testing.T) {
+	st := storetest.New(t)
+	ctx := context.Background()
+	dev := newDevice(t, st.Q(), "h1")
+	profileA := uuid.Must(uuid.NewV7())
+	profileB := uuid.Must(uuid.NewV7())
+	now := time.Now()
+
+	if err := st.Q().SetItemStatus(ctx, store.ItemStatus{
+		DeviceID: dev.ID, ItemKind: "profile", ItemID: profileA,
+		Status: store.ItemSucceeded, Version: 1, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Q().SetItemStatus(ctx, store.ItemStatus{
+		DeviceID: dev.ID, ItemKind: "profile", ItemID: profileB,
+		Status: store.ItemPending, Version: 1, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// A different kind on the same device must not leak into the result.
+	if err := st.Q().SetItemStatus(ctx, store.ItemStatus{
+		DeviceID: dev.ID, ItemKind: "agent", ItemID: uuid.Must(uuid.NewV7()),
+		Status: store.ItemFailed, Version: 1, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := st.Q().ListDeviceItemStatus(ctx, dev.ID, "profile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[uuid.UUID]string{profileA: store.ItemSucceeded, profileB: store.ItemPending}
+	if len(got) != len(want) || got[profileA] != want[profileA] || got[profileB] != want[profileB] {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	none, err := st.Q().ListDeviceItemStatus(ctx, dev.ID, "compliance")
+	if err != nil || len(none) != 0 {
+		t.Fatalf("none: %v %v", err, none)
+	}
+}

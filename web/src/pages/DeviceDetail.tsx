@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
-import type { DeviceDetail as Detail } from "../api/types";
+import type { CompliancePolicy, DeviceCompliance, DeviceDetail as Detail, ListResponse } from "../api/types";
 import { RecoveryKeys } from "../components/RecoveryKeys";
 import { RunScriptDialog } from "../components/RunScriptDialog";
 import { StatusDot } from "../components/StatusDot";
@@ -15,6 +15,14 @@ export default function DeviceDetail() {
   const { id = "" } = useParams();
   const { canWrite } = useSession();
   const [detail, setDetail] = useState<Detail | null>(null);
+  const [compliance, setCompliance] = useState<DeviceCompliance | null>(null);
+  const [complianceError, setComplianceError] = useState<unknown>(null);
+  // GET /devices/{id}/compliance returns each result's bare policy_id, with
+  // no name (spec §5 leaves that endpoint's shape as-is), so the name is
+  // resolved here from the same policy list the Compliance page fetches. A
+  // policy that has since been deleted, or a list that fails to load, falls
+  // back to the raw id rather than showing nothing.
+  const [policyNames, setPolicyNames] = useState<Record<string, string>>({});
   const [error, setError] = useState<unknown>(null);
   const [tab, setTab] = useState<"software" | "commands">("software");
   const [scriptOpen, setScriptOpen] = useState(false);
@@ -27,6 +35,21 @@ export default function DeviceDetail() {
         setError(null);
       })
       .catch(setError);
+    api
+      .get<DeviceCompliance>(`/devices/${id}/compliance`)
+      .then((next) => {
+        setCompliance(next);
+        setComplianceError(null);
+      })
+      .catch(setComplianceError);
+    api
+      .get<ListResponse<CompliancePolicy>>("/compliance-policies?limit=200")
+      .then((resp) => {
+        const names: Record<string, string> = {};
+        for (const p of resp.items) names[p.id] = p.name;
+        setPolicyNames(names);
+      })
+      .catch(() => setPolicyNames({}));
   }, [id]);
 
   useEffect(load, [load]);
@@ -103,6 +126,38 @@ export default function DeviceDetail() {
           <dd>{inventory ? relative(inventory.collected_at) : "never"}</dd>
         </div>
       </dl>
+
+      <section className="compliance">
+        <h2>Compliance</h2>
+        <ErrorNote error={complianceError} />
+        {!compliance && !complianceError ? (
+          <Spinner />
+        ) : compliance && compliance.policies.length === 0 ? (
+          <p className="compliance__empty">No compliance policies apply to this device.</p>
+        ) : compliance ? (
+          <>
+            <p className="compliance__overall">
+              <StatusDot status={compliance.overall} label={`Overall: ${compliance.overall.replace(/_/g, " ")}`} />
+            </p>
+            <ul className="compliance__policies">
+              {compliance.policies.map((policy) => (
+                <li key={policy.policy_id}>
+                  <StatusDot status={policy.state} />
+                  <span>{policyNames[policy.policy_id] ?? policy.policy_id}</span>
+                  <span className="compliance__evaluated">evaluated {relative(policy.evaluated_at)}</span>
+                  {policy.failures.length > 0 ? (
+                    <ul className="compliance__failures">
+                      {policy.failures.map((failure, index) => (
+                        <li key={index}>{failure.detail}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null}
+      </section>
 
       {canWrite && device.status === "active" ? (
         <div className="actions" style={{ marginBottom: "var(--space-6)" }}>

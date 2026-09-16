@@ -21,6 +21,7 @@ import (
 	"retune/internal/server/bitlocker"
 	"retune/internal/server/ca"
 	"retune/internal/server/commands"
+	"retune/internal/server/compliance"
 	"retune/internal/server/console"
 	"retune/internal/server/devices"
 	"retune/internal/server/enroll"
@@ -48,6 +49,7 @@ type App struct {
 	BitLocker     *bitlocker.Service
 	Devices       *devices.Service
 	Groups        *groups.Service
+	Compliance    *compliance.Service
 	Auth          *auth.Service
 	Handler       http.Handler
 	TLSConfig     *tls.Config
@@ -93,7 +95,8 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 
 	svc := &enroll.Service{Store: st, CA: authority, Now: time.Now, CertValidity: clientCertValidity}
 	grp := &groups.Service{Store: st, Now: time.Now, Log: log}
-	inv := &inventory.Service{Store: st, Now: time.Now, Groups: grp, Log: log}
+	comp := &compliance.Service{Store: st, Now: time.Now, Log: log}
+	inv := &inventory.Service{Store: st, Now: time.Now, Groups: grp, Compliance: comp, Log: log}
 	cmd := &commands.Service{Store: st, Now: time.Now}
 	scr := &scripts.Service{Store: st, Now: time.Now}
 	prof := &profiles.Service{Store: st, Now: time.Now}
@@ -122,7 +125,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		ClientCert: clientCert,
 	}
 	admin := &adminapi.Handler{
-		Auth: authSvc, Store: st, Commands: cmd, Devices: dev, Enroll: svc, Groups: grp, Scripts: scr, Profiles: prof, Apps: appSvc, AgentVersions: agentVers, BitLocker: locker,
+		Auth: authSvc, Store: st, Commands: cmd, Devices: dev, Enroll: svc, Groups: grp, Scripts: scr, Profiles: prof, Apps: appSvc, Compliance: comp, AgentVersions: agentVers, BitLocker: locker,
 		Now: time.Now, Log: log,
 	}
 	root := http.NewServeMux()
@@ -143,6 +146,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		BitLocker:     locker,
 		Devices:       dev,
 		Groups:        grp,
+		Compliance:    comp,
 		Auth:          authSvc,
 		Handler:       root,
 		TLSConfig:     tlsCfg,

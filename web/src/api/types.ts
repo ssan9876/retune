@@ -25,6 +25,7 @@ export interface Device {
   last_seen_at?: string;
   cert_expires_at: string;
   stale: boolean;
+  compliance: string;
 }
 
 export interface Software {
@@ -241,6 +242,98 @@ export interface Profile {
   created_at: string;
   updated_at: string;
   created_by: string;
+}
+
+export interface DashboardDevices {
+  active: number;
+  stale: number;
+  retired: number;
+  total: number;
+}
+
+export interface DashboardCompliance {
+  compliant: number;
+  non_compliant: number;
+  unknown: number;
+  not_evaluated: number;
+}
+
+export interface DashboardFailedDeployments {
+  script: number;
+  app: number;
+  profile: number;
+  agent: number;
+}
+
+export interface NamedCount {
+  version?: string;
+  build?: string;
+  count: number;
+}
+
+export interface Dashboard {
+  devices: DashboardDevices;
+  compliance: DashboardCompliance;
+  failed_deployments: DashboardFailedDeployments;
+  agent_versions: NamedCount[];
+  os_builds: NamedCount[];
+}
+
+export interface ComplianceFailure {
+  rule: string;
+  state: string;
+  detail: string;
+}
+
+export interface DeviceCompliancePolicy {
+  policy_id: string;
+  state: string;
+  failures: ComplianceFailure[];
+  evaluated_at: string;
+}
+
+export interface DeviceCompliance {
+  overall: string;
+  policies: DeviceCompliancePolicy[];
+}
+
+/** ComplianceRule is one line of a policy's rules array. Only the fields its
+ * `type` uses are populated, mirroring how the server's Rule struct and
+ * MarshalJSON work: a fresh object per type, never a stray field left over
+ * from a different type. */
+export interface ComplianceRule {
+  type: string;
+  build?: string;
+  version?: string;
+  volumes?: string;
+  min_version?: string;
+  hours?: number;
+  days?: number;
+  count?: number;
+  name?: string;
+  profile_id?: string;
+}
+
+export interface CompliancePolicy {
+  id: string;
+  name: string;
+  description: string;
+  rules: ComplianceRule[];
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+  // device_counts is only present on the list endpoint's items: a
+  // compliant/non_compliant/unknown rollup batched over the whole page in
+  // one query, not one request per policy. Absent on get/create/update.
+  device_counts?: Record<string, number>;
+}
+
+export interface PolicyDeviceCompliance {
+  device_id: string;
+  hostname: string;
+  state: string;
+  failures: ComplianceFailure[];
+  evaluated_at: string;
 }
 
 export interface SettingStatus {

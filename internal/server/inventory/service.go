@@ -32,6 +32,13 @@ type Membership interface {
 	EvaluateDevice(ctx context.Context, deviceID uuid.UUID) error
 }
 
+// ComplianceEvaluator re-scores one device's compliance policies. It is an
+// interface for the same reason Membership is: ingest should not depend on
+// the compliance package just to call one method on it.
+type ComplianceEvaluator interface {
+	EvaluateDevice(ctx context.Context, deviceID uuid.UUID) error
+}
+
 // Service ingests inventory and decides when it is due.
 type Service struct {
 	Store *store.Store
@@ -39,7 +46,11 @@ type Service struct {
 	// Groups, when set, is told after each ingest so that rules over inventory
 	// take effect without waiting for the next sweep.
 	Groups Membership
-	Log    *slog.Logger
+	// Compliance, when set, is told after Groups so that policies whose rules
+	// read inventory (or membership Groups just recomputed) score against the
+	// upload that just arrived instead of waiting for the 15-minute sweep.
+	Compliance ComplianceEvaluator
+	Log        *slog.Logger
 }
 
 // Due reports whether the device should collect and upload inventory.
@@ -124,6 +135,14 @@ func (s *Service) Ingest(ctx context.Context, deviceID uuid.UUID, inv protocol.I
 	if s.Groups != nil {
 		if err := s.Groups.EvaluateDevice(ctx, deviceID); err != nil {
 			s.logger().Warn("re-evaluate group membership", "device_id", deviceID, "error", err)
+		}
+	}
+	// Same log-don't-fail rule as Groups above, and run after it so a policy
+	// rule keyed on group membership sees the membership this upload just
+	// produced rather than the stale value from before it.
+	if s.Compliance != nil {
+		if err := s.Compliance.EvaluateDevice(ctx, deviceID); err != nil {
+			s.logger().Warn("re-evaluate compliance", "device_id", deviceID, "error", err)
 		}
 	}
 	return hash, nil

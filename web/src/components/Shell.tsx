@@ -6,12 +6,14 @@ import { Button } from "./ui";
 import "./Shell.css";
 
 const LINKS = [
+  { to: "/", label: "Overview" },
   { to: "/devices", label: "Devices" },
   { to: "/groups", label: "Groups" },
   { to: "/scripts", label: "Scripts" },
   { to: "/apps", label: "Apps" },
   { to: "/agent-versions", label: "Agent versions" },
   { to: "/profiles", label: "Profiles" },
+  { to: "/compliance", label: "Compliance" },
   { to: "/commands", label: "Commands" },
   { to: "/tokens", label: "Enrollment" },
   { to: "/audit", label: "Audit" },
@@ -26,7 +28,7 @@ export function Shell({ children }: { children: ReactNode }) {
         <div className="rail__mark">Retune</div>
         <nav>
           {LINKS.map((link) => (
-            <NavLink key={link.to} to={link.to}>
+            <NavLink key={link.to} to={link.to} end={link.to === "/"}>
               {link.label}
             </NavLink>
           ))}

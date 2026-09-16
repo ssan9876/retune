@@ -5,6 +5,10 @@ import "net/http"
 // mountResources registers the device, command, token, admin and audit routes.
 func (h *Handler) mountResources(mux *http.ServeMux, base string) {
 	mux.Handle("GET "+base+"/devices", h.read(h.listDevices))
+	// ServeMux resolves this literal path ahead of /devices/{id} by pattern
+	// specificity (not registration order), so export.csv never gets parsed
+	// as a device ID.
+	mux.Handle("GET "+base+"/devices/export.csv", h.read(h.exportDevices))
 	mux.Handle("GET "+base+"/devices/{id}", h.read(h.getDevice))
 	mux.Handle("GET "+base+"/devices/{id}/software", h.read(h.listDeviceSoftware))
 	mux.Handle("POST "+base+"/devices/{id}/retire", h.write(h.retireDevice))
@@ -76,6 +80,19 @@ func (h *Handler) mountResources(mux *http.ServeMux, base string) {
 	mux.Handle("DELETE "+base+"/assignments/{id}", h.write(h.deleteAssignment))
 
 	mux.Handle("GET "+base+"/items/{kind}/{id}/status", h.read(h.itemStatus))
+
+	mux.Handle("GET "+base+"/compliance-policies", h.read(h.listCompliancePolicies))
+	mux.Handle("POST "+base+"/compliance-policies", h.write(h.createCompliancePolicy))
+	mux.Handle("GET "+base+"/compliance-policies/{id}", h.read(h.getCompliancePolicy))
+	mux.Handle("POST "+base+"/compliance-policies/{id}", h.write(h.updateCompliancePolicy))
+	mux.Handle("DELETE "+base+"/compliance-policies/{id}", h.write(h.deleteCompliancePolicy))
+	mux.Handle("POST "+base+"/compliance-policies/{id}/evaluate", h.write(h.evaluateCompliancePolicy))
+	mux.Handle("GET "+base+"/compliance-policies/{id}/devices", h.read(h.listPolicyDevices))
+	mux.Handle("GET "+base+"/compliance-policies/{id}/devices/export.csv", h.read(h.exportPolicyDevices))
+
+	mux.Handle("GET "+base+"/devices/{id}/compliance", h.read(h.deviceCompliance))
+
+	mux.Handle("GET "+base+"/dashboard", h.read(h.dashboard))
 
 	mux.Handle("GET "+base+"/audit", h.read(h.listAudit))
 }

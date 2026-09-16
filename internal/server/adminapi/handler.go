@@ -14,6 +14,7 @@ import (
 	"retune/internal/server/auth"
 	"retune/internal/server/bitlocker"
 	"retune/internal/server/commands"
+	"retune/internal/server/compliance"
 	"retune/internal/server/devices"
 	"retune/internal/server/enroll"
 	"retune/internal/server/groups"
@@ -38,6 +39,7 @@ type Handler struct {
 	Scripts       *scripts.Service
 	Profiles      *profiles.Service
 	Apps          *apps.Service
+	Compliance    *compliance.Service
 	AgentVersions *agentversions.Service
 	BitLocker     *bitlocker.Service
 	Enroll        *enroll.Service
@@ -118,7 +120,18 @@ func (h *Handler) clearCookie(w http.ResponseWriter) {
 	})
 }
 
+// log is the one place the handler's optional logger is resolved, matching
+// how every service layer treats its own Log field: a Handler built without
+// one (a test, a caller that only wants the mux) still logs somewhere rather
+// than panicking on the first error it has to report.
+func (h *Handler) log() *slog.Logger {
+	if h.Log != nil {
+		return h.Log
+	}
+	return slog.Default()
+}
+
 func (h *Handler) internal(w http.ResponseWriter, msg string, err error, args ...any) {
-	h.Log.Error(msg, append([]any{"error", err}, args...)...)
+	h.log().Error(msg, append([]any{"error", err}, args...)...)
 	writeError(w, http.StatusInternalServerError, "internal", "internal server error")
 }
