@@ -13,8 +13,12 @@ import (
 
 // exportPageSize bounds how many rows each export query pulls at a time, so
 // a fleet of any size streams through constant memory instead of building one
-// giant slice before the first byte reaches the client.
-const exportPageSize = 500
+// giant slice before the first byte reaches the client. It is store.MaxPageLimit
+// itself: both ListDevicesPage and ListPolicyCompliance clamp to that ceiling
+// via Page.Normalized regardless of what's asked for, so anything higher than
+// 200 here would be silently ignored - this just says so rather than lying
+// about the real page size.
+const exportPageSize = store.MaxPageLimit
 
 // csvInjectionPrefixes are the leading characters a spreadsheet treats as
 // the start of a formula (or, for tab/CR, as a way to smuggle extra cells or
@@ -84,6 +88,13 @@ func (h *Handler) exportDevices(w http.ResponseWriter, r *http.Request) {
 		// The client went away before the header even landed; nothing left to do.
 		return
 	}
+	// Flush unconditionally: csv.Writer buffers internally, and a zero-device
+	// tenant never enters the loop below, so without this the header row
+	// would sit in the buffer forever and the response would come back empty.
+	cw.Flush()
+	if err := cw.Error(); err != nil {
+		return
+	}
 
 	offset := 0
 	for {
@@ -150,6 +161,13 @@ func (h *Handler) exportPolicyDevices(w http.ResponseWriter, r *http.Request) {
 
 	cw := csv.NewWriter(w)
 	if err := cw.Write(policyDeviceExportHeader); err != nil {
+		return
+	}
+	// Flush unconditionally: a policy with zero compliance results never
+	// enters the loop below, so without this the header row would never
+	// leave csv.Writer's internal buffer.
+	cw.Flush()
+	if err := cw.Error(); err != nil {
 		return
 	}
 

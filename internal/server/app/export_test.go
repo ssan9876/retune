@@ -93,6 +93,43 @@ func TestExportDevicesCSV(t *testing.T) {
 	}
 }
 
+// TestExportDevicesCSVEmpty covers the zero-device case: csv.Writer buffers
+// internally, and exportDevices' paging loop never runs an iteration when
+// there is nothing to page through, so the header row must be flushed on its
+// own rather than only after a page of rows.
+func TestExportDevicesCSVEmpty(t *testing.T) {
+	a, srv := newTestApp(t)
+	admin := signedIn(t, a, srv, store.RoleAdmin)
+
+	status, headers, body := admin.doWithHeaders(http.MethodGet, "/devices/export.csv", nil)
+	if status != http.StatusOK {
+		t.Fatalf("export devices: %d %s", status, body)
+	}
+	if ct := headers.Get("Content-Type"); ct != "text/csv; charset=utf-8" {
+		t.Fatalf("content-type = %q", ct)
+	}
+
+	wantHeader := []string{
+		"hostname", "serial", "manufacturer", "model", "os_version", "os_build",
+		"agent_version", "status", "compliance", "last_seen_at", "enrolled_at",
+	}
+	header, rows := parseCSV(t, body)
+	if len(rows) != 0 {
+		t.Fatalf("rows = %d, want 0 for an empty fleet", len(rows))
+	}
+	if len(header) != len(wantHeader) {
+		t.Fatalf("header = %v, want %v", header, wantHeader)
+	}
+	for i, col := range wantHeader {
+		if header[i] != col {
+			t.Fatalf("header[%d] = %q, want %q", i, header[i], col)
+		}
+	}
+	if got := strings.TrimRight(string(body), "\r\n"); got != strings.Join(wantHeader, ",") {
+		t.Fatalf("body = %q, want exactly the header row", body)
+	}
+}
+
 // TestExportPolicyDevicesCSV covers the policy device export endpoint (spec
 // §5): headers, columns, one row per device the policy has a result for, and
 // read-only access.
@@ -167,5 +204,50 @@ func TestExportPolicyDevicesCSV(t *testing.T) {
 	if status, _, body := ro.doWithHeaders(http.MethodGet,
 		"/compliance-policies/"+policy.ID.String()+"/devices/export.csv", nil); status != http.StatusOK {
 		t.Fatalf("read-only export policy devices: %d %s", status, body)
+	}
+}
+
+// TestExportPolicyDevicesCSVEmpty covers a policy with zero compliance
+// results (never evaluated, or assigned to no one): the same zero-row case
+// as TestExportDevicesCSVEmpty, for the other export handler's own
+// unconditional-flush fix.
+func TestExportPolicyDevicesCSVEmpty(t *testing.T) {
+	ctx := context.Background()
+	a, srv := newTestApp(t)
+	admin := signedIn(t, a, srv, store.RoleAdmin)
+
+	policy, err := a.Compliance.Create(ctx, compliance.NewPolicy{
+		Name:  "Never assigned",
+		Rules: json.RawMessage(`[{"type":"no_pending_reboot"}]`),
+		Actor: "test",
+	})
+	if err != nil {
+		t.Fatalf("create policy: %v", err)
+	}
+
+	status, headers, body := admin.doWithHeaders(http.MethodGet,
+		"/compliance-policies/"+policy.ID.String()+"/devices/export.csv", nil)
+	if status != http.StatusOK {
+		t.Fatalf("export policy devices: %d %s", status, body)
+	}
+	if ct := headers.Get("Content-Type"); ct != "text/csv; charset=utf-8" {
+		t.Fatalf("content-type = %q", ct)
+	}
+
+	wantHeader := []string{"hostname", "state", "failures", "evaluated_at"}
+	header, rows := parseCSV(t, body)
+	if len(rows) != 0 {
+		t.Fatalf("rows = %d, want 0 for a policy with no compliance results", len(rows))
+	}
+	if len(header) != len(wantHeader) {
+		t.Fatalf("header = %v, want %v", header, wantHeader)
+	}
+	for i, col := range wantHeader {
+		if header[i] != col {
+			t.Fatalf("header[%d] = %q, want %q", i, header[i], col)
+		}
+	}
+	if got := strings.TrimRight(string(body), "\r\n"); got != strings.Join(wantHeader, ",") {
+		t.Fatalf("body = %q, want exactly the header row", body)
 	}
 }
