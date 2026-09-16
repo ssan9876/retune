@@ -1,42 +1,67 @@
-.overview__section {
-  margin-bottom: var(--space-8);
+/* The dashboard is two bands: the headline numbers across the top, then a
+   grid of tiles that explain them. Both wrap by themselves, so the page needs
+   no breakpoint of its own until the tiles are narrower than their charts. */
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
 }
 
-.overview__section h2 {
-  margin-bottom: var(--space-3);
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--space-4);
+  align-items: start;
 }
 
-.overview__hint {
-  margin: 0 0 var(--space-3);
-  color: var(--ink-muted);
-  font-size: var(--text-xs);
+.tile {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-pane);
+  box-shadow: var(--shadow-card);
+  padding: var(--pane-padding);
+  min-width: 0;
 }
 
-.overview__stats {
+/* The trend reads along its length, so it takes the full width when the grid
+   has room to give it. */
+.tile--wide {
+  grid-column: 1 / -1;
+}
+
+.tile__head {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-5);
-  font-size: var(--text-sm);
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
 }
 
-.overview__stat b {
-  color: var(--ink);
-  font-variant-numeric: tabular-nums;
+.tile__head h2 {
+  font-size: var(--text-base);
+  font-weight: 600;
 }
 
-.overview__muted {
+.tile__hint {
+  font-size: var(--text-xs);
   color: var(--ink-muted);
-  font-size: var(--text-sm);
+  white-space: nowrap;
 }
 
-/* A linked stat keeps the plain stat's look - the dot and the number are the
-   content, not the affordance - and only underlines on hover, the same way
-   .linklike does elsewhere. */
-.overview__stat--link {
-  color: inherit;
-  text-decoration: none;
+.tile__foot {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
 }
 
-.overview__stat--link:hover {
-  text-decoration: underline;
+@media (max-width: 720px) {
+  .kpis {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+
+  .tiles {
+    grid-template-columns: 1fr;
+  }
 }

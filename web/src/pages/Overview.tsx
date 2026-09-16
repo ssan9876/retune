@@ -1,56 +1,48 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import type { ReactNode } from "react";
 
 import { api } from "../api/client";
 import type { Dashboard } from "../api/types";
-import { StatusDot } from "../components/StatusDot";
+import { BarList, Columns, Donut, Kpi, StackBar } from "../components/Charts";
 import { ErrorNote, Spinner } from "../components/ui";
 import "./Overview.css";
 
-/** Stat pairs a StatusDot-labelled count with its number, the same idiom
- * FleetBar's legend uses, so a reader learns one visual language once. Given
- * a `to`, the whole stat becomes a link to the page that can explain the
- * number: the overview says how many app deployments failed, and the apps
- * page says which. The number itself is the count of failures, while the
- * page it opens is the full list - the link is a way in, not a filter. */
-function Stat({ status, label, count, to }: { status: string; label: string; count: number; to?: string }) {
-  const body = (
-    <>
-      <StatusDot status={status} label={label} /> <b>{count}</b>
-    </>
-  );
-  if (!to) return <span className="overview__stat">{body}</span>;
+/** Tile is one framed answer on the dashboard: a heading, an optional line
+ * saying what the numbers are counted over, and the chart itself. */
+function Tile({
+  title,
+  hint,
+  wide,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  wide?: boolean;
+  children: ReactNode;
+}) {
   return (
-    <Link className="overview__stat overview__stat--link" to={to}>
-      {body}
-    </Link>
+    <section className={`tile${wide ? " tile--wide" : ""}`}>
+      <div className="tile__head">
+        <h2>{title}</h2>
+        {hint ? <span className="tile__hint">{hint}</span> : null}
+      </div>
+      {children}
+    </section>
   );
 }
 
-function CountTable({ columnLabel, rows }: { columnLabel: string; rows: { key: string; count: number }[] }) {
-  if (rows.length === 0) {
-    return <p className="overview__muted">No data reported yet.</p>;
-  }
-  return (
-    <div className="table-scroll">
-      <table>
-        <thead>
-          <tr>
-            <th>{columnLabel}</th>
-            <th className="numeric">Devices</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.key}>
-              <td className="mono">{row.key}</td>
-              <td className="numeric">{row.count}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+/** shortDay is what the trend's axis and tooltips show: "15 Sep" reads at a
+ * glance where "2026-09-15" has to be parsed. The date is a bucket the server
+ * already chose, so it is formatted in UTC - rendering it in the browser's
+ * zone would slide a column into the neighbouring day. */
+function shortDay(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return iso;
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
 }
 
 export default function Overview() {
@@ -77,8 +69,22 @@ export default function Overview() {
   if (error && !dashboard) return <ErrorNote error={error} />;
   if (!dashboard) return <Spinner />;
 
-  const { devices, compliance, failed_deployments: failed, agent_versions: agentVersions, os_builds: osBuilds } =
-    dashboard;
+  const {
+    devices,
+    compliance,
+    failed_deployments: failed,
+    checkin_recency: recency,
+    enrollment_trend: trend,
+    agent_versions: agentVersions,
+    os_builds: osBuilds,
+  } = dashboard;
+
+  const scored = compliance.compliant + compliance.non_compliant + compliance.unknown;
+  // A percentage of nothing is not 0%, it is no answer: a fleet with no policy
+  // assigned has not failed compliance, it has not been asked.
+  const compliantPct = scored > 0 ? Math.round((compliance.compliant / scored) * 100) : null;
+  const failedTotal = failed.script + failed.app + failed.profile + failed.agent;
+  const enrolledRecently = trend.reduce((sum, d) => sum + d.count, 0);
 
   return (
     <>
@@ -88,55 +94,127 @@ export default function Overview() {
 
       <ErrorNote error={error} />
 
-      <section className="overview__section">
-        <h2>Fleet</h2>
-        <div className="overview__stats">
-          <Stat status="active" label="Active" count={devices.active} to="/devices" />
-          <Stat status="stale" label="Stale" count={devices.stale} to="/devices" />
-          <Stat status="retired" label="Retired" count={devices.retired} to="/devices" />
-          <span className="overview__stat">
-            Total <b>{devices.total}</b>
-          </span>
-        </div>
-      </section>
-
-      <section className="overview__section">
-        <h2>Compliance</h2>
-        <p className="overview__hint">Active devices only.</p>
-        <div className="overview__stats">
-          <Stat status="compliant" label="Compliant" count={compliance.compliant} to="/compliance" />
-          <Stat status="non_compliant" label="Non-compliant" count={compliance.non_compliant} to="/compliance" />
-          <Stat status="unknown" label="Unknown" count={compliance.unknown} to="/compliance" />
-          <Stat status="not_evaluated" label="Not evaluated" count={compliance.not_evaluated} to="/compliance" />
-        </div>
-      </section>
-
-      <section className="overview__section">
-        <h2>Failed deployments</h2>
-        <p className="overview__hint">Active devices only.</p>
-        <div className="overview__stats">
-          <Stat status="failed" label="Scripts" count={failed.script} to="/scripts" />
-          <Stat status="failed" label="Apps" count={failed.app} to="/apps" />
-          <Stat status="failed" label="Profiles" count={failed.profile} to="/profiles" />
-          <Stat status="failed" label="Agent" count={failed.agent} to="/agent-versions" />
-        </div>
-      </section>
-
-      <section className="overview__section">
-        <h2>Agent versions</h2>
-        <CountTable
-          columnLabel="Version"
-          rows={agentVersions.map((entry) => ({ key: entry.version, count: entry.count }))}
+      {/* The five numbers an administrator opens the console to check, before
+          any chart explains them. */}
+      <div className="kpis">
+        <Kpi label="Devices" value={devices.total} note={`${devices.active} active now`} to="/devices" />
+        <Kpi
+          label="Compliant"
+          value={compliantPct === null ? "—" : `${compliantPct}%`}
+          note={
+            compliantPct === null ? "no policy assigned yet" : `${compliance.compliant} of ${scored} scored`
+          }
+          tone={compliantPct !== null && compliantPct < 100 ? "non_compliant" : "compliant"}
+          to="/compliance"
         />
-      </section>
-
-      <section className="overview__section">
-        <h2>OS builds</h2>
-        <CountTable
-          columnLabel="Build"
-          rows={osBuilds.map((entry) => ({ key: entry.build, count: entry.count }))}
+        <Kpi
+          label="Non-compliant"
+          value={compliance.non_compliant}
+          note="devices failing a policy"
+          tone={compliance.non_compliant > 0 ? "non_compliant" : "compliant"}
+          to="/compliance"
         />
-      </section>
+        <Kpi
+          label="Stale"
+          value={devices.stale}
+          note="no check-in lately"
+          tone={devices.stale > 0 ? "stale" : "compliant"}
+          to="/devices"
+        />
+        <Kpi
+          label="Failed deployments"
+          value={failedTotal}
+          note="scripts, apps, profiles, agent"
+          tone={failedTotal > 0 ? "non_compliant" : "compliant"}
+          to="/scripts"
+        />
+      </div>
+
+      <div className="tiles">
+        <Tile title="Compliance" hint="Active devices">
+          <Donut
+            caption={`${compliance.compliant} compliant, ${compliance.non_compliant} non-compliant, ${compliance.unknown} unknown, ${compliance.not_evaluated} not evaluated`}
+            centre={
+              <>
+                <span className="donut__figure">{compliantPct === null ? "—" : `${compliantPct}%`}</span>
+                <span className="donut__caption">compliant</span>
+              </>
+            }
+            segments={[
+              { label: "Compliant", value: compliance.compliant, tone: "compliant" },
+              { label: "Non-compliant", value: compliance.non_compliant, tone: "non_compliant" },
+              { label: "Unknown", value: compliance.unknown, tone: "unknown" },
+              { label: "Not evaluated", value: compliance.not_evaluated, tone: "not_evaluated" },
+            ]}
+          />
+        </Tile>
+
+        <Tile title="Fleet" hint="Every enrolled device">
+          <Donut
+            caption={`${devices.active} active, ${devices.stale} stale, ${devices.retired} retired`}
+            centre={
+              <>
+                <span className="donut__figure">{devices.total}</span>
+                <span className="donut__caption">devices</span>
+              </>
+            }
+            segments={[
+              { label: "Active", value: devices.active, tone: "active" },
+              { label: "Stale", value: devices.stale, tone: "stale" },
+              { label: "Retired", value: devices.retired, tone: "retired" },
+            ]}
+          />
+        </Tile>
+
+        <Tile title="Last check-in" hint="Active devices">
+          <StackBar
+            caption={`${recency.hour} within the hour, ${recency.day} within a day, ${recency.week} within a week, ${recency.older} older, ${recency.never} never`}
+            segments={[
+              { label: "< 1 hour", value: recency.hour, tone: "active" },
+              { label: "< 1 day", value: recency.day, tone: "succeeded" },
+              { label: "< 1 week", value: recency.week, tone: "stale" },
+              { label: "Older", value: recency.older, tone: "failed" },
+              { label: "Never", value: recency.never, tone: "neutral" },
+            ]}
+          />
+        </Tile>
+
+        <Tile title="Failed deployments" hint="Active devices">
+          <BarList
+            empty="Nothing has failed."
+            rows={[
+              { label: "Scripts", value: failed.script, to: "/scripts" },
+              { label: "Apps", value: failed.app, to: "/apps" },
+              { label: "Profiles", value: failed.profile, to: "/profiles" },
+              { label: "Agent", value: failed.agent, to: "/agent-versions" },
+            ]}
+          />
+        </Tile>
+
+        <Tile title="Enrollments" hint="Last 30 days" wide>
+          <Columns
+            caption="Devices enrolled per day"
+            data={trend.map((d) => ({ label: shortDay(d.day), value: d.count }))}
+          />
+          <p className="tile__foot">
+            {enrolledRecently} device{enrolledRecently === 1 ? "" : "s"} enrolled in the last 30 days.
+          </p>
+        </Tile>
+
+        <Tile title="Agent versions" hint="Active devices">
+          <BarList
+            empty="No data reported yet."
+            rows={agentVersions.map((entry) => ({ label: entry.version, value: entry.count }))}
+          />
+        </Tile>
+
+        <Tile title="OS builds" hint="Active devices">
+          <BarList
+            empty="No data reported yet."
+            rows={osBuilds.map((entry) => ({ label: entry.build, value: entry.count }))}
+          />
+        </Tile>
+      </div>
     </>
   );
 }

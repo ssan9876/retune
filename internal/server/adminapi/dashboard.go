@@ -3,6 +3,7 @@ package adminapi
 import (
 	"net/http"
 	"sort"
+	"time"
 
 	"retune/internal/protocol"
 	"retune/internal/server/store"
@@ -39,13 +40,35 @@ type osBuildCountJSON struct {
 	Count int    `json:"count"`
 }
 
+// dayCountJSON is one column of the enrolment trend. The day is a plain date
+// rather than a timestamp: it is a bucket, not an instant, and rendering it in
+// the browser's zone would slide a bar into the wrong day.
+type dayCountJSON struct {
+	Day   string `json:"day"`
+	Count int    `json:"count"`
+}
+
+type checkinRecencyJSON struct {
+	Hour  int `json:"hour"`
+	Day   int `json:"day"`
+	Week  int `json:"week"`
+	Older int `json:"older"`
+	Never int `json:"never"`
+}
+
 type dashboardJSON struct {
 	Devices           dashboardDevicesJSON           `json:"devices"`
 	Compliance        dashboardComplianceJSON        `json:"compliance"`
 	FailedDeployments dashboardFailedDeploymentsJSON `json:"failed_deployments"`
+	CheckinRecency    checkinRecencyJSON             `json:"checkin_recency"`
+	EnrollmentTrend   []dayCountJSON                 `json:"enrollment_trend"`
 	AgentVersions     []agentVersionCountJSON        `json:"agent_versions"`
 	OSBuilds          []osBuildCountJSON             `json:"os_builds"`
 }
+
+// enrollmentTrendDays is how far back the dashboard's trend reaches: long
+// enough to show a rollout, short enough to stay readable as bars.
+const enrollmentTrendDays = 30
 
 // dashboard reports fleet-wide numbers for the console's overview page (spec
 // §5). Its device buckets are exactly FleetBar's (web/src/pages/Devices.tsx),
@@ -88,6 +111,21 @@ func (h *Handler) dashboard(w http.ResponseWriter, r *http.Request) {
 		h.internal(w, "failed deployment counts", err)
 		return
 	}
+	now := h.Now()
+	hour, day, week, older, never, err := h.Store.Q().CheckInRecency(ctx, now)
+	if err != nil {
+		h.internal(w, "check-in recency", err)
+		return
+	}
+	trend, err := h.Store.Q().EnrollmentTrend(ctx, now.AddDate(0, 0, -(enrollmentTrendDays-1)))
+	if err != nil {
+		h.internal(w, "enrollment trend", err)
+		return
+	}
+	days := make([]dayCountJSON, 0, len(trend))
+	for _, d := range trend {
+		days = append(days, dayCountJSON{Day: d.Day.Format(time.DateOnly), Count: d.Count})
+	}
 
 	writeJSON(w, http.StatusOK, dashboardJSON{
 		Devices: devices,
@@ -103,6 +141,8 @@ func (h *Handler) dashboard(w http.ResponseWriter, r *http.Request) {
 			Profile: failed[protocol.ItemKindProfile],
 			Agent:   failed[protocol.ItemKindAgent],
 		},
+		CheckinRecency:  checkinRecencyJSON{Hour: hour, Day: day, Week: week, Older: older, Never: never},
+		EnrollmentTrend: days,
 		AgentVersions: topCounts(agentVersions, 10, func(version string, count int) agentVersionCountJSON {
 			return agentVersionCountJSON{Version: version, Count: count}
 		}),

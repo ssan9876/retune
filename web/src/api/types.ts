@@ -278,10 +278,30 @@ export interface OSBuildCount {
   count: number;
 }
 
+/** How long since each active device last checked in. The buckets are
+ * exclusive - a device in `day` checked in within a day but not within an
+ * hour - so they sum to the active fleet and draw as one bar. */
+export interface CheckinRecency {
+  hour: number;
+  day: number;
+  week: number;
+  older: number;
+  never: number;
+}
+
+/** One day of the enrolment trend. `day` is a plain YYYY-MM-DD bucket, not an
+ * instant: it is rendered in UTC so a column cannot slide into the next day. */
+export interface DayCount {
+  day: string;
+  count: number;
+}
+
 export interface Dashboard {
   devices: DashboardDevices;
   compliance: DashboardCompliance;
   failed_deployments: DashboardFailedDeployments;
+  checkin_recency: CheckinRecency;
+  enrollment_trend: DayCount[];
   agent_versions: AgentVersionCount[];
   os_builds: OSBuildCount[];
 }

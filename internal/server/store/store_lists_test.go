@@ -146,3 +146,67 @@ func TestPageNormalized(t *testing.T) {
 		}
 	}
 }
+
+// TestCheckInRecencyAndEnrollmentTrend covers the dashboard's two fleet-shape
+// queries: the recency buckets must partition the active fleet exactly once,
+// and the trend must report a row per day including the quiet ones.
+func TestCheckInRecencyAndEnrollmentTrend(t *testing.T) {
+	ctx := context.Background()
+	s := storetest.New(t)
+	q := s.Q()
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	mk := func(hostname string, status string, lastSeen *time.Time, enrolled time.Time) {
+		d := store.Device{
+			ID: uuid.Must(uuid.NewV7()), Hostname: hostname, Status: status,
+			CertSerial: hostname, CertExpiresAt: now.Add(time.Hour), EnrolledAt: enrolled,
+			LastSeenAt: lastSeen,
+		}
+		if err := q.CreateDevice(ctx, d); err != nil {
+			t.Fatal(err)
+		}
+		// CreateDevice does not write last_seen_at - a device has not been
+		// seen until it checks in - so the check-in is recorded separately.
+		if lastSeen != nil {
+			if err := q.RecordCheckin(ctx, store.DefaultTenantID, d.ID, "0.1.0", *lastSeen); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	at := func(d time.Duration) *time.Time {
+		seen := now.Add(d)
+		return &seen
+	}
+
+	mk("FRESH", store.DeviceActive, at(-10*time.Minute), now)
+	mk("TODAY", store.DeviceActive, at(-5*time.Hour), now)
+	mk("THISWEEK", store.DeviceActive, at(-3*24*time.Hour), now.AddDate(0, 0, -2))
+	mk("OLD", store.DeviceActive, at(-30*24*time.Hour), now.AddDate(0, 0, -2))
+	mk("NEVER", store.DeviceActive, nil, now)
+	// Retired devices are out of the recency buckets but still enrolled on
+	// some day, so they count towards the trend.
+	mk("GONE", store.DeviceRetired, at(-2*time.Hour), now.AddDate(0, 0, -2))
+
+	hour, day, week, older, never, err := q.CheckInRecency(ctx, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hour != 1 || day != 1 || week != 1 || older != 1 || never != 1 {
+		t.Fatalf("buckets = %d/%d/%d/%d/%d, want one device in each", hour, day, week, older, never)
+	}
+
+	trend, err := q.EnrollmentTrend(ctx, now.AddDate(0, 0, -3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(trend) != 4 {
+		t.Fatalf("trend has %d days, want 4 (today and the three before it)", len(trend))
+	}
+	// Three days ago and yesterday are quiet; the days in between are not.
+	want := []int{0, 3, 0, 3}
+	for i, n := range want {
+		if trend[i].Count != n {
+			t.Fatalf("trend = %+v, want counts %v", trend, want)
+		}
+	}
+}

@@ -31,6 +31,17 @@ type dashboardResp struct {
 		Profile int `json:"profile"`
 		Agent   int `json:"agent"`
 	} `json:"failed_deployments"`
+	CheckinRecency struct {
+		Hour  int `json:"hour"`
+		Day   int `json:"day"`
+		Week  int `json:"week"`
+		Older int `json:"older"`
+		Never int `json:"never"`
+	} `json:"checkin_recency"`
+	EnrollmentTrend []struct {
+		Day   string `json:"day"`
+		Count int    `json:"count"`
+	} `json:"enrollment_trend"`
 	AgentVersions []struct {
 		Version string `json:"version"`
 		Count   int    `json:"count"`
@@ -185,5 +196,38 @@ func TestDashboardNumbers(t *testing.T) {
 	}
 	if !foundBuild {
 		t.Fatalf("os_builds missing 26200: %+v", dash.OSBuilds)
+	}
+
+	// Check-in recency covers the active fleet and nothing else: PC-ACTIVE
+	// checked in a moment ago, PC-STALE never has, and PC-RETIRED is not
+	// active so it appears in no bucket at all.
+	r := dash.CheckinRecency
+	if r.Hour != 1 || r.Never != 1 || r.Day != 0 || r.Week != 0 || r.Older != 0 {
+		t.Fatalf("checkin_recency = %+v", r)
+	}
+	if sum := r.Hour + r.Day + r.Week + r.Older + r.Never; sum != dash.Devices.Active+dash.Devices.Stale {
+		t.Fatalf("recency buckets sum to %d, want the active fleet (%d)", sum, dash.Devices.Active+dash.Devices.Stale)
+	}
+
+	// The trend is one column per day for thirty days, quiet days included,
+	// and today holds the three devices this test enrolled.
+	if len(dash.EnrollmentTrend) != 30 {
+		t.Fatalf("enrollment_trend has %d days, want 30", len(dash.EnrollmentTrend))
+	}
+	// The buckets are UTC days, which is not the test machine's day when it
+	// runs west of Greenwich in the evening.
+	today := dash.EnrollmentTrend[len(dash.EnrollmentTrend)-1]
+	if today.Day != time.Now().UTC().Format(time.DateOnly) {
+		t.Fatalf("trend ends on %q, want today (UTC)", today.Day)
+	}
+	if today.Count != 3 {
+		t.Fatalf("today enrolled %d, want the 3 this test enrolled", today.Count)
+	}
+	total := 0
+	for _, d := range dash.EnrollmentTrend {
+		total += d.Count
+	}
+	if total != 3 {
+		t.Fatalf("trend totals %d across 30 days, want 3", total)
 	}
 }

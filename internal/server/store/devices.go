@@ -151,6 +151,67 @@ func (q *Queries) ActiveOSBuildCounts(ctx context.Context) (map[string]int, erro
 	return out, rows.Err()
 }
 
+// DayCount is one day's tally, for the dashboard's enrolment trend.
+type DayCount struct {
+	Day   time.Time
+	Count int
+}
+
+// EnrollmentTrend counts devices enrolled per day from since onwards, oldest
+// first. Days on which nothing enrolled are filled in as zero by
+// generate_series rather than left out, because a sparkline that silently
+// closes its gaps draws a slope that never happened.
+//
+// The days are UTC days, said explicitly rather than left to the session's
+// timezone: the server, the database and the browser can each be somewhere
+// different, and a bucket that depends on which one is asking is a bucket
+// that moves a device into yesterday.
+func (q *Queries) EnrollmentTrend(ctx context.Context, since time.Time) ([]DayCount, error) {
+	rows, err := q.db.Query(ctx, `
+		SELECT d.day, count(v.id)
+		FROM generate_series(
+		         date_trunc('day', $2::timestamptz AT TIME ZONE 'UTC'),
+		         date_trunc('day', now() AT TIME ZONE 'UTC'),
+		         interval '1 day') AS d(day)
+		LEFT JOIN devices v
+		  ON v.tenant_id = $1 AND date_trunc('day', v.enrolled_at AT TIME ZONE 'UTC') = d.day
+		GROUP BY d.day
+		ORDER BY d.day`, DefaultTenantID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []DayCount
+	for rows.Next() {
+		var dc DayCount
+		if err := rows.Scan(&dc.Day, &dc.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, dc)
+	}
+	return out, rows.Err()
+}
+
+// CheckInRecency buckets active devices by how long since their last check-in.
+// The buckets are cumulative in intent but exclusive in fact - a device counted
+// in "day" is one that checked in within a day but not within an hour - so they
+// sum to the active fleet and can be drawn as one bar.
+func (q *Queries) CheckInRecency(ctx context.Context, now time.Time) (hour, day, week, older, never int, err error) {
+	err = q.db.QueryRow(ctx, `
+		SELECT
+			count(*) FILTER (WHERE last_seen_at >= $3),
+			count(*) FILTER (WHERE last_seen_at >= $4 AND last_seen_at < $3),
+			count(*) FILTER (WHERE last_seen_at >= $5 AND last_seen_at < $4),
+			count(*) FILTER (WHERE last_seen_at IS NOT NULL AND last_seen_at < $5),
+			count(*) FILTER (WHERE last_seen_at IS NULL)
+		FROM devices
+		WHERE tenant_id = $1 AND status = $2`,
+		DefaultTenantID, DeviceActive,
+		now.Add(-time.Hour), now.Add(-24*time.Hour), now.Add(-7*24*time.Hour)).
+		Scan(&hour, &day, &week, &older, &never)
+	return hour, day, week, older, never, err
+}
+
 // UpdateDeviceHardware applies non-empty inventory values; empty values leave
 // the existing column untouched.
 func (q *Queries) UpdateDeviceHardware(ctx context.Context, tenantID, id uuid.UUID, h HardwareInfo) error {
