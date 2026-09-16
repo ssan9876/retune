@@ -51,21 +51,17 @@ function json(body: unknown, status = 200) {
   });
 }
 
-/** mockDetail answers the device detail, compliance, and policy-list GETs; a POST goes to onPost if given. */
+/** mockDetail answers the device detail and compliance GETs; a POST goes to onPost if given. */
 function mockDetail(
   detailBody: unknown = detail,
   complianceBody: unknown = emptyCompliance,
   onPost?: (url: string, body: unknown) => unknown,
-  policies: unknown[] = [],
 ) {
   fetchMock.mockImplementation((url: string, init?: { method?: string; body?: string }) => {
     if (init?.method === "POST" && onPost) {
       return Promise.resolve(json(onPost(String(url), init.body ? JSON.parse(init.body) : undefined)));
     }
     if (String(url).endsWith("/compliance")) return Promise.resolve(json(complianceBody));
-    if (String(url).includes("/compliance-policies")) {
-      return Promise.resolve(json({ items: policies, total: policies.length, limit: 200, offset: 0 }));
-    }
     return Promise.resolve(json(detailBody));
   });
 }
@@ -102,6 +98,7 @@ describe("DeviceDetail", () => {
       policies: [
         {
           policy_id: "11111111-1111-1111-1111-111111111111",
+          policy_name: "Baseline security",
           state: "non_compliant",
           failures: [{ rule: "min_os_build", state: "non_compliant", detail: "OS build 22000 below minimum 26100" }],
           evaluated_at: new Date().toISOString(),
@@ -111,54 +108,32 @@ describe("DeviceDetail", () => {
     renderDetail();
     await screen.findByRole("heading", { name: "PC-ALPHA" });
     expect(screen.getByText("Overall: non compliant")).toBeInTheDocument();
-    // No policy list was fetched successfully here, so the raw id is shown.
-    expect(screen.getByText("11111111-1111-1111-1111-111111111111")).toBeInTheDocument();
+    expect(screen.getByText("Baseline security")).toBeInTheDocument();
     expect(screen.getByText("OS build 22000 below minimum 26100")).toBeInTheDocument();
   });
 
-  it("resolves a policy_id to its name using the fetched policy list", async () => {
-    mockDetail(
-      detail,
-      {
-        overall: "compliant",
-        policies: [
-          {
-            policy_id: "11111111-1111-1111-1111-111111111111",
-            state: "compliant",
-            failures: [],
-            evaluated_at: new Date().toISOString(),
-          },
-        ],
-      },
-      undefined,
-      [{ id: "11111111-1111-1111-1111-111111111111", name: "Baseline security" }],
-    );
+  it("names each policy from the compliance response, with no second request", async () => {
+    mockDetail(detail, {
+      overall: "compliant",
+      policies: [
+        {
+          policy_id: "11111111-1111-1111-1111-111111111111",
+          policy_name: "Baseline security",
+          state: "compliant",
+          failures: [],
+          evaluated_at: new Date().toISOString(),
+        },
+      ],
+    });
     renderDetail();
     await screen.findByRole("heading", { name: "PC-ALPHA" });
     expect(await screen.findByText("Baseline security")).toBeInTheDocument();
     expect(screen.queryByText("11111111-1111-1111-1111-111111111111")).not.toBeInTheDocument();
-  });
-
-  it("falls back to the raw policy_id when it is missing from the policy list", async () => {
-    mockDetail(
-      detail,
-      {
-        overall: "compliant",
-        policies: [
-          {
-            policy_id: "22222222-2222-2222-2222-222222222222",
-            state: "compliant",
-            failures: [],
-            evaluated_at: new Date().toISOString(),
-          },
-        ],
-      },
-      undefined,
-      [{ id: "11111111-1111-1111-1111-111111111111", name: "Baseline security" }],
-    );
-    renderDetail();
-    await screen.findByRole("heading", { name: "PC-ALPHA" });
-    expect(await screen.findByText("22222222-2222-2222-2222-222222222222")).toBeInTheDocument();
+    // The name arrives with the result, so the page no longer fetches the
+    // policy library - which was capped at a page and would have shown bare
+    // ids for anything past it.
+    const fetched = fetchMock.mock.calls.map(([url]) => String(url));
+    expect(fetched.some((url) => url.includes("/compliance-policies"))).toBe(false);
   });
 
   it("says so when no compliance policies apply", async () => {

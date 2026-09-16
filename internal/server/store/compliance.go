@@ -118,8 +118,10 @@ func (q *Queries) DeleteCompliancePolicy(ctx context.Context, tenantID, id uuid.
 type DeviceCompliance struct {
 	DeviceID uuid.UUID
 	PolicyID uuid.UUID
-	// Hostname is filled in by the listing queries only, not by UpsertDeviceCompliance.
+	// Hostname and PolicyName are filled in by the listing queries only, each
+	// by the one whose page needs it, not by UpsertDeviceCompliance.
 	Hostname    string
+	PolicyName  string
 	State       string
 	Failures    []byte // JSON array of {rule, state, detail}
 	EvaluatedAt time.Time
@@ -163,13 +165,17 @@ func (q *Queries) DeleteComplianceForPolicy(ctx context.Context, policyID uuid.U
 }
 
 // ListDeviceCompliance returns every policy result for one device, for the
-// device detail page.
+// device detail page. It carries each policy's name and orders by it, the
+// mirror of ListPolicyCompliance joining devices for the hostname: a page
+// that lists policies should read in the order a person would look for them,
+// and should not have to fetch the whole policy library to caption a row.
 func (q *Queries) ListDeviceCompliance(ctx context.Context, deviceID uuid.UUID) ([]DeviceCompliance, error) {
 	rows, err := q.db.Query(ctx, `
-		SELECT device_id, policy_id, state, failures, evaluated_at
-		FROM device_compliance
-		WHERE tenant_id = $1 AND device_id = $2
-		ORDER BY policy_id`, DefaultTenantID, deviceID)
+		SELECT dc.device_id, dc.policy_id, p.name, dc.state, dc.failures, dc.evaluated_at
+		FROM device_compliance dc
+		JOIN compliance_policies p ON p.id = dc.policy_id
+		WHERE dc.tenant_id = $1 AND dc.device_id = $2
+		ORDER BY lower(p.name), dc.policy_id`, DefaultTenantID, deviceID)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +183,7 @@ func (q *Queries) ListDeviceCompliance(ctx context.Context, deviceID uuid.UUID) 
 	var out []DeviceCompliance
 	for rows.Next() {
 		var dc DeviceCompliance
-		if err := rows.Scan(&dc.DeviceID, &dc.PolicyID, &dc.State, &dc.Failures, &dc.EvaluatedAt); err != nil {
+		if err := rows.Scan(&dc.DeviceID, &dc.PolicyID, &dc.PolicyName, &dc.State, &dc.Failures, &dc.EvaluatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, dc)

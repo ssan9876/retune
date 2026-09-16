@@ -265,9 +265,16 @@ export interface DashboardFailedDeployments {
   agent: number;
 }
 
-export interface NamedCount {
-  version?: string;
-  build?: string;
+/** The dashboard's two count lists have different key names on the wire, so
+ * they get a type each rather than one shape with both keys optional - which
+ * made every reader deal with an absent key that is never actually absent. */
+export interface AgentVersionCount {
+  version: string;
+  count: number;
+}
+
+export interface OSBuildCount {
+  build: string;
   count: number;
 }
 
@@ -275,8 +282,8 @@ export interface Dashboard {
   devices: DashboardDevices;
   compliance: DashboardCompliance;
   failed_deployments: DashboardFailedDeployments;
-  agent_versions: NamedCount[];
-  os_builds: NamedCount[];
+  agent_versions: AgentVersionCount[];
+  os_builds: OSBuildCount[];
 }
 
 export interface ComplianceFailure {
@@ -287,6 +294,7 @@ export interface ComplianceFailure {
 
 export interface DeviceCompliancePolicy {
   policy_id: string;
+  policy_name: string;
   state: string;
   failures: ComplianceFailure[];
   evaluated_at: string;

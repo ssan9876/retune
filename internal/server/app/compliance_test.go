@@ -248,9 +248,10 @@ func TestDeviceComplianceEndpointAndDevicesListField(t *testing.T) {
 	after := decodeJSON[struct {
 		Overall  string `json:"overall"`
 		Policies []struct {
-			PolicyID string `json:"policy_id"`
-			State    string `json:"state"`
-			Failures []struct {
+			PolicyID   string `json:"policy_id"`
+			PolicyName string `json:"policy_name"`
+			State      string `json:"state"`
+			Failures   []struct {
 				Rule   string `json:"rule"`
 				Detail string `json:"detail"`
 			} `json:"failures"`
@@ -262,6 +263,11 @@ func TestDeviceComplianceEndpointAndDevicesListField(t *testing.T) {
 	if len(after.Policies) != 1 || after.Policies[0].PolicyID != policy.ID.String() ||
 		after.Policies[0].State != store.ComplianceNonCompliant || len(after.Policies[0].Failures) != 1 {
 		t.Fatalf("policies = %+v", after.Policies)
+	}
+	// The name travels with the result, so the console does not have to fetch
+	// the policy library to caption the row.
+	if after.Policies[0].PolicyName != policy.Name {
+		t.Fatalf("policy_name = %q, want %q", after.Policies[0].PolicyName, policy.Name)
 	}
 
 	// The devices list carries the same overall state for the same device.

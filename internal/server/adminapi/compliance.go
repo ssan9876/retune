@@ -218,7 +218,12 @@ func (h *Handler) listPolicyDevices(w http.ResponseWriter, r *http.Request) {
 }
 
 type deviceCompliancePolicyJSON struct {
-	PolicyID    string               `json:"policy_id"`
+	PolicyID string `json:"policy_id"`
+	// PolicyName saves the console a second request for the whole policy
+	// library just to caption these rows - a request that was also capped at
+	// a page, so a fleet with more policies than that page held would have
+	// shown bare ids.
+	PolicyName  string               `json:"policy_name"`
 	State       string               `json:"state"`
 	Failures    []compliance.Failure `json:"failures"`
 	EvaluatedAt time.Time            `json:"evaluated_at"`
@@ -263,7 +268,8 @@ func (h *Handler) deviceCompliance(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		policies = append(policies, deviceCompliancePolicyJSON{
-			PolicyID: dc.PolicyID.String(), State: dc.State, Failures: failures, EvaluatedAt: dc.EvaluatedAt,
+			PolicyID: dc.PolicyID.String(), PolicyName: dc.PolicyName, State: dc.State,
+			Failures: failures, EvaluatedAt: dc.EvaluatedAt,
 		})
 	}
 	writeJSON(w, http.StatusOK, deviceComplianceJSON{Overall: overall[id], Policies: policies})

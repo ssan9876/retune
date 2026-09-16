@@ -594,14 +594,19 @@ export default function Compliance() {
   const [editing, setEditing] = useState<CompliancePolicy | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [assigning, setAssigning] = useState<CompliancePolicy | null>(null);
-  const [selected, setSelected] = useState<CompliancePolicy | null>(null);
+  // The open detail is remembered by id, not by holding the policy object the
+  // row was rendered from: that object is a snapshot, so after an edit the
+  // detail kept showing the name and rules the policy had before it was saved.
+  // Deriving it from the current page means the detail follows the list.
+  const [selectedID, setSelectedID] = useState<string | null>(null);
+  const selected = items.find((p) => p.id === selectedID) ?? null;
   const [actionError, setActionError] = useState<unknown>(null);
 
   async function remove(policy: CompliancePolicy) {
     if (!window.confirm(`Delete ${policy.name}? Its assignments and results go with it.`)) return;
     try {
       await api.del(`/compliance-policies/${policy.id}`);
-      if (selected?.id === policy.id) setSelected(null);
+      if (selectedID === policy.id) setSelectedID(null);
       reload();
     } catch (err) {
       setActionError(err);
@@ -650,7 +655,7 @@ export default function Compliance() {
               {items.map((policy) => (
                 <tr key={policy.id}>
                   <td>
-                    <button className="linklike" onClick={() => setSelected(policy)}>
+                    <button className="linklike" onClick={() => setSelectedID(policy.id)}>
                       {policy.name}
                     </button>
                     {policy.description ? <div className="policy__description">{policy.description}</div> : null}

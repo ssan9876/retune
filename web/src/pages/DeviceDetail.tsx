@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
-import type { CompliancePolicy, DeviceCompliance, DeviceDetail as Detail, ListResponse } from "../api/types";
+import type { DeviceCompliance, DeviceDetail as Detail } from "../api/types";
 import { RecoveryKeys } from "../components/RecoveryKeys";
 import { RunScriptDialog } from "../components/RunScriptDialog";
 import { StatusDot } from "../components/StatusDot";
@@ -17,12 +17,6 @@ export default function DeviceDetail() {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [compliance, setCompliance] = useState<DeviceCompliance | null>(null);
   const [complianceError, setComplianceError] = useState<unknown>(null);
-  // GET /devices/{id}/compliance returns each result's bare policy_id, with
-  // no name (spec §5 leaves that endpoint's shape as-is), so the name is
-  // resolved here from the same policy list the Compliance page fetches. A
-  // policy that has since been deleted, or a list that fails to load, falls
-  // back to the raw id rather than showing nothing.
-  const [policyNames, setPolicyNames] = useState<Record<string, string>>({});
   const [error, setError] = useState<unknown>(null);
   const [tab, setTab] = useState<"software" | "commands">("software");
   const [scriptOpen, setScriptOpen] = useState(false);
@@ -42,14 +36,6 @@ export default function DeviceDetail() {
         setComplianceError(null);
       })
       .catch(setComplianceError);
-    api
-      .get<ListResponse<CompliancePolicy>>("/compliance-policies?limit=200")
-      .then((resp) => {
-        const names: Record<string, string> = {};
-        for (const p of resp.items) names[p.id] = p.name;
-        setPolicyNames(names);
-      })
-      .catch(() => setPolicyNames({}));
   }, [id]);
 
   useEffect(load, [load]);
@@ -143,7 +129,7 @@ export default function DeviceDetail() {
               {compliance.policies.map((policy) => (
                 <li key={policy.policy_id}>
                   <StatusDot status={policy.state} />
-                  <span>{policyNames[policy.policy_id] ?? policy.policy_id}</span>
+                  <span>{policy.policy_name}</span>
                   <span className="compliance__evaluated">evaluated {relative(policy.evaluated_at)}</span>
                   {policy.failures.length > 0 ? (
                     <ul className="compliance__failures">

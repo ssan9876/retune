@@ -147,6 +147,47 @@ func newPolicy(t *testing.T, q *store.Queries, name string) store.CompliancePoli
 	return p
 }
 
+// TestListDeviceComplianceNamesAndOrdersPolicies covers what the device
+// detail page reads: each row carries its policy's name, and the rows arrive
+// by name rather than by the id the page never shows.
+func TestListDeviceComplianceNamesAndOrdersPolicies(t *testing.T) {
+	st := storetest.New(t)
+	ctx := context.Background()
+	q := st.Q()
+	dev := newDevice(t, q, "h1")
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	// Created out of alphabetical order, and mixed case, so neither insertion
+	// order nor a case-sensitive sort would produce the wanted order.
+	for _, name := range []string{"zebra", "Apple", "mango"} {
+		p := newPolicy(t, q, name)
+		if err := q.UpsertDeviceCompliance(ctx, store.DeviceCompliance{
+			DeviceID: dev.ID, PolicyID: p.ID, State: store.ComplianceCompliant,
+			Failures: json.RawMessage(`[]`), EvaluatedAt: now,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	list, err := q.ListDeviceCompliance(ctx, dev.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, dc := range list {
+		got = append(got, dc.PolicyName)
+	}
+	want := []string{"Apple", "mango", "zebra"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+}
+
 func TestDeviceComplianceRoundTripAndDeleteExcept(t *testing.T) {
 	st := storetest.New(t)
 	ctx := context.Background()

@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import Overview from "./Overview";
@@ -14,6 +15,15 @@ function dashboard(overrides: Record<string, unknown> = {}) {
     os_builds: [{ build: "26200", count: 6 }],
     ...overrides,
   };
+}
+
+// The stats link to the pages that explain them, so the page needs a router.
+function renderOverview() {
+  return render(
+    <MemoryRouter>
+      <Overview />
+    </MemoryRouter>,
+  );
 }
 
 function mockDashboard(body: unknown, status = 200) {
@@ -32,7 +42,7 @@ beforeEach(() => {
 describe("Overview", () => {
   it("shows fleet, compliance and deployment counts", async () => {
     mockDashboard(dashboard());
-    render(<Overview />);
+    renderOverview();
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
 
     expect(screen.getByText("Active").closest(".overview__stat")).toHaveTextContent("8");
@@ -46,20 +56,27 @@ describe("Overview", () => {
 
     expect(screen.getByText("Scripts").closest(".overview__stat")).toHaveTextContent("1");
 
+    // A count is a way in to the page that can explain it.
+    expect(screen.getByText("Scripts").closest("a")).toHaveAttribute("href", "/scripts");
+    expect(screen.getByText("Apps").closest("a")).toHaveAttribute("href", "/apps");
+    expect(screen.getByText("Profiles").closest("a")).toHaveAttribute("href", "/profiles");
+    expect(screen.getByText("Agent").closest("a")).toHaveAttribute("href", "/agent-versions");
+    expect(screen.getByText("Non-compliant").closest("a")).toHaveAttribute("href", "/compliance");
+
     expect(screen.getByText("0.3.0")).toBeInTheDocument();
     expect(screen.getByText("26200")).toBeInTheDocument();
   });
 
   it("says so when no agent versions or builds have been reported", async () => {
     mockDashboard(dashboard({ agent_versions: [], os_builds: [] }));
-    render(<Overview />);
+    renderOverview();
     await screen.findByRole("heading", { name: "Overview" });
     expect(screen.getAllByText("No data reported yet.")).toHaveLength(2);
   });
 
   it("shows an error when the dashboard fails to load", async () => {
     mockDashboard({ code: "internal", message: "something broke" }, 500);
-    render(<Overview />);
+    renderOverview();
     expect(await screen.findByText("something broke")).toBeInTheDocument();
   });
 });

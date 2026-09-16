@@ -145,6 +145,32 @@ describe("Compliance", () => {
     expect(posted[1]).toContain("/compliance-policies/pol-1/evaluate");
   });
 
+  it("follows a rename in the open detail rather than holding the old policy", async () => {
+    const renamed = { ...policy, name: "Baseline security v2" };
+    let current: unknown = policy;
+    fetchMock.mockImplementation((url: string, init?: { method?: string }) => {
+      if (init?.method && init.method !== "GET") {
+        if (String(url).includes("/evaluate")) return Promise.resolve(json({ evaluated_count: 0 }));
+        current = renamed;
+        return Promise.resolve(json(renamed));
+      }
+      if (String(url).includes("/compliance-policies?")) {
+        return Promise.resolve(list([current]));
+      }
+      return Promise.resolve(list([]));
+    });
+    render_();
+
+    // Open the detail, then rename the policy underneath it.
+    await userEvent.click(await screen.findByRole("button", { name: "Baseline security" }));
+    expect(await screen.findByRole("heading", { name: "Baseline security", level: 2 })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save policy" }));
+
+    expect(await screen.findByRole("heading", { name: "Baseline security v2", level: 2 })).toBeInTheDocument();
+  });
+
   it("keeps a successful save when the re-evaluation fails", async () => {
     fetchMock.mockImplementation((url: string, init?: { method?: string }) => {
       if (init?.method === "POST" && String(url).includes("/evaluate")) {

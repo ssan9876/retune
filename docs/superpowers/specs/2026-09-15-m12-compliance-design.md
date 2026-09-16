@@ -27,7 +27,7 @@ A policy's `rules` is a JSON array of 1–50 objects, each `{"type": …, …par
 | `os_build_min` | `build` (digits, dotted allowed) | device OS build ≥ `build`, compared segment-wise numerically | device has no OS build |
 | `agent_version_min` | `version` (dotted numeric) | reported agent version ≥ `version` | version empty or not dotted-numeric (reported as failure detail, state unknown) |
 | `bitlocker` | `volumes`: `system` \| `all` | `system`: the volume named `C:` is `on`; `all`: every fixed volume is `on` | no inventory, no volume to check (no system volume, or `all` with no fixed volumes reported), or a required volume reports `unknown` |
-| `tpm` | `min_version` (optional, e.g. `2.0`) | TPM present and, if given, version ≥ `min_version` | no inventory |
+| `tpm` | `min_version` (optional, e.g. `2.0`) | TPM present and, if given, version ≥ `min_version` | no inventory, or a `min_version` to check against a TPM that reported no version |
 | `checked_in_within` | `hours` 1–8760 | `last_seen_at` within `hours` | never seen |
 | `inventory_within` | `hours` 1–8760 | inventory received within `hours` | never |
 | `updates_within` | `days` 1–365 | last update installed within `days` | no inventory or no date reported |
@@ -54,7 +54,7 @@ Read endpoints need any admin role, mutations need write.
 
 - `GET/POST /compliance-policies`, `GET/POST/DELETE /compliance-policies/{id}` (POST on the id updates; DELETE removes assignments, results and mirrored statuses in one transaction), `POST /compliance-policies/{id}/evaluate`.
 - `GET /compliance-policies/{id}/devices?state=` — paged device results with hostname, state, failures, evaluated_at.
-- `GET /devices/{id}/compliance` — overall state plus each applicable policy's state and failures.
+- `GET /devices/{id}/compliance` — overall state plus each applicable policy's id, name, state and failures, ordered by policy name.
 - `GET /devices` items gain `compliance` (overall state).
 - `GET /dashboard` — `{devices:{active,stale,retired,total}, compliance:{compliant,non_compliant,unknown,not_evaluated}, failed_deployments:{script,app,profile,agent}, agent_versions:[{version,count}] (top 10), os_builds:[{build,count}] (top 10)}` for active devices.
 - `GET /devices/export.csv` and `GET /compliance-policies/{id}/devices/export.csv` — `text/csv; charset=utf-8`, `Content-Disposition: attachment`, header row, one row per device. Any cell beginning with `=`, `+`, `-`, `@`, tab or carriage return is prefixed with `'` (spreadsheet formula injection). Device export columns: hostname, serial, manufacturer, model, os_version, os_build, agent_version, status, compliance, last_seen_at, enrolled_at.

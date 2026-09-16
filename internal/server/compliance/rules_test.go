@@ -342,6 +342,15 @@ func TestEvaluateTPM(t *testing.T) {
 	} else if got.Failures[0].Detail != "the TPM version is 1.2, below the required 2.0" {
 		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
+	// A present TPM whose version did not come back is a missing fact, not a
+	// TPM that failed the floor: unknown, the way agent_version_min reads a
+	// device that has not reported its version.
+	unversioned := &protocol.Inventory{Hardware: protocol.Hardware{TPMPresent: true}}
+	if got := compliance.Evaluate(versioned, compliance.Facts{Inventory: unversioned}, now); got.State != compliance.StateUnknown {
+		t.Fatalf("present but unversioned against a min: got %v", got)
+	} else if got.Failures[0].Detail != "the TPM version is not reported" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
+	}
 }
 
 func TestEvaluateCheckedInWithin(t *testing.T) {

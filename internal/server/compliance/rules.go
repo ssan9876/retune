@@ -580,8 +580,11 @@ func evalTPM(r Rule, f Facts) (Failure, bool) {
 	if r.MinVersion == "" {
 		return Failure{}, false
 	}
+	// A TPM that is present but whose version did not come back is a hole in
+	// what was collected, not a TPM that fails the floor - the same reading
+	// agent_version_min takes of a device that has not reported its version.
 	if !dottedNumeric(hw.TPMVersion) {
-		return nonCompliant(r.Type, "the TPM version is not reported"), true
+		return unknownFailure(r.Type, "the TPM version is not reported"), true
 	}
 	cmp, _ := CompareDotted(hw.TPMVersion, r.MinVersion)
 	if cmp < 0 {
