@@ -25,6 +25,7 @@ export interface Device {
   last_seen_at?: string;
   cert_expires_at: string;
   stale: boolean;
+  compliance: string;
 }
 
 export interface Software {
@@ -241,6 +242,59 @@ export interface Profile {
   created_at: string;
   updated_at: string;
   created_by: string;
+}
+
+export interface DashboardDevices {
+  active: number;
+  stale: number;
+  retired: number;
+  total: number;
+}
+
+export interface DashboardCompliance {
+  compliant: number;
+  non_compliant: number;
+  unknown: number;
+  not_evaluated: number;
+}
+
+export interface DashboardFailedDeployments {
+  script: number;
+  app: number;
+  profile: number;
+  agent: number;
+}
+
+export interface NamedCount {
+  version?: string;
+  build?: string;
+  count: number;
+}
+
+export interface Dashboard {
+  devices: DashboardDevices;
+  compliance: DashboardCompliance;
+  failed_deployments: DashboardFailedDeployments;
+  agent_versions: NamedCount[];
+  os_builds: NamedCount[];
+}
+
+export interface ComplianceFailure {
+  rule: string;
+  state: string;
+  detail: string;
+}
+
+export interface DeviceCompliancePolicy {
+  policy_id: string;
+  state: string;
+  failures: ComplianceFailure[];
+  evaluated_at: string;
+}
+
+export interface DeviceCompliance {
+  overall: string;
+  policies: DeviceCompliancePolicy[];
 }
 
 export interface SettingStatus {

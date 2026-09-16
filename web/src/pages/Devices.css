@@ -1,3 +1,14 @@
+.devices__head-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.devices__head-actions a.button {
+  text-decoration: none;
+}
+
 .devices__search {
   width: min(320px, 100%);
   padding: var(--space-2) var(--space-3);

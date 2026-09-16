@@ -42,10 +42,27 @@ const detail = {
   commands: [],
 };
 
+const emptyCompliance = { overall: "not_evaluated", policies: [] };
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json" },
+  });
+}
+
+/** mockDetail answers the device detail and compliance GETs; a POST goes to onPost if given. */
+function mockDetail(
+  detailBody: unknown = detail,
+  complianceBody: unknown = emptyCompliance,
+  onPost?: (url: string, body: unknown) => unknown,
+) {
+  fetchMock.mockImplementation((url: string, init?: { method?: string; body?: string }) => {
+    if (init?.method === "POST" && onPost) {
+      return Promise.resolve(json(onPost(String(url), init.body ? JSON.parse(init.body) : undefined)));
+    }
+    if (String(url).endsWith("/compliance")) return Promise.resolve(json(complianceBody));
+    return Promise.resolve(json(detailBody));
   });
 }
 
@@ -67,7 +84,7 @@ beforeEach(() => {
 
 describe("DeviceDetail", () => {
   it("shows identity and inventory", async () => {
-    fetchMock.mockImplementation(() => Promise.resolve(json(detail)));
+    mockDetail();
     renderDetail();
     expect(await screen.findByRole("heading", { name: "PC-ALPHA" })).toBeInTheDocument();
     expect(screen.getByText("Contoso Book 9")).toBeInTheDocument();
@@ -75,11 +92,34 @@ describe("DeviceDetail", () => {
     expect(screen.getByText("7-Zip")).toBeInTheDocument();
   });
 
-  it("queues a script", async () => {
-    fetchMock.mockImplementation((_url: string, init?: { method?: string }) => {
-      if (init?.method === "POST") return Promise.resolve(json({ commands: [{ id: "c1" }] }, 201));
-      return Promise.resolve(json(detail));
+  it("shows the device's compliance state and any policy failures", async () => {
+    mockDetail(detail, {
+      overall: "non_compliant",
+      policies: [
+        {
+          policy_id: "11111111-1111-1111-1111-111111111111",
+          state: "non_compliant",
+          failures: [{ rule: "min_os_build", state: "non_compliant", detail: "OS build 22000 below minimum 26100" }],
+          evaluated_at: new Date().toISOString(),
+        },
+      ],
     });
+    renderDetail();
+    await screen.findByRole("heading", { name: "PC-ALPHA" });
+    expect(screen.getByText("Overall: non compliant")).toBeInTheDocument();
+    expect(screen.getByText("11111111-1111-1111-1111-111111111111")).toBeInTheDocument();
+    expect(screen.getByText("OS build 22000 below minimum 26100")).toBeInTheDocument();
+  });
+
+  it("says so when no compliance policies apply", async () => {
+    mockDetail();
+    renderDetail();
+    await screen.findByRole("heading", { name: "PC-ALPHA" });
+    expect(screen.getByText("No compliance policies apply to this device.")).toBeInTheDocument();
+  });
+
+  it("queues a script", async () => {
+    mockDetail(detail, emptyCompliance, () => ({ commands: [{ id: "c1" }] }));
     renderDetail();
     await screen.findByRole("heading", { name: "PC-ALPHA" });
 
@@ -100,7 +140,7 @@ describe("DeviceDetail", () => {
 
   it("hides write actions from a read-only admin", async () => {
     canWrite = false;
-    fetchMock.mockImplementation(() => Promise.resolve(json(detail)));
+    mockDetail();
     renderDetail();
     await screen.findByRole("heading", { name: "PC-ALPHA" });
     expect(screen.queryByRole("button", { name: "Run script" })).not.toBeInTheDocument();

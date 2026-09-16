@@ -11,6 +11,7 @@ import DeviceDetail from "./pages/DeviceDetail";
 import Devices from "./pages/Devices";
 import Groups from "./pages/Groups";
 import Login from "./pages/Login";
+import Overview from "./pages/Overview";
 import Profiles from "./pages/Profiles";
 import Scripts from "./pages/Scripts";
 import Tokens from "./pages/Tokens";
@@ -23,7 +24,7 @@ export default function App() {
   return (
     <Shell>
       <Routes>
-        <Route path="/" element={<Navigate to="/devices" replace />} />
+        <Route path="/" element={<Overview />} />
         <Route path="/devices" element={<Devices />} />
         <Route path="/devices/:id" element={<DeviceDetail />} />
         <Route path="/groups" element={<Groups />} />

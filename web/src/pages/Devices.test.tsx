@@ -27,18 +27,33 @@ function device(overrides: Record<string, unknown> = {}) {
     last_seen_at: new Date().toISOString(),
     cert_expires_at: "2026-12-12T12:00:00Z",
     stale: false,
+    compliance: "compliant",
     ...overrides,
   };
 }
 
 function mockList(items: unknown[], total = items.length) {
-  fetchMock.mockImplementation(() =>
-    Promise.resolve(
+  fetchMock.mockImplementation((url: string) => {
+    if (String(url).includes("/dashboard")) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            devices: { active: items.length, stale: 0, retired: 0, total: items.length },
+            compliance: { compliant: 0, non_compliant: 0, unknown: 0, not_evaluated: 0 },
+            failed_deployments: { script: 0, app: 0, profile: 0, agent: 0 },
+            agent_versions: [],
+            os_builds: [],
+          }),
+          { headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    }
+    return Promise.resolve(
       new Response(JSON.stringify({ items, total, limit: 50, offset: 0 }), {
         headers: { "Content-Type": "application/json" },
       }),
-    ),
-  );
+    );
+  });
 }
 
 beforeEach(() => {
@@ -48,7 +63,10 @@ beforeEach(() => {
 
 describe("Devices", () => {
   it("lists devices with their status", async () => {
-    mockList([device(), device({ id: "01a0-2", hostname: "PC-BETA", stale: true })]);
+    mockList([
+      device(),
+      device({ id: "01a0-2", hostname: "PC-BETA", stale: true, compliance: "non_compliant" }),
+    ]);
     render(
       <MemoryRouter>
         <Devices />
@@ -58,6 +76,22 @@ describe("Devices", () => {
     expect(screen.getByRole("link", { name: "PC-BETA" })).toBeInTheDocument();
     expect(screen.getAllByText("active").length).toBeGreaterThan(0);
     expect(screen.getAllByText("stale").length).toBeGreaterThan(0);
+    expect(screen.getByText("compliant")).toBeInTheDocument();
+    expect(screen.getByText("non compliant")).toBeInTheDocument();
+  });
+
+  it("links to the CSV export", async () => {
+    mockList([device()]);
+    render(
+      <MemoryRouter>
+        <Devices />
+      </MemoryRouter>,
+    );
+    await screen.findByRole("link", { name: "PC-ALPHA" });
+    expect(screen.getByRole("link", { name: "Export CSV" })).toHaveAttribute(
+      "href",
+      "/api/admin/v1/devices/export.csv",
+    );
   });
 
   it("explains an empty fleet", async () => {
