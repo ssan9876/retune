@@ -10,10 +10,11 @@
 .detail__grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: var(--space-4);
-  padding: var(--space-4);
+  gap: var(--space-5);
+  padding: var(--pane-padding);
   border: 1px solid var(--rule);
-  border-radius: var(--radius);
+  border-radius: var(--radius-pane);
+  box-shadow: var(--shadow-card);
   background: var(--surface);
   margin-bottom: var(--space-6);
 }
@@ -31,11 +32,16 @@
 
 .compliance {
   margin-bottom: var(--space-6);
+  padding: var(--pane-padding);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-pane);
+  box-shadow: var(--shadow-card);
+  background: var(--surface);
 }
 
 .compliance h2 {
-  font-size: var(--text-base);
-  margin: 0 0 var(--space-2);
+  font-size: var(--text-lg);
+  margin: 0 0 var(--space-4);
 }
 
 .compliance__empty {
@@ -52,7 +58,7 @@
   margin: 0;
   padding: 0;
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-4);
 }
 
 .compliance__policies > li {

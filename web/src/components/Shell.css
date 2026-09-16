@@ -1,105 +1,438 @@
+/* The admin-centre frame: a brand bar across the top, a nav rail under it on
+   the left, and the page in the remaining corner. The bar spans both columns
+   so the rail hangs from it, which is what makes the chrome read as one
+   frame rather than two panels. */
 .shell {
   display: grid;
   grid-template-columns: var(--rail-width) 1fr;
+  grid-template-rows: var(--topbar-height) 1fr;
+  grid-template-areas:
+    "topbar topbar"
+    "rail content";
   min-height: 100vh;
+  transition: grid-template-columns var(--transition);
 }
 
-.rail {
-  border-right: 1px solid var(--rule);
-  background: var(--surface);
-  padding: var(--space-4);
+.shell--collapsed {
+  grid-template-columns: var(--rail-width-collapsed) 1fr;
+}
+
+.icon {
+  flex: none;
+}
+
+/* Top bar */
+
+.topbar {
+  grid-area: topbar;
+  position: sticky;
+  top: 0;
+  z-index: 20;
   display: flex;
-  flex-direction: column;
-  gap: var(--space-6);
-  /* Grid items default to min-width: auto, which lets a wide child hold the
-     column open past the viewport. Both columns opt out and scroll instead. */
-  min-width: 0;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-3);
+  /* A shallow gradient and a shadow under the bar: flat purple across the
+     full width is a lot of one colour, and the shadow is what separates the
+     chrome from the page when the page scrolls under it. */
+  background: linear-gradient(180deg, var(--brand-bar-top), var(--brand-bar));
+  color: var(--brand-bar-ink);
+  box-shadow: var(--shadow-bar);
 }
 
-.rail__mark {
-  font-size: var(--text-lg);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-
-.rail nav {
-  display: grid;
-  gap: 2px;
-}
-
-.rail a {
-  padding: var(--space-2) var(--space-3);
+.topbar__burger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
   border-radius: var(--radius);
-  color: var(--ink);
-  text-decoration: none;
-  font-size: var(--text-sm);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
 }
 
-.rail a:hover {
+.topbar__burger:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.topbar__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-base);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* The mark sits in its own lighter chip, so it reads as a logo rather than
+   as one more icon in the bar. */
+.topbar__brand .icon {
+  width: 24px;
+  height: 24px;
+  padding: 3px;
+  border-radius: var(--radius-pane);
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* "admin center" sits beside the product name at a lower weight, the way a
+   suite name does, and is the first thing dropped on a narrow screen. */
+.topbar__suite {
+  color: var(--brand-bar-ink-muted);
+  font-size: var(--text-sm);
+  border-left: 1px solid rgba(255, 255, 255, 0.25);
+  padding-left: var(--space-3);
+}
+
+.topbar__search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 auto;
+  width: min(420px, 38vw);
+  height: 30px;
+  padding: 0 var(--space-3);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--radius-pane);
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--brand-bar-ink);
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.topbar__search:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.topbar__search:focus-within {
+  background: var(--surface);
+  border-color: var(--surface);
+  color: var(--ink);
+}
+
+.topbar__search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.topbar__search input::placeholder {
+  color: var(--brand-bar-ink-muted);
+}
+
+.topbar__search:focus-within input::placeholder {
+  color: var(--ink-muted);
+}
+
+.topbar__results {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: var(--space-1);
+  list-style: none;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-raised);
+}
+
+.topbar__results button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.topbar__results button:hover {
   background: var(--surface-sunken);
 }
 
-.rail a[aria-current="page"] {
-  background: var(--primary-wash);
-  color: var(--primary);
-  font-weight: 500;
+.topbar__tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-left: auto;
 }
 
-.rail__footer {
-  margin-top: auto;
+.topbar__badge {
   font-size: var(--text-xs);
-  color: var(--ink-muted);
+  padding: 2px var(--space-2);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.topbar__account {
+  position: relative;
+}
+
+.topbar__avatar {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  color: var(--brand-bar-ink);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.topbar__avatar:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.topbar__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 220px;
+  padding: var(--space-2);
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-raised);
   display: grid;
   gap: var(--space-2);
-  justify-items: start;
 }
 
-.content {
-  padding: var(--space-6) var(--space-8);
-  max-width: 1200px;
+.topbar__menu-head {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--rule);
+}
+
+.topbar__menu-email {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.topbar__menu-role {
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+}
+
+.topbar__menu button {
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.topbar__menu button:hover {
+  background: var(--surface-sunken);
+}
+
+/* Nav rail */
+
+.rail {
+  grid-area: rail;
+  background: var(--nav-bg);
+  border-right: 1px solid var(--rule);
+  padding: var(--space-3) 0;
+  overflow-x: hidden;
+  overflow-y: auto;
   min-width: 0;
 }
 
+.rail__section + .rail__section {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--rule);
+}
+
+.rail__heading {
+  padding: 0 var(--space-4) var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.rail a {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: 34px;
+  padding: 0 var(--space-4);
+  /* The active marker is a transparent border on every row, so a row does
+     not shift sideways by 3px when it becomes the current page. */
+  border-left: 3px solid transparent;
+  padding-left: calc(var(--space-4) - 3px);
+  color: var(--nav-ink);
+  text-decoration: none;
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.rail a:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--primary);
+}
+
+/* The current page is the one row that is not on the rail's grey: it sits on
+   the page's own white, so the eye reads it as the panel the content belongs
+   to rather than as a highlighted list item. */
+.rail a[aria-current="page"] {
+  background: var(--surface);
+  border-left-color: var(--primary);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.rail .icon {
+  opacity: 0.75;
+}
+
+.rail a[aria-current="page"] .icon {
+  opacity: 1;
+}
+
+/* Collapsed, the rail keeps the icons and drops everything that needs width.
+   The links keep their title attribute, so hovering still names them. */
+.shell--collapsed .rail__label,
+.shell--collapsed .rail__heading {
+  display: none;
+}
+
+.shell--collapsed .rail a {
+  justify-content: center;
+  padding: 0;
+  border-left-width: 2px;
+}
+
+/* Content */
+
+.content {
+  grid-area: content;
+  padding: var(--space-4) var(--space-6) var(--space-8);
+  min-width: 0;
+}
+
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+}
+
+/* The last crumb is where you are, so it is the one that is not grey. */
+.crumbs span:last-child {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.crumbs__sep {
+  margin-right: var(--space-2);
+  color: var(--ink-muted);
+  font-weight: 400;
+}
+
+/* The page's own header is the command bar: title on the left, the actions
+   for this page on the right, with a rule under it separating chrome from
+   content the way the admin centre does. */
 .content__head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--rule);
   flex-wrap: wrap;
 }
 
+.content__head h1 {
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+@media (max-width: 900px) {
+  .topbar__suite {
+    display: none;
+  }
+}
+
 @media (max-width: 720px) {
-  .shell {
+  .shell,
+  .shell--collapsed {
     grid-template-columns: 1fr;
-    /* Without an explicit row list both rows stretch to share the viewport
-       height, which turns the rail into a third of the screen. */
-    grid-template-rows: auto 1fr;
+    grid-template-rows: var(--topbar-height) auto 1fr;
+    grid-template-areas:
+      "topbar"
+      "rail"
+      "content";
+  }
+
+  .topbar__search {
+    width: auto;
+    flex: 1;
   }
 
   .rail {
     border-right: 0;
     border-bottom: 1px solid var(--rule);
-    gap: var(--space-3);
-  }
-
-  /* The footer is pinned to the bottom of the side rail; as a header it sits
-     on one line with the sign-out button. */
-  .rail__footer {
-    margin-top: 0;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-  }
-
-  /* The rail becomes a row of tabs above the content. They keep their full
-     labels and scroll sideways rather than compressing to fit. */
-  .rail nav {
-    grid-auto-flow: column;
-    grid-auto-columns: max-content;
     overflow-x: auto;
-    min-width: 0;
+  }
+
+  /* On a phone the rail becomes one scrolling strip of icons and labels:
+     the section headings and the vertical stacking both go. */
+  .rail nav {
+    display: flex;
+    gap: var(--space-1);
+  }
+
+  .rail__section {
+    display: flex;
+  }
+
+  .rail__section + .rail__section {
+    margin: 0;
+    padding: 0;
+    border-top: 0;
+  }
+
+  .rail__heading {
+    display: none;
+  }
+
+  .rail a {
+    border-left: 0;
+    border-bottom: 3px solid transparent;
+    padding: 0 var(--space-3);
+  }
+
+  .rail a[aria-current="page"] {
+    border-left: 0;
+    border-bottom-color: var(--primary);
   }
 
   .content {

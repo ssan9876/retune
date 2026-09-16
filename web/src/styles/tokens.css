@@ -1,31 +1,48 @@
 :root {
-  /* Surfaces and text. Light is the default; dark mirrors it below. */
-  --paper: #f7f8fa;
+  /* Surfaces and text. Light is the default; dark mirrors it below.
+     The neutrals are the Fluent ramp the Intune admin center uses: a warm
+     near-white page, white panes, and a slightly darker nav rail, so the
+     three layers separate without a single drop shadow. */
+  --paper: #faf9f8;
   --surface: #ffffff;
-  --surface-sunken: #eef0f4;
-  --ink: #1b1f24;
-  --ink-muted: #5c6570;
-  --rule: #d8dce2;
+  --surface-sunken: #f3f2f1;
+  --ink: #1b1a19;
+  --ink-muted: #605e5c;
+  --rule: #e1dfdd;
 
   /* One primary, used for actions and focus only. */
   --primary: #5b5bd6;
   --primary-ink: #ffffff;
-  --primary-wash: #ecebfb;
+  --primary-wash: #eceafc;
+
+  /* Chrome: the top bar is the brand surface, the nav rail sits between it
+     and the page. Kept apart from --primary so the accent can change without
+     repainting the frame. */
+  --brand-bar: #3b3499;
+  --brand-bar-top: #4a41b8;
+  --brand-bar-ink: #ffffff;
+  --brand-bar-ink-muted: #c7c3ef;
+  --nav-bg: #f3f2f1;
+  --nav-ink: #323130;
 
   /* Status carries meaning; never use these for decoration. */
-  --status-active: #12876f;
-  --status-stale: #b4690e;
+  --status-active: #107c41;
+  --status-stale: #a4600a;
   --status-retired: #c4403a;
   --status-neutral: #6b7481;
 
-  /* Type scale */
-  --text-xs: 0.75rem;
-  --text-sm: 0.8125rem;
+  /* Type scale. A step up from the admin centre's own 12/14: the density is
+     worth copying, the eye strain is not. */
+  --text-xs: 0.8125rem;
+  --text-sm: 0.875rem;
   --text-base: 0.9375rem;
   --text-lg: 1.125rem;
-  --text-xl: 1.5rem;
-  --text-2xl: 2rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.625rem;
 
+  /* Plex is bundled with the console, so it renders identically on every
+     machine and at every weight - Segoe leans on whatever the OS happens to
+     have and is thin and wide at this size. */
   --font-sans: "IBM Plex Sans", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", monospace;
 
@@ -34,32 +51,55 @@
   --space-2: 0.5rem;
   --space-3: 0.75rem;
   --space-4: 1rem;
+  --space-5: 1.25rem;
   --space-6: 1.5rem;
   --space-8: 2rem;
 
-  --radius: 6px;
-  --rail-width: 200px;
-  --row-height: 36px;
-  --shadow-raised: 0 1px 2px rgba(27, 31, 36, 0.08), 0 4px 12px rgba(27, 31, 36, 0.06);
+  /* What a box gives its contents. Every pane, tile and dialog uses it, so
+     the inside of one box never looks tighter than the inside of another. */
+  --pane-padding: 1.25rem;
+  --cell-padding: 1rem;
+
+  /* 2px is the admin centre's own corner; 4px on the larger boxes keeps a
+     pane from looking like a cut rectangle without turning it into a bubble. */
+  --radius: 2px;
+  --radius-pane: 4px;
+  --rail-width: 240px;
+  --rail-width-collapsed: 48px;
+  --topbar-height: 48px;
+  --row-height: 44px;
+  --shadow-raised: 0 1.6px 3.6px rgba(0, 0, 0, 0.11), 0 0.3px 0.9px rgba(0, 0, 0, 0.07);
+  /* Just enough to lift a pane off the page; a border alone reads flat and
+     two borders meeting read as a seam. */
+  --shadow-card: 0 1px 2px rgba(27, 26, 25, 0.06);
+  --shadow-bar: 0 1px 3px rgba(27, 26, 25, 0.18);
   --transition: 140ms ease;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #14161a;
-    --surface: #1b1e24;
-    --surface-sunken: #101216;
-    --ink: #e6e8eb;
-    --ink-muted: #9aa4b1;
-    --rule: #2a2f36;
+    --paper: #1b1a19;
+    --surface: #252423;
+    --surface-sunken: #323130;
+    --ink: #f3f2f1;
+    --ink-muted: #a19f9d;
+    --rule: #3b3a39;
     --primary: #8b8bf0;
     --primary-ink: #14161a;
-    --primary-wash: #23234a;
+    --primary-wash: #2c2a55;
+    --brand-bar: #2a2477;
+    --brand-bar-top: #352d92;
+    --brand-bar-ink: #ffffff;
+    --brand-bar-ink-muted: #a7a2d8;
+    --nav-bg: #252423;
+    --nav-ink: #f3f2f1;
     --status-active: #3fbfa0;
     --status-stale: #d99a3f;
     --status-retired: #e0655e;
     --status-neutral: #8b95a3;
     --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.35);
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-bar: 0 1px 3px rgba(0, 0, 0, 0.5);
   }
 }
 

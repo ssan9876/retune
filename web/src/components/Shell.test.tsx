@@ -1,0 +1,89 @@
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
+import { describe, expect, it, vi } from "vitest";
+
+import { Shell } from "./Shell";
+
+const signOut = vi.fn();
+let role = "admin";
+
+vi.mock("../session/SessionContext", () => ({
+  useSession: () => ({ admin: { email: "ops@example.com", role }, canWrite: role === "admin", signOut }),
+}));
+
+function renderShell(path = "/devices") {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <Shell>
+        <h1>Devices</h1>
+      </Shell>
+    </MemoryRouter>,
+  );
+}
+
+describe("Shell", () => {
+  it("groups the nav and marks the page you are on", () => {
+    renderShell("/compliance");
+    const nav = screen.getByRole("navigation", { name: "Main" });
+    expect(within(nav).getByText("Endpoint security")).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Compliance policies" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(within(nav).getByRole("link", { name: "All devices" })).not.toHaveAttribute("aria-current");
+  });
+
+  it("names the route in the breadcrumb, section included", () => {
+    renderShell("/profiles");
+    const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
+    expect(crumbs).toHaveTextContent("Home");
+    expect(crumbs).toHaveTextContent("Deployment");
+    expect(crumbs).toHaveTextContent("Configuration profiles");
+  });
+
+  // A device's own page is not a nav entry, but it is still under Devices.
+  it("keeps a detail page under its section", () => {
+    renderShell("/devices/01a0-1");
+    expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toHaveTextContent("All devices");
+  });
+
+  it("collapses the rail to icons and back", async () => {
+    const { container } = renderShell();
+    expect(container.querySelector(".shell")).not.toHaveClass("shell--collapsed");
+    await userEvent.click(screen.getByRole("button", { name: "Collapse navigation" }));
+    expect(container.querySelector(".shell")).toHaveClass("shell--collapsed");
+    // The links survive the collapse; it is their labels that are hidden, so
+    // the rail stays navigable by keyboard and to a screen reader.
+    expect(screen.getByRole("link", { name: "All devices" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Expand navigation" }));
+    expect(container.querySelector(".shell")).not.toHaveClass("shell--collapsed");
+  });
+
+  it("searches the pages rather than pretending to search the fleet", async () => {
+    renderShell();
+    await userEvent.type(screen.getByRole("searchbox", { name: "Search pages" }), "compl");
+    const hit = screen.getByRole("button", { name: /Compliance policies/ });
+    expect(hit).toBeInTheDocument();
+    await userEvent.click(hit);
+    expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toHaveTextContent(
+      "Compliance policies",
+    );
+  });
+
+  it("puts the account and sign-out behind the avatar", async () => {
+    renderShell();
+    await userEvent.click(screen.getByRole("button", { name: "Account: ops@example.com" }));
+    expect(screen.getByText("ops@example.com")).toBeInTheDocument();
+    expect(screen.getByText("Administrator")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("menuitem", { name: "Sign out" }));
+    expect(signOut).toHaveBeenCalled();
+  });
+
+  it("says when the account is read-only", () => {
+    role = "read_only";
+    renderShell();
+    expect(screen.getByText("Read-only")).toBeInTheDocument();
+    role = "admin";
+  });
+});

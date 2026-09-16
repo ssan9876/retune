@@ -31,9 +31,15 @@
 }
 
 .app__detail {
+  /* A detail is its own pane below the list, not a rule across the page:
+     it holds a heading, actions and a table, and they need a boundary and
+     room inside it the way every other box has. */
   margin-top: var(--space-6);
-  border-top: 1px solid var(--rule);
-  padding-top: var(--space-4);
+  padding: var(--pane-padding);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-pane);
+  box-shadow: var(--shadow-card);
+  background: var(--surface);
 }
 
 .app__rollup {
