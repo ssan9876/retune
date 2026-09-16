@@ -148,7 +148,12 @@ func (h *Handler) deleteCompliancePolicy(w http.ResponseWriter, r *http.Request)
 
 // evaluateCompliancePolicy re-scores every device the policy currently
 // applies to, so an edit does not have to wait for the next sweep to reach
-// its devices.
+// its devices. The pass runs after the response: it is one transaction per
+// device, and a policy assigned to the whole fleet would otherwise hold a
+// request open for as long as the fleet is large. The reply says how many
+// devices the pass covers and whether it started one - `started` is false
+// when a pass for this policy is already running, which is not an error,
+// since that pass reads the same policy this one would have.
 func (h *Handler) evaluateCompliancePolicy(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathUUID(w, r, "no such compliance policy")
 	if !ok {
@@ -158,12 +163,12 @@ func (h *Handler) evaluateCompliancePolicy(w http.ResponseWriter, r *http.Reques
 		h.writeComplianceError(w, "get compliance policy", err)
 		return
 	}
-	n, err := h.Compliance.EvaluatePolicy(r.Context(), id)
+	n, started, err := h.Compliance.StartPolicyEvaluation(r.Context(), id, caller(r).Admin.Email)
 	if err != nil {
 		h.writeComplianceError(w, "evaluate compliance policy", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"evaluated_count": n})
+	writeJSON(w, http.StatusAccepted, map[string]any{"device_count": n, "started": started})
 }
 
 // decodeFailures turns a device_compliance row's stored failures back into

@@ -145,6 +145,44 @@ describe("Compliance", () => {
     expect(posted[1]).toContain("/compliance-policies/pol-1/evaluate");
   });
 
+  it("says the re-evaluation is running in the background, and how big it is", async () => {
+    fetchMock.mockImplementation((url: string, init?: { method?: string }) => {
+      if (init?.method === "POST" && String(url).includes("/evaluate")) {
+        return Promise.resolve(json({ device_count: 42, started: true }, 202));
+      }
+      if (String(url).includes("/compliance-policies?")) {
+        return Promise.resolve(list([policy]));
+      }
+      return Promise.resolve(list([]));
+    });
+    render_();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Baseline security" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Evaluate now" }));
+
+    // Nothing is evaluated by the time the response lands, so the wording
+    // must not claim it was.
+    expect(await screen.findByText("Re-evaluating 42 devices in the background.")).toBeInTheDocument();
+  });
+
+  it("says so when a pass for the policy is already running", async () => {
+    fetchMock.mockImplementation((url: string, init?: { method?: string }) => {
+      if (init?.method === "POST" && String(url).includes("/evaluate")) {
+        return Promise.resolve(json({ device_count: 42, started: false }, 202));
+      }
+      if (String(url).includes("/compliance-policies?")) {
+        return Promise.resolve(list([policy]));
+      }
+      return Promise.resolve(list([]));
+    });
+    render_();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Baseline security" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Evaluate now" }));
+
+    expect(await screen.findByText("A re-evaluation of this policy is already running.")).toBeInTheDocument();
+  });
+
   it("follows a rename in the open detail rather than holding the old policy", async () => {
     const renamed = { ...policy, name: "Baseline security v2" };
     let current: unknown = policy;

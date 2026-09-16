@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -36,6 +37,20 @@ type Service struct {
 	Store *store.Store
 	Now   func() time.Time
 	Log   *slog.Logger
+	// Background bounds work that outlives the request that asked for it: the
+	// server's own lifetime context, so a re-evaluation stops when the server
+	// is shutting down instead of writing into a pool that is closing. Unset,
+	// it falls back to context.Background(), which is what a test that never
+	// shuts anything down wants.
+	Background context.Context
+
+	// mu guards evaluating, the set of policies with a re-evaluation already
+	// running here. It only stops one server from stacking passes over the
+	// same policy when an administrator clicks twice; two replicas evaluating
+	// the same policy at once is not worth a shared lock, because every write
+	// the pass makes is an upsert of the same verdict.
+	mu         sync.Mutex
+	evaluating map[uuid.UUID]bool
 }
 
 func (s *Service) now() time.Time {
@@ -43,6 +58,13 @@ func (s *Service) now() time.Time {
 		return s.Now()
 	}
 	return time.Now()
+}
+
+func (s *Service) background() context.Context {
+	if s.Background != nil {
+		return s.Background
+	}
+	return context.Background()
 }
 
 func (s *Service) log() *slog.Logger {
@@ -348,31 +370,89 @@ func mirrorItemStatus(result Result) (status, detail string) {
 	return status, strings.Join(details, "; ")
 }
 
-// EvaluatePolicy re-evaluates one policy across every device it currently
-// applies to, used after a policy is edited so its devices do not wait for
-// the next sweep. ActiveDevicesForItem resolves that set in one query, so the
-// work is proportional to the devices the policy actually reaches rather than
-// to the size of the fleet: a policy assigned to a dozen machines costs a
-// dozen evaluations even on a estate of thousands.
+// StartPolicyEvaluation re-scores a policy's devices without holding the
+// request open for it. Resolving the set is one query, so the caller learns
+// straight away how many devices the pass will cover; the scoring itself is
+// one transaction per device, which for a policy assigned to the whole fleet
+// is more than any administrator should wait on an HTTP request for - and
+// more than most proxies would allow before giving up on a request whose work
+// would then carry on unwatched anyway.
 //
-// A device whose evaluation fails is logged and skipped rather than failing
-// the request, because one device's bad row should not deny every other
-// device the re-score the edit was made for. The returned count is what was
-// actually evaluated, so a caller that expected more can tell.
-func (s *Service) EvaluatePolicy(ctx context.Context, policyID uuid.UUID) (int, error) {
+// It reports how many devices the pass covers, and whether it started one: a
+// second call while the first is still running is not an error and not a
+// queued second pass, because the pass already running will read the same
+// edited policy this one would have.
+//
+// The outcome lands in the audit log rather than in a response nobody is
+// waiting for, so "did my re-evaluation finish, and did it manage every
+// device" is answerable after the fact.
+func (s *Service) StartPolicyEvaluation(ctx context.Context, policyID uuid.UUID, actor string) (int, bool, error) {
 	ids, err := s.Store.Q().ActiveDevicesForItem(ctx, ItemKindCompliance, policyID)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
-	n := 0
+	s.mu.Lock()
+	if s.evaluating[policyID] {
+		s.mu.Unlock()
+		return len(ids), false, nil
+	}
+	if s.evaluating == nil {
+		s.evaluating = make(map[uuid.UUID]bool)
+	}
+	s.evaluating[policyID] = true
+	s.mu.Unlock()
+
+	go func() {
+		defer func() {
+			s.mu.Lock()
+			delete(s.evaluating, policyID)
+			s.mu.Unlock()
+		}()
+		s.runPolicyEvaluation(s.background(), policyID, actor, ids)
+	}()
+	return len(ids), true, nil
+}
+
+// EvaluatingPolicy reports whether a re-evaluation of this policy is running
+// on this server.
+func (s *Service) EvaluatingPolicy(policyID uuid.UUID) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.evaluating[policyID]
+}
+
+// runPolicyEvaluation is the pass itself. A device that fails is logged and
+// skipped rather than abandoning the rest, the same way the sweeper treats
+// one bad device, and the count of failures goes into the audit entry so a
+// pass that limped is not indistinguishable from one that did not.
+func (s *Service) runPolicyEvaluation(ctx context.Context, policyID uuid.UUID, actor string, ids []uuid.UUID) {
+	started := s.now()
+	done, failed := 0, 0
 	for _, id := range ids {
+		if ctx.Err() != nil {
+			s.log().Warn("policy evaluation stopped early", "policy_id", policyID,
+				"evaluated", done, "remaining", len(ids)-done-failed, "error", ctx.Err())
+			break
+		}
 		if err := s.EvaluateDevice(ctx, id); err != nil {
 			s.log().Warn("evaluate device for policy", "device_id", id, "policy_id", policyID, "error", err)
+			failed++
 			continue
 		}
-		n++
+		done++
 	}
-	return n, nil
+	if err := s.Store.Q().InsertAudit(ctx, store.AuditEntry{
+		Actor: actor, Action: "compliance_policy.evaluated",
+		TargetKind: "compliance_policy", TargetID: policyID.String(),
+		Details: map[string]any{
+			"devices":   len(ids),
+			"evaluated": done,
+			"failed":    failed,
+			"duration":  s.now().Sub(started).String(),
+		},
+	}); err != nil {
+		s.log().Warn("audit policy evaluation", "policy_id", policyID, "error", err)
+	}
 }
 
 // EvaluateActive re-evaluates every active device's compliance. Its signature

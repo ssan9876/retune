@@ -95,7 +95,9 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 
 	svc := &enroll.Service{Store: st, CA: authority, Now: time.Now, CertValidity: clientCertValidity}
 	grp := &groups.Service{Store: st, Now: time.Now, Log: log}
-	comp := &compliance.Service{Store: st, Now: time.Now, Log: log}
+	// ctx is the server's lifetime: a re-evaluation started by "Evaluate now"
+	// outlives its request but not the process it runs in.
+	comp := &compliance.Service{Store: st, Now: time.Now, Log: log, Background: ctx}
 	inv := &inventory.Service{Store: st, Now: time.Now, Groups: grp, Compliance: comp, Log: log}
 	cmd := &commands.Service{Store: st, Now: time.Now}
 	scr := &scripts.Service{Store: st, Now: time.Now}

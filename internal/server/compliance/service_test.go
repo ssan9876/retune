@@ -337,6 +337,19 @@ func TestCreateBadRulesIsErrBadRequest(t *testing.T) {
 	}
 }
 
+// waitForPolicyEvaluation blocks until the background pass for a policy has
+// finished, so a test can assert on what it wrote.
+func waitForPolicyEvaluation(t *testing.T, svc *compliance.Service, policyID uuid.UUID) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for svc.EvaluatingPolicy(policyID) {
+		if time.Now().After(deadline) {
+			t.Fatal("policy evaluation did not finish")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 // TestEvaluatePolicyOnlyTouchesDevicesItAppliesTo checks the set the policy
 // resolves to: it must count and evaluate the device the policy is assigned
 // to, and leave an unrelated active device alone.
@@ -350,18 +363,64 @@ func TestEvaluatePolicyOnlyTouchesDevicesItAppliesTo(t *testing.T) {
 	p := createPolicy(t, svc, "P", `[{"type":"no_pending_reboot"}]`)
 	assign(t, st, p.ID, assigned.ID)
 
-	n, err := svc.EvaluatePolicy(ctx, p.ID)
+	n, started, err := svc.StartPolicyEvaluation(ctx, p.ID, "ops")
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !started {
+		t.Fatal("the first call should start a pass")
+	}
+	waitForPolicyEvaluation(t, svc, p.ID)
 	if n != 1 {
-		t.Errorf("evaluated %d devices, want 1", n)
+		t.Errorf("covered %d devices, want 1", n)
 	}
 	if results, err := st.Q().ListDeviceCompliance(ctx, assigned.ID); err != nil || len(results) != 1 {
 		t.Errorf("assigned device: %v %+v", err, results)
 	}
 	if results, err := st.Q().ListDeviceCompliance(ctx, unrelated.ID); err != nil || len(results) != 0 {
 		t.Errorf("unrelated device should be untouched: %v %+v", err, results)
+	}
+}
+
+// TestStartPolicyEvaluationAuditsItsOutcome: nobody is holding a response
+// open for the pass, so the audit log is where its outcome has to land.
+func TestStartPolicyEvaluationAuditsItsOutcome(t *testing.T) {
+	st := storetest.New(t)
+	ctx := context.Background()
+	svc := service(st)
+
+	d := device(t, st, "h1")
+	p := createPolicy(t, svc, "P", `[{"type":"no_pending_reboot"}]`)
+	assign(t, st, p.ID, d.ID)
+
+	if _, _, err := svc.StartPolicyEvaluation(ctx, p.ID, "ops@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	waitForPolicyEvaluation(t, svc, p.ID)
+
+	entries, err := st.Q().ListAudit(ctx, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found *store.AuditEntry
+	for i, e := range entries {
+		if e.Action == "compliance_policy.evaluated" && e.TargetID == p.ID.String() {
+			found = &entries[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("no evaluation audit entry in %+v", entries)
+	}
+	if found.Actor != "ops@example.com" {
+		t.Errorf("actor = %q", found.Actor)
+	}
+	// Numbers come back through JSON, so they arrive as float64.
+	if n, _ := found.Details["evaluated"].(float64); n != 1 {
+		t.Errorf("evaluated = %v, want 1", found.Details["evaluated"])
+	}
+	if n, _ := found.Details["failed"].(float64); n != 0 {
+		t.Errorf("failed = %v, want 0", found.Details["failed"])
 	}
 }
 

@@ -414,7 +414,9 @@ runs on the agent for this: every rule is evaluated server-side from what
 inventory, the device row and item statuses already report, right after
 inventory arrives and again every 15 minutes so a device that has simply gone
 quiet is caught even with no new inventory to react to. "Evaluate now" on a
-policy runs it on demand against every device it currently applies to.
+policy runs it on demand against every device it currently applies to; that
+pass runs in the background and reports how it went to the audit log, rather
+than holding the request open for a fleet's worth of work.
 
 | Rule | Checks |
 |---|---|

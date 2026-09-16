@@ -300,7 +300,8 @@ function PolicyEditor({
         // sweep, up to fifteen minutes later, with nothing marking them
         // stale. It is a second request rather than part of the update
         // because re-scoring walks the whole fleet, which has no business
-        // inside an edit.
+        // inside an edit. The server runs the pass after answering, so this
+        // returns as soon as the work is accepted, not when it is finished.
         try {
           await api.post(`/compliance-policies/${policy.id}/evaluate`);
         } catch {
@@ -472,21 +473,31 @@ function PolicyRollup({ counts }: { counts?: Record<string, number> }) {
 function PolicyDetail({ policy, canWrite }: { policy: CompliancePolicy; canWrite: boolean }) {
   const [state, setState] = useState("");
   const [evaluating, setEvaluating] = useState(false);
-  const [evaluatedCount, setEvaluatedCount] = useState<number | null>(null);
+  const [evaluateNote, setEvaluateNote] = useState<string | null>(null);
   const [evalError, setEvalError] = useState<unknown>(null);
   const { items, total, loading, error, offset, setOffset, reload } = useList<PolicyDeviceCompliance>(
     `/compliance-policies/${policy.id}/devices`,
     { state },
   );
 
+  // The pass runs on the server after the response, so there is nothing to
+  // reload yet: the reply says how many devices it covers, and Refresh is how
+  // an administrator picks up the verdicts once it has run. Its outcome is
+  // also written to the audit log, which is where to look if a device's
+  // result never changes.
   async function evaluateNow() {
     setEvaluating(true);
     setEvalError(null);
-    setEvaluatedCount(null);
+    setEvaluateNote(null);
     try {
-      const resp = await api.post<{ evaluated_count: number }>(`/compliance-policies/${policy.id}/evaluate`);
-      setEvaluatedCount(resp.evaluated_count);
-      reload();
+      const resp = await api.post<{ device_count: number; started: boolean }>(
+        `/compliance-policies/${policy.id}/evaluate`,
+      );
+      setEvaluateNote(
+        resp.started
+          ? `Re-evaluating ${resp.device_count} device${resp.device_count === 1 ? "" : "s"} in the background.`
+          : "A re-evaluation of this policy is already running.",
+      );
     } catch (err) {
       setEvalError(err);
     } finally {
@@ -505,20 +516,19 @@ function PolicyDetail({ policy, canWrite }: { policy: CompliancePolicy; canWrite
         <div className="policy__detail-actions">
           {canWrite ? (
             <Button onClick={() => void evaluateNow()} disabled={evaluating}>
-              {evaluating ? "Evaluating…" : "Evaluate now"}
+              {evaluating ? "Starting…" : "Evaluate now"}
             </Button>
           ) : null}
+          <Button variant="quiet" onClick={reload} disabled={loading}>
+            Refresh
+          </Button>
           <a className="button" href={exportHref}>
             Export CSV
           </a>
         </div>
       </div>
 
-      {evaluatedCount !== null ? (
-        <p className="hint">
-          Evaluated {evaluatedCount} device{evaluatedCount === 1 ? "" : "s"}.
-        </p>
-      ) : null}
+      {evaluateNote ? <p className="hint">{evaluateNote}</p> : null}
       <ErrorNote error={evalError} />
 
       <Field label="State">

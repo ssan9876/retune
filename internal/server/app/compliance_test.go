@@ -86,8 +86,17 @@ func TestCompliancePolicyCRUDAndRoles(t *testing.T) {
 		t.Fatalf("update did not stick: %+v", updated)
 	}
 
-	if status, body = admin.do(http.MethodPost, "/compliance-policies/"+policy.ID+"/evaluate", nil); status != http.StatusOK {
+	// The pass runs after the response, so the reply is 202 with the size of
+	// the set it covers rather than a count of work already done.
+	if status, body = admin.do(http.MethodPost, "/compliance-policies/"+policy.ID+"/evaluate", nil); status != http.StatusAccepted {
 		t.Fatalf("evaluate: %d %s", status, body)
+	}
+	queued := decodeJSON[struct {
+		DeviceCount int  `json:"device_count"`
+		Started     bool `json:"started"`
+	}](t, body)
+	if !queued.Started {
+		t.Fatalf("evaluate did not start a pass: %s", body)
 	}
 
 	if status, body = admin.do(http.MethodDelete, "/compliance-policies/"+policy.ID, nil); status != http.StatusNoContent {

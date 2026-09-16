@@ -45,14 +45,14 @@ The evaluator is a pure function over a `Facts` value (device row, parsed invent
 
 - After every inventory ingest (beside the existing dynamic-group re-evaluation, same log-don't-fail rule).
 - A sweeper job every 15 minutes evaluates every active device, so time-based rules (`checked_in_within`) catch devices that went silent.
-- On demand: `POST /compliance-policies/{id}/evaluate` evaluates every device the policy currently applies to (the console's "Evaluate now").
+- On demand: `POST /compliance-policies/{id}/evaluate` re-scores every device the policy currently applies to (the console's "Evaluate now"). The pass runs after the response - one transaction per device is too much to hold a request open for on a fleet-wide policy - so the reply is `202` with `{device_count, started}`, and the pass's own outcome is audited as `compliance_policy.evaluated`. `started` is false when a pass for that policy is already running.
 - Evaluation of one device also deletes `device_compliance` and mirrored item-status rows for compliance policies that no longer apply to it.
 
 ## 5. Admin API
 
 Read endpoints need any admin role, mutations need write.
 
-- `GET/POST /compliance-policies`, `GET/POST/DELETE /compliance-policies/{id}` (POST on the id updates; DELETE removes assignments, results and mirrored statuses in one transaction), `POST /compliance-policies/{id}/evaluate`.
+- `GET/POST /compliance-policies`, `GET/POST/DELETE /compliance-policies/{id}` (POST on the id updates; DELETE removes assignments, results and mirrored statuses in one transaction), `POST /compliance-policies/{id}/evaluate` (202, the pass runs in the background).
 - `GET /compliance-policies/{id}/devices?state=` — paged device results with hostname, state, failures, evaluated_at.
 - `GET /devices/{id}/compliance` — overall state plus each applicable policy's id, name, state and failures, ordered by policy name.
 - `GET /devices` items gain `compliance` (overall state).
