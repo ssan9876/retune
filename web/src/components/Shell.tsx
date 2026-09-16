@@ -13,6 +13,7 @@ const LINKS = [
   { to: "/apps", label: "Apps" },
   { to: "/agent-versions", label: "Agent versions" },
   { to: "/profiles", label: "Profiles" },
+  { to: "/compliance", label: "Compliance" },
   { to: "/commands", label: "Commands" },
   { to: "/tokens", label: "Enrollment" },
   { to: "/audit", label: "Audit" },

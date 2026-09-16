@@ -7,6 +7,7 @@ import AgentVersions from "./pages/AgentVersions";
 import Apps from "./pages/Apps";
 import Audit from "./pages/Audit";
 import Commands from "./pages/Commands";
+import Compliance from "./pages/Compliance";
 import DeviceDetail from "./pages/DeviceDetail";
 import Devices from "./pages/Devices";
 import Groups from "./pages/Groups";
@@ -32,6 +33,7 @@ export default function App() {
         <Route path="/apps" element={<Apps />} />
         <Route path="/agent-versions" element={<AgentVersions />} />
         <Route path="/profiles" element={<Profiles />} />
+        <Route path="/compliance" element={<Compliance />} />
         <Route path="/commands" element={<Commands />} />
         <Route path="/tokens" element={<Tokens />} />
         <Route path="/audit" element={<Audit />} />

@@ -297,6 +297,41 @@ export interface DeviceCompliance {
   policies: DeviceCompliancePolicy[];
 }
 
+/** ComplianceRule is one line of a policy's rules array. Only the fields its
+ * `type` uses are populated, mirroring how the server's Rule struct and
+ * MarshalJSON work: a fresh object per type, never a stray field left over
+ * from a different type. */
+export interface ComplianceRule {
+  type: string;
+  build?: string;
+  version?: string;
+  volumes?: string;
+  min_version?: string;
+  hours?: number;
+  days?: number;
+  count?: number;
+  name?: string;
+  profile_id?: string;
+}
+
+export interface CompliancePolicy {
+  id: string;
+  name: string;
+  description: string;
+  rules: ComplianceRule[];
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+}
+
+export interface PolicyDeviceCompliance {
+  device_id: string;
+  hostname: string;
+  state: string;
+  failures: ComplianceFailure[];
+  evaluated_at: string;
+}
+
 export interface SettingStatus {
   device_id: string;
   hostname: string;

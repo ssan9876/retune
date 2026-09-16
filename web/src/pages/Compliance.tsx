@@ -1,0 +1,717 @@
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+
+import { api } from "../api/client";
+import type { CompliancePolicy, ComplianceRule, Group, ListResponse, PolicyDeviceCompliance, Profile } from "../api/types";
+import { StatusDot } from "../components/StatusDot";
+import { Button, Dialog, EmptyState, ErrorNote, Field, Spinner } from "../components/ui";
+import { useList } from "../hooks/useList";
+import { useSession } from "../session/SessionContext";
+import { relative } from "./Devices";
+import "./Compliance.css";
+
+const ITEM_KIND = "compliance";
+
+// Digits, optionally dotted - matches the server's dottedNumeric exactly
+// (internal/server/compliance/rules.go), so a value the editor accepts is
+// never rejected by ParseRules.
+const DOTTED = /^\d+(\.\d+)*$/;
+
+const RULE_TYPES = [
+  { value: "os_build_min", label: "Minimum OS build" },
+  { value: "agent_version_min", label: "Minimum agent version" },
+  { value: "bitlocker", label: "BitLocker" },
+  { value: "tpm", label: "TPM present" },
+  { value: "checked_in_within", label: "Checked in within" },
+  { value: "inventory_within", label: "Inventory received within" },
+  { value: "updates_within", label: "Updates installed within" },
+  { value: "no_pending_reboot", label: "No pending reboot" },
+  { value: "max_local_admins", label: "Maximum local admins" },
+  { value: "forbidden_software", label: "Forbidden software" },
+  { value: "required_software", label: "Required software" },
+  { value: "profile_applied", label: "Profile applied" },
+];
+
+function blankRule(type: string): ComplianceRule {
+  switch (type) {
+    case "os_build_min":
+      return { type, build: "" };
+    case "agent_version_min":
+      return { type, version: "" };
+    case "bitlocker":
+      return { type, volumes: "system" };
+    case "tpm":
+      return { type, min_version: "" };
+    case "checked_in_within":
+      return { type, hours: 24 };
+    case "inventory_within":
+      return { type, hours: 24 };
+    case "updates_within":
+      return { type, days: 30 };
+    case "no_pending_reboot":
+      return { type };
+    case "max_local_admins":
+      return { type, count: 1 };
+    case "forbidden_software":
+      return { type, name: "" };
+    case "required_software":
+      return { type, name: "" };
+    case "profile_applied":
+      return { type, profile_id: "" };
+    default:
+      return { type: "os_build_min", build: "" };
+  }
+}
+
+/** ruleError reports what is wrong with a rule's parameters, matching the
+ * bounds ParseRules enforces exactly, so the editor never accepts something
+ * the server would reject. undefined means the rule is valid. */
+function ruleError(rule: ComplianceRule): string | undefined {
+  switch (rule.type) {
+    case "os_build_min":
+      return DOTTED.test(rule.build ?? "") ? undefined : "Digits only, optionally dotted (e.g. 26100 or 22631.1).";
+    case "agent_version_min":
+      return DOTTED.test(rule.version ?? "") ? undefined : "A dotted numeric version, e.g. 1.4.0.";
+    case "bitlocker":
+      return rule.volumes === "system" || rule.volumes === "all" ? undefined : "Choose which volumes.";
+    case "tpm": {
+      const v = rule.min_version ?? "";
+      return v === "" || DOTTED.test(v) ? undefined : "A dotted numeric version, e.g. 2.0, or leave empty.";
+    }
+    case "checked_in_within":
+    case "inventory_within": {
+      const h = rule.hours;
+      return h !== undefined && Number.isInteger(h) && h >= 1 && h <= 8760
+        ? undefined
+        : "Between 1 and 8760 hours.";
+    }
+    case "updates_within": {
+      const d = rule.days;
+      return d !== undefined && Number.isInteger(d) && d >= 1 && d <= 365 ? undefined : "Between 1 and 365 days.";
+    }
+    case "no_pending_reboot":
+      return undefined;
+    case "max_local_admins": {
+      const c = rule.count;
+      return c !== undefined && Number.isInteger(c) && c >= 0 && c <= 100 ? undefined : "Between 0 and 100.";
+    }
+    case "forbidden_software":
+    case "required_software": {
+      const n = (rule.name ?? "").length;
+      return n >= 1 && n <= 200 ? undefined : "Between 1 and 200 characters.";
+    }
+    case "profile_applied":
+      return rule.profile_id ? undefined : "Choose a profile.";
+    default:
+      return "Unsupported rule type.";
+  }
+}
+
+/** RuleFields renders the typed inputs one rule type needs, and nothing
+ * else, the same idiom Profiles' SettingFields uses for setting kinds. */
+function RuleFields({
+  rule,
+  profiles,
+  onChange,
+}: {
+  rule: ComplianceRule;
+  profiles: Profile[];
+  onChange: (next: ComplianceRule) => void;
+}) {
+  const set = (patch: Partial<ComplianceRule>) => onChange({ ...rule, ...patch });
+  const err = ruleError(rule);
+
+  switch (rule.type) {
+    case "os_build_min":
+      return (
+        <Field label="Minimum OS build" hint="Digits, optionally dotted, e.g. 26100 or 22631.1." error={err}>
+          <input value={rule.build ?? ""} onChange={(e) => set({ build: e.target.value })} />
+        </Field>
+      );
+    case "agent_version_min":
+      return (
+        <Field label="Minimum agent version" hint="Dotted numeric, e.g. 1.4.0." error={err}>
+          <input value={rule.version ?? ""} onChange={(e) => set({ version: e.target.value })} />
+        </Field>
+      );
+    case "bitlocker":
+      return (
+        <Field label="Volumes" error={err}>
+          <select value={rule.volumes ?? "system"} onChange={(e) => set({ volumes: e.target.value })}>
+            <option value="system">System volume (C:)</option>
+            <option value="all">All fixed volumes</option>
+          </select>
+        </Field>
+      );
+    case "tpm":
+      return (
+        <Field
+          label="Minimum TPM version"
+          hint="Optional. Leave empty to only require a TPM be present."
+          error={err}
+        >
+          <input value={rule.min_version ?? ""} onChange={(e) => set({ min_version: e.target.value })} />
+        </Field>
+      );
+    case "checked_in_within":
+      return (
+        <Field label="Checked in within (hours)" error={err}>
+          <input
+            type="number"
+            min={1}
+            max={8760}
+            value={rule.hours ?? ""}
+            onChange={(e) => set({ hours: e.target.value === "" ? undefined : Number(e.target.value) })}
+          />
+        </Field>
+      );
+    case "inventory_within":
+      return (
+        <Field label="Inventory received within (hours)" error={err}>
+          <input
+            type="number"
+            min={1}
+            max={8760}
+            value={rule.hours ?? ""}
+            onChange={(e) => set({ hours: e.target.value === "" ? undefined : Number(e.target.value) })}
+          />
+        </Field>
+      );
+    case "updates_within":
+      return (
+        <Field label="Updates installed within (days)" error={err}>
+          <input
+            type="number"
+            min={1}
+            max={365}
+            value={rule.days ?? ""}
+            onChange={(e) => set({ days: e.target.value === "" ? undefined : Number(e.target.value) })}
+          />
+        </Field>
+      );
+    case "no_pending_reboot":
+      return <p className="hint">No parameters: the device must not have a reboot pending.</p>;
+    case "max_local_admins":
+      return (
+        <Field label="Maximum local admins" error={err}>
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={rule.count ?? ""}
+            onChange={(e) => set({ count: e.target.value === "" ? undefined : Number(e.target.value) })}
+          />
+        </Field>
+      );
+    case "forbidden_software":
+      return (
+        <Field
+          label="Forbidden software name"
+          hint="Matches any installed package whose name contains this, case-insensitively."
+          error={err}
+        >
+          <input value={rule.name ?? ""} maxLength={200} onChange={(e) => set({ name: e.target.value })} />
+        </Field>
+      );
+    case "required_software":
+      return (
+        <Field
+          label="Required software name"
+          hint="Matches any installed package whose name contains this, case-insensitively."
+          error={err}
+        >
+          <input value={rule.name ?? ""} maxLength={200} onChange={(e) => set({ name: e.target.value })} />
+        </Field>
+      );
+    case "profile_applied":
+      return (
+        <Field
+          label="Profile"
+          hint={profiles.length === 0 ? "No profiles exist yet." : undefined}
+          error={err}
+        >
+          <select value={rule.profile_id ?? ""} onChange={(e) => set({ profile_id: e.target.value })}>
+            <option value="">Choose a profile…</option>
+            {profiles.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      );
+    default:
+      return null;
+  }
+}
+
+function PolicyEditor({
+  policy,
+  open,
+  onClose,
+  onSaved,
+}: {
+  policy: CompliancePolicy | null;
+  open: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [rules, setRules] = useState<ComplianceRule[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setName(policy?.name ?? "");
+    setDescription(policy?.description ?? "");
+    setRules(policy?.rules ?? []);
+    setError(null);
+    api
+      .get<ListResponse<Profile>>("/profiles?limit=200")
+      .then((resp) => setProfiles(resp.items))
+      .catch(() => setProfiles([]));
+  }, [open, policy]);
+
+  function update(index: number, next: ComplianceRule) {
+    setRules(rules.map((r, i) => (i === index ? next : r)));
+  }
+
+  const hasRuleErrors = rules.some((r) => ruleError(r) !== undefined);
+  const canSave = name.trim() !== "" && rules.length >= 1 && rules.length <= 50 && !hasRuleErrors;
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      const payload = { name, description, rules };
+      if (policy) {
+        await api.post(`/compliance-policies/${policy.id}`, payload);
+      } else {
+        await api.post("/compliance-policies", payload);
+      }
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog title={policy ? `Edit ${policy.name}` : "New compliance policy"} open={open} onClose={onClose}>
+      <Field label="Name">
+        <input value={name} onChange={(e) => setName(e.target.value)} />
+      </Field>
+      <Field label="Description">
+        <input value={description} onChange={(e) => setDescription(e.target.value)} />
+      </Field>
+
+      {rules.map((rule, index) => (
+        <fieldset key={index} className="rule">
+          <legend>
+            <select
+              value={rule.type}
+              onChange={(e) => update(index, blankRule(e.target.value))}
+              aria-label={`Rule ${index + 1} type`}
+            >
+              {RULE_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+            <Button variant="quiet" onClick={() => setRules(rules.filter((_, i) => i !== index))}>
+              Remove
+            </Button>
+          </legend>
+          <RuleFields rule={rule} profiles={profiles} onChange={(next) => update(index, next)} />
+        </fieldset>
+      ))}
+
+      <div className="actions">
+        <Button
+          variant="quiet"
+          onClick={() => setRules([...rules, blankRule("os_build_min")])}
+          disabled={rules.length >= 50}
+        >
+          Add a rule
+        </Button>
+      </div>
+      {rules.length === 0 ? <p className="hint">A policy needs between 1 and 50 rules.</p> : null}
+
+      <ErrorNote error={error} />
+      <div className="actions">
+        <Button onClick={() => void save()} disabled={busy || !canSave}>
+          {policy ? "Save policy" : "Create policy"}
+        </Button>
+        <Button variant="quiet" onClick={onClose}>
+          Cancel
+        </Button>
+      </div>
+    </Dialog>
+  );
+}
+
+function AssignDialog({
+  policy,
+  open,
+  onClose,
+  onAssigned,
+}: {
+  policy: CompliancePolicy | null;
+  open: boolean;
+  onClose: () => void;
+  onAssigned: () => void;
+}) {
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [groupID, setGroupID] = useState("");
+  const [mode, setMode] = useState("include");
+  const [error, setError] = useState<unknown>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    api
+      .get<{ items: Group[] }>("/groups")
+      .then((resp) => {
+        setGroups(resp.items);
+        setGroupID((current) => current || (resp.items[0]?.id ?? ""));
+      })
+      .catch((err: unknown) => setError(err));
+  }, [open]);
+
+  async function assign() {
+    if (!policy) return;
+    setError(null);
+    try {
+      // A compliance policy takes no assignment options at all (spec §5,
+      // internal/server/adminapi/itemkinds.go): the same policy always
+      // evaluates the same way, so there is nothing per-assignment to send.
+      await api.post("/assignments", {
+        item_kind: ITEM_KIND,
+        item_id: policy.id,
+        group_id: groupID,
+        mode,
+      });
+      onAssigned();
+      onClose();
+    } catch (err) {
+      setError(err);
+    }
+  }
+
+  return (
+    <Dialog title={`Assign ${policy?.name ?? ""}`} open={open} onClose={onClose}>
+      <Field label="Group">
+        <select value={groupID} onChange={(e) => setGroupID(e.target.value)}>
+          {groups.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Mode" hint="An exclude always wins, whichever group it comes from.">
+        <select value={mode} onChange={(e) => setMode(e.target.value)}>
+          <option value="include">Include</option>
+          <option value="exclude">Exclude</option>
+        </select>
+      </Field>
+      <ErrorNote error={error} />
+      <div className="actions">
+        <Button onClick={() => void assign()} disabled={groupID === ""}>
+          Assign to group
+        </Button>
+        <Button variant="quiet" onClick={onClose}>
+          Cancel
+        </Button>
+      </div>
+    </Dialog>
+  );
+}
+
+/** PolicyRollup shows how many devices currently land in each state for one
+ * policy. There is no server-side rollup query for this (unlike a profile's
+ * per-setting status endpoint), so it asks for each state's total the same
+ * way the device list itself is paged, one cheap limit=1 request per state. */
+function PolicyRollup({ policyID }: { policyID: string }) {
+  const [counts, setCounts] = useState<Record<string, number> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all(
+      (["compliant", "non_compliant", "unknown"] as const).map((state) =>
+        api
+          .get<ListResponse<PolicyDeviceCompliance>>(
+            `/compliance-policies/${policyID}/devices?state=${state}&limit=1`,
+          )
+          .then((resp) => resp.total)
+          .catch(() => 0),
+      ),
+    ).then(([compliant, nonCompliant, unknown]) => {
+      if (!cancelled) setCounts({ compliant, non_compliant: nonCompliant, unknown });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [policyID]);
+
+  if (!counts) return null;
+  return (
+    <span className="policy__rollup">
+      <StatusDot status="compliant" /> {counts.compliant} <StatusDot status="non_compliant" />{" "}
+      {counts.non_compliant} <StatusDot status="unknown" /> {counts.unknown}
+    </span>
+  );
+}
+
+/** PolicyDetail answers the question an administrator actually has: which
+ * devices are failing this policy, and why. */
+function PolicyDetail({ policy, canWrite }: { policy: CompliancePolicy; canWrite: boolean }) {
+  const [state, setState] = useState("");
+  const [evaluating, setEvaluating] = useState(false);
+  const [evaluatedCount, setEvaluatedCount] = useState<number | null>(null);
+  const [evalError, setEvalError] = useState<unknown>(null);
+  const { items, total, loading, error, offset, setOffset, reload } = useList<PolicyDeviceCompliance>(
+    `/compliance-policies/${policy.id}/devices`,
+    { state },
+  );
+
+  async function evaluateNow() {
+    setEvaluating(true);
+    setEvalError(null);
+    setEvaluatedCount(null);
+    try {
+      const resp = await api.post<{ evaluated_count: number }>(`/compliance-policies/${policy.id}/evaluate`);
+      setEvaluatedCount(resp.evaluated_count);
+      reload();
+    } catch (err) {
+      setEvalError(err);
+    } finally {
+      setEvaluating(false);
+    }
+  }
+
+  const exportHref = `/api/admin/v1/compliance-policies/${policy.id}/devices/export.csv${
+    state ? `?state=${state}` : ""
+  }`;
+
+  return (
+    <section className="policy__detail">
+      <div className="content__head">
+        <h2>{policy.name}</h2>
+        <div className="policy__detail-actions">
+          {canWrite ? (
+            <Button onClick={() => void evaluateNow()} disabled={evaluating}>
+              {evaluating ? "Evaluating…" : "Evaluate now"}
+            </Button>
+          ) : null}
+          <a className="button" href={exportHref}>
+            Export CSV
+          </a>
+        </div>
+      </div>
+
+      {evaluatedCount !== null ? (
+        <p className="hint">
+          Evaluated {evaluatedCount} device{evaluatedCount === 1 ? "" : "s"}.
+        </p>
+      ) : null}
+      <ErrorNote error={evalError} />
+
+      <Field label="State">
+        <select
+          value={state}
+          onChange={(e) => {
+            setOffset(0);
+            setState(e.target.value);
+          }}
+        >
+          <option value="">All</option>
+          <option value="compliant">Compliant</option>
+          <option value="non_compliant">Non-compliant</option>
+          <option value="unknown">Unknown</option>
+        </select>
+      </Field>
+
+      <ErrorNote error={error} />
+      {loading ? <Spinner /> : null}
+      {!loading && items.length === 0 ? <p className="policy__none">No devices to show.</p> : null}
+
+      {items.length > 0 ? (
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Device</th>
+                <th>State</th>
+                <th>Failures</th>
+                <th>Evaluated</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((row) => (
+                <tr key={row.device_id}>
+                  <td>
+                    <Link to={`/devices/${row.device_id}`}>{row.hostname}</Link>
+                  </td>
+                  <td>
+                    <StatusDot status={row.state} />
+                  </td>
+                  <td>{row.failures.map((f) => f.detail).join("; ")}</td>
+                  <td>{relative(row.evaluated_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+
+      {total > items.length ? (
+        <div className="pager">
+          <Button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 50))}>
+            Previous
+          </Button>
+          <span>
+            {offset + 1}–{offset + items.length} of {total}
+          </span>
+          <Button disabled={offset + items.length >= total} onClick={() => setOffset(offset + 50)}>
+            Next
+          </Button>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+export default function Compliance() {
+  const { canWrite } = useSession();
+  const { items, total, loading, error, offset, setOffset, reload } = useList<CompliancePolicy>(
+    "/compliance-policies",
+  );
+  const [editing, setEditing] = useState<CompliancePolicy | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [assigning, setAssigning] = useState<CompliancePolicy | null>(null);
+  const [selected, setSelected] = useState<CompliancePolicy | null>(null);
+  const [actionError, setActionError] = useState<unknown>(null);
+
+  async function remove(policy: CompliancePolicy) {
+    if (!window.confirm(`Delete ${policy.name}? Its assignments and results go with it.`)) return;
+    try {
+      await api.del(`/compliance-policies/${policy.id}`);
+      if (selected?.id === policy.id) setSelected(null);
+      reload();
+    } catch (err) {
+      setActionError(err);
+    }
+  }
+
+  return (
+    <>
+      <div className="content__head">
+        <h1>Compliance</h1>
+        {canWrite ? (
+          <Button
+            onClick={() => {
+              setEditing(null);
+              setEditorOpen(true);
+            }}
+          >
+            New policy
+          </Button>
+        ) : null}
+      </div>
+
+      <ErrorNote error={error} />
+      <ErrorNote error={actionError} />
+      {loading ? <Spinner /> : null}
+
+      {!loading && items.length === 0 ? (
+        <EmptyState title="No compliance policies yet.">
+          <p>A policy states what a healthy device looks like, and is assigned to groups the same way a profile is.</p>
+        </EmptyState>
+      ) : null}
+
+      {items.length > 0 ? (
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th className="numeric">Rules</th>
+                <th>Devices</th>
+                <th>Updated</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((policy) => (
+                <tr key={policy.id}>
+                  <td>
+                    <button className="linklike" onClick={() => setSelected(policy)}>
+                      {policy.name}
+                    </button>
+                    {policy.description ? <div className="policy__description">{policy.description}</div> : null}
+                  </td>
+                  <td className="numeric">{policy.rules.length}</td>
+                  <td>
+                    <PolicyRollup policyID={policy.id} />
+                  </td>
+                  <td>{relative(policy.updated_at)}</td>
+                  <td className="policy__actions">
+                    {canWrite ? (
+                      <>
+                        <Button
+                          variant="quiet"
+                          onClick={() => {
+                            setEditing(policy);
+                            setEditorOpen(true);
+                          }}
+                        >
+                          Edit
+                        </Button>
+                        <Button variant="quiet" onClick={() => setAssigning(policy)}>
+                          Assign
+                        </Button>
+                        <Button variant="quiet" onClick={() => void remove(policy)}>
+                          Delete
+                        </Button>
+                      </>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+
+      {selected ? <PolicyDetail policy={selected} canWrite={canWrite} /> : null}
+
+      {total > items.length ? (
+        <div className="pager">
+          <Button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 50))}>
+            Previous
+          </Button>
+          <span>
+            {offset + 1}–{offset + items.length} of {total}
+          </span>
+          <Button disabled={offset + items.length >= total} onClick={() => setOffset(offset + 50)}>
+            Next
+          </Button>
+        </div>
+      ) : null}
+
+      <PolicyEditor policy={editing} open={editorOpen} onClose={() => setEditorOpen(false)} onSaved={reload} />
+      <AssignDialog
+        policy={assigning}
+        open={assigning !== null}
+        onClose={() => setAssigning(null)}
+        onAssigned={reload}
+      />
+    </>
+  );
+}
