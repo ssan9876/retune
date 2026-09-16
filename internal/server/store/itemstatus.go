@@ -132,6 +132,36 @@ func (q *Queries) ListDeviceItemStatus(ctx context.Context, deviceID uuid.UUID, 
 	return out, rows.Err()
 }
 
+// FailedDeploymentCounts counts active devices with at least one failed
+// status, grouped by item kind, for the dashboard's failed-deployment bar. A
+// device counts once per kind no matter how many items of that kind are
+// failing on it: the number that matters there is "how many devices need
+// attention", not "how many failing rows exist". The result also carries
+// whatever other kinds (e.g. "compliance") happen to have failed rows; the
+// dashboard simply reads the four keys it cares about and ignores the rest.
+func (q *Queries) FailedDeploymentCounts(ctx context.Context) (map[string]int, error) {
+	rows, err := q.db.Query(ctx, `
+		SELECT s.item_kind, count(DISTINCT s.device_id)
+		FROM device_item_status s
+		JOIN devices d ON d.id = s.device_id AND d.tenant_id = s.tenant_id
+		WHERE s.tenant_id = $1 AND d.status = $2 AND s.status = $3
+		GROUP BY s.item_kind`, DefaultTenantID, DeviceActive, ItemFailed)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var kind string
+		var n int
+		if err := rows.Scan(&kind, &n); err != nil {
+			return nil, err
+		}
+		out[kind] = n
+	}
+	return out, rows.Err()
+}
+
 // ListItemStatus returns one page of devices for an item, optionally narrowed
 // to a single status, for drilling into a rollup.
 func (q *Queries) ListItemStatus(ctx context.Context, itemKind string, itemID uuid.UUID, status string, page Page) ([]ItemStatus, int, error) {

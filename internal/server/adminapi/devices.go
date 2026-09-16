@@ -30,6 +30,11 @@ type deviceJSON struct {
 	LastSeenAt    *time.Time `json:"last_seen_at,omitempty"`
 	CertExpiresAt time.Time  `json:"cert_expires_at"`
 	Stale         bool       `json:"stale"`
+	// Compliance is the device's overall compliance state (design §2); it is
+	// filled in by listDevices/getDevice from a batch ComplianceOverall call,
+	// not by newDeviceJSON itself, since other callers of newDeviceJSON (group
+	// membership, rule preview) have no need to pay for that query.
+	Compliance string `json:"compliance"`
 }
 
 func (h *Handler) newDeviceJSON(d store.Device) deviceJSON {
@@ -76,9 +81,20 @@ func (h *Handler) listDevices(w http.ResponseWriter, r *http.Request) {
 		h.internal(w, "list devices", err)
 		return
 	}
+	ids := make([]uuid.UUID, len(rows))
+	for i, d := range rows {
+		ids[i] = d.ID
+	}
+	overall, err := h.Store.Q().ComplianceOverall(r.Context(), ids)
+	if err != nil {
+		h.internal(w, "compliance overall", err)
+		return
+	}
 	items := make([]deviceJSON, 0, len(rows))
 	for _, d := range rows {
-		items = append(items, h.newDeviceJSON(d))
+		item := h.newDeviceJSON(d)
+		item.Compliance = overall[d.ID]
+		items = append(items, item)
 	}
 	writeJSON(w, http.StatusOK, newListResponse(items, total, page))
 }
@@ -100,6 +116,12 @@ func (h *Handler) getDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	detail := deviceDetailJSON{Device: h.newDeviceJSON(d), Software: []softwareJSON{}, Commands: []commandJSON{}}
+	overall, err := q.ComplianceOverall(ctx, []uuid.UUID{id})
+	if err != nil {
+		h.internal(w, "compliance overall", err)
+		return
+	}
+	detail.Device.Compliance = overall[id]
 
 	inv, err := q.GetInventory(ctx, id)
 	switch {

@@ -77,5 +77,17 @@ func (h *Handler) mountResources(mux *http.ServeMux, base string) {
 
 	mux.Handle("GET "+base+"/items/{kind}/{id}/status", h.read(h.itemStatus))
 
+	mux.Handle("GET "+base+"/compliance-policies", h.read(h.listCompliancePolicies))
+	mux.Handle("POST "+base+"/compliance-policies", h.write(h.createCompliancePolicy))
+	mux.Handle("GET "+base+"/compliance-policies/{id}", h.read(h.getCompliancePolicy))
+	mux.Handle("POST "+base+"/compliance-policies/{id}", h.write(h.updateCompliancePolicy))
+	mux.Handle("DELETE "+base+"/compliance-policies/{id}", h.write(h.deleteCompliancePolicy))
+	mux.Handle("POST "+base+"/compliance-policies/{id}/evaluate", h.write(h.evaluateCompliancePolicy))
+	mux.Handle("GET "+base+"/compliance-policies/{id}/devices", h.read(h.listPolicyDevices))
+
+	mux.Handle("GET "+base+"/devices/{id}/compliance", h.read(h.deviceCompliance))
+
+	mux.Handle("GET "+base+"/dashboard", h.read(h.dashboard))
+
 	mux.Handle("GET "+base+"/audit", h.read(h.listAudit))
 }

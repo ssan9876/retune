@@ -14,6 +14,7 @@ import (
 	"retune/internal/server/auth"
 	"retune/internal/server/bitlocker"
 	"retune/internal/server/commands"
+	"retune/internal/server/compliance"
 	"retune/internal/server/devices"
 	"retune/internal/server/enroll"
 	"retune/internal/server/groups"
@@ -38,6 +39,7 @@ type Handler struct {
 	Scripts       *scripts.Service
 	Profiles      *profiles.Service
 	Apps          *apps.Service
+	Compliance    *compliance.Service
 	AgentVersions *agentversions.Service
 	BitLocker     *bitlocker.Service
 	Enroll        *enroll.Service
