@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -117,6 +117,54 @@ describe("Compliance", () => {
       { type: "os_build_min", build: "26100" },
       { type: "max_local_admins", count: 2 },
     ]);
+  });
+
+  it("re-evaluates the fleet after an edit is saved", async () => {
+    const posted: string[] = [];
+    fetchMock.mockImplementation((url: string, init?: { method?: string }) => {
+      if (init?.method === "POST") {
+        posted.push(String(url));
+        return Promise.resolve(json({ evaluated_count: 4 }));
+      }
+      if (String(url).includes("/compliance-policies?")) {
+        return Promise.resolve(list([policy]));
+      }
+      return Promise.resolve(list([]));
+    });
+    render_();
+    await screen.findByText("Baseline security");
+
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save policy" }));
+
+    // The edit itself, then the re-evaluation that keeps every verdict from
+    // sitting stale until the next sweep.
+    await waitFor(() => expect(posted).toHaveLength(2));
+    expect(posted[0]).toContain("/compliance-policies/pol-1");
+    expect(posted[0]).not.toContain("/evaluate");
+    expect(posted[1]).toContain("/compliance-policies/pol-1/evaluate");
+  });
+
+  it("keeps a successful save when the re-evaluation fails", async () => {
+    fetchMock.mockImplementation((url: string, init?: { method?: string }) => {
+      if (init?.method === "POST" && String(url).includes("/evaluate")) {
+        return Promise.resolve(json({ error: "internal", message: "no" }, 500));
+      }
+      if (init?.method === "POST") {
+        return Promise.resolve(json(policy));
+      }
+      if (String(url).includes("/compliance-policies?")) {
+        return Promise.resolve(list([policy]));
+      }
+      return Promise.resolve(list([]));
+    });
+    render_();
+    await screen.findByText("Baseline security");
+
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save policy" }));
+
+    expect(await screen.findByText(/Saved, but re-evaluating devices failed/)).toBeInTheDocument();
   });
 
   it("renders the right inputs for every rule type", async () => {

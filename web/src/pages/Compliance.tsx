@@ -261,6 +261,7 @@ function PolicyEditor({
   const [rules, setRules] = useState<ComplianceRule[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [error, setError] = useState<unknown>(null);
+  const [warning, setWarning] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -269,6 +270,7 @@ function PolicyEditor({
     setDescription(policy?.description ?? "");
     setRules(policy?.rules ?? []);
     setError(null);
+    setWarning("");
     api
       .get<ListResponse<Profile>>("/profiles?limit=200")
       .then((resp) => setProfiles(resp.items))
@@ -285,12 +287,30 @@ function PolicyEditor({
   async function save() {
     setBusy(true);
     setError(null);
+    setWarning("");
     try {
       const payload = { name, description, rules };
-      if (policy) {
-        await api.post(`/compliance-policies/${policy.id}`, payload);
-      } else {
+      if (!policy) {
         await api.post("/compliance-policies", payload);
+      } else {
+        await api.post(`/compliance-policies/${policy.id}`, payload);
+        // Spec §2: a policy is edited in place and re-evaluated. Without
+        // this, every verdict on the list, the Devices compliance column and
+        // each device page reflects the rules as they were until the next
+        // sweep, up to fifteen minutes later, with nothing marking them
+        // stale. It is a second request rather than part of the update
+        // because re-scoring walks the whole fleet, which has no business
+        // inside an edit.
+        try {
+          await api.post(`/compliance-policies/${policy.id}/evaluate`);
+        } catch {
+          // The edit is already committed, so this is a warning on a save
+          // that worked, not a failed save: reload the list and say what did
+          // not happen, leaving the dialog open so it is read.
+          setWarning("Saved, but re-evaluating devices failed. They will be re-scored at the next sweep.");
+          onSaved();
+          return;
+        }
       }
       onSaved();
       onClose();
@@ -344,6 +364,7 @@ function PolicyEditor({
       {rules.length === 0 ? <p className="hint">A policy needs between 1 and 50 rules.</p> : null}
 
       <ErrorNote error={error} />
+      {warning ? <p className="hint">{warning}</p> : null}
       <div className="actions">
         <Button onClick={() => void save()} disabled={busy || !canSave}>
           {policy ? "Save policy" : "Create policy"}

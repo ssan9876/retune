@@ -105,6 +105,27 @@ describe("Devices", () => {
     expect(screen.getByText("No devices enrolled yet")).toBeInTheDocument();
   });
 
+  it("fetches the fleet bar's aggregates once, not per search keystroke", async () => {
+    mockList([device()]);
+    render(
+      <MemoryRouter>
+        <Devices />
+      </MemoryRouter>,
+    );
+    await screen.findByRole("link", { name: "PC-ALPHA" });
+
+    await userEvent.type(screen.getByRole("searchbox", { name: "Search devices" }), "beta");
+    await waitFor(() => {
+      const urls = fetchMock.mock.calls.map(([url]) => String(url));
+      expect(urls.some((url) => url.includes("search=beta"))).toBe(true);
+    });
+
+    // /dashboard computes five fleet-wide aggregates; the bar summarises the
+    // whole fleet, so it must not follow the device page.
+    const dashboardCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes("/dashboard"));
+    expect(dashboardCalls).toHaveLength(1);
+  });
+
   it("searches", async () => {
     mockList([]);
     render(

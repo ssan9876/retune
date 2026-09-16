@@ -46,7 +46,9 @@ export default function Devices() {
 
   // The fleet bar summarises the whole fleet, not just the current page, so
   // it comes from the dashboard's SQL-computed buckets rather than a capped
-  // device page.
+  // device page - and for the same reason it is fetched once on mount rather
+  // than following `items`, which would re-run five fleet-wide aggregates on
+  // every search keystroke and every page turn.
   useEffect(() => {
     api
       .get<Dashboard>("/dashboard")
@@ -55,7 +57,7 @@ export default function Devices() {
         setCounts({ active, stale, retired });
       })
       .catch(() => setCounts({ active: 0, stale: 0, retired: 0 }));
-  }, [items]);
+  }, []);
 
   const shown = filter === "stale" ? items.filter((device) => device.stale) : items;
 
