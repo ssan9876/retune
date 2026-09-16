@@ -106,9 +106,13 @@ func TestParseRulesMaxLocalAdminsZeroCount(t *testing.T) {
 		t.Fatalf("got %+v, want one rule with count 0", rules)
 	}
 	now := time.Now()
+	// An inventory listing no admins at all is a gap in what was reported,
+	// not a device with none, so even a count of 0 is unevaluated rather
+	// than met - the same reading the bitlocker rule takes of a device that
+	// reported no fixed volumes.
 	noAdmins := compliance.Evaluate(rules, compliance.Facts{Inventory: &protocol.Inventory{}}, now)
-	if noAdmins.State != compliance.StateCompliant {
-		t.Fatalf("zero admins against count:0: got %v, want compliant", noAdmins)
+	if noAdmins.State != compliance.StateUnknown {
+		t.Fatalf("zero admins against count:0: got %v, want unknown", noAdmins)
 	}
 	oneAdmin := compliance.Evaluate(rules, compliance.Facts{Inventory: &protocol.Inventory{LocalAdmins: []string{"a"}}}, now)
 	if oneAdmin.State != compliance.StateNonCompliant {
@@ -501,6 +505,14 @@ func TestEvaluateMaxLocalAdmins(t *testing.T) {
 	} else if got.Failures[0].Detail != "no inventory has been received" {
 		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
+	// An inventory that listed no admins tells us nothing, so the limit is
+	// unevaluated rather than vacuously met.
+	none := &protocol.Inventory{LocalAdmins: nil}
+	if got := compliance.Evaluate(rules, compliance.Facts{Inventory: none}, now); got.State != compliance.StateUnknown {
+		t.Fatalf("no admins reported: got %v", got)
+	} else if got.Failures[0].Detail != "the device reported no local admins" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
+	}
 }
 
 func TestEvaluateForbiddenSoftware(t *testing.T) {
@@ -525,6 +537,14 @@ func TestEvaluateForbiddenSoftware(t *testing.T) {
 	} else if got.Failures[0].Detail != "no inventory has been received" {
 		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
+	// Nothing reported is not "nothing installed": the forbidden package
+	// cannot be ruled out, so the rule is unknown rather than compliant.
+	none := &protocol.Inventory{Software: nil}
+	if got := compliance.Evaluate(rules, compliance.Facts{Inventory: none}, now); got.State != compliance.StateUnknown {
+		t.Fatalf("no software reported: got %v", got)
+	} else if got.Failures[0].Detail != "the device reported no installed software" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
+	}
 }
 
 func TestEvaluateRequiredSoftware(t *testing.T) {
@@ -546,6 +566,14 @@ func TestEvaluateRequiredSoftware(t *testing.T) {
 	if got := compliance.Evaluate(rules, compliance.Facts{Inventory: nil}, now); got.State != compliance.StateUnknown {
 		t.Fatalf("no inventory: got %v", got)
 	} else if got.Failures[0].Detail != "no inventory has been received" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
+	}
+	// The mirror of the forbidden_software case: with nothing reported the
+	// required package cannot be confirmed missing either.
+	none := &protocol.Inventory{Software: nil}
+	if got := compliance.Evaluate(rules, compliance.Facts{Inventory: none}, now); got.State != compliance.StateUnknown {
+		t.Fatalf("no software reported: got %v", got)
+	} else if got.Failures[0].Detail != "the device reported no installed software" {
 		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 }

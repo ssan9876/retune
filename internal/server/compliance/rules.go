@@ -640,6 +640,12 @@ func evalMaxLocalAdmins(r Rule, f Facts) (Failure, bool) {
 	if f.Inventory == nil {
 		return unknownFailure(r.Type, "no inventory has been received"), true
 	}
+	// An empty list is not a device with no administrators - every Windows
+	// install has at least one. It means inventory said nothing about them,
+	// and a limit checked against nothing must not read as met.
+	if len(f.Inventory.LocalAdmins) == 0 {
+		return unknownFailure(r.Type, "the device reported no local admins"), true
+	}
 	n := len(f.Inventory.LocalAdmins)
 	if n > r.Count {
 		return nonCompliant(r.Type, fmt.Sprintf("there are %d local admins, above the limit of %d", n, r.Count)), true
@@ -648,8 +654,8 @@ func evalMaxLocalAdmins(r Rule, f Facts) (Failure, bool) {
 }
 
 func evalForbiddenSoftware(r Rule, f Facts) (Failure, bool) {
-	if f.Inventory == nil {
-		return unknownFailure(r.Type, "no inventory has been received"), true
+	if gap, unusable := softwareGap(r.Type, f); unusable {
+		return gap, true
 	}
 	if found := matchSoftware(f.Inventory.Software, r.Name); found != "" {
 		return nonCompliant(r.Type, fmt.Sprintf("forbidden software %q is installed", found)), true
@@ -658,11 +664,27 @@ func evalForbiddenSoftware(r Rule, f Facts) (Failure, bool) {
 }
 
 func evalRequiredSoftware(r Rule, f Facts) (Failure, bool) {
-	if f.Inventory == nil {
-		return unknownFailure(r.Type, "no inventory has been received"), true
+	if gap, unusable := softwareGap(r.Type, f); unusable {
+		return gap, true
 	}
 	if found := matchSoftware(f.Inventory.Software, r.Name); found == "" {
 		return nonCompliant(r.Type, fmt.Sprintf("required software matching %q is not installed", r.Name)), true
+	}
+	return Failure{}, false
+}
+
+// softwareGap reports the fact neither software rule can be evaluated
+// against: no inventory at all, or an inventory listing no packages. An empty
+// list is not a device with nothing installed; it means the agent told us
+// nothing about software, so the absence of a match is not an answer in
+// either direction - forbidden software would read as absent and required
+// software as missing, and both would be guesses.
+func softwareGap(ruleType string, f Facts) (Failure, bool) {
+	if f.Inventory == nil {
+		return unknownFailure(ruleType, "no inventory has been received"), true
+	}
+	if len(f.Inventory.Software) == 0 {
+		return unknownFailure(ruleType, "the device reported no installed software"), true
 	}
 	return Failure{}, false
 }

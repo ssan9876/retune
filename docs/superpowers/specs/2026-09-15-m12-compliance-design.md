@@ -26,15 +26,15 @@ A policy's `rules` is a JSON array of 1–50 objects, each `{"type": …, …par
 |---|---|---|---|
 | `os_build_min` | `build` (digits, dotted allowed) | device OS build ≥ `build`, compared segment-wise numerically | device has no OS build |
 | `agent_version_min` | `version` (dotted numeric) | reported agent version ≥ `version` | version empty or not dotted-numeric (reported as failure detail, state unknown) |
-| `bitlocker` | `volumes`: `system` \| `all` | `system`: the volume named `C:` is `on`; `all`: every fixed volume is `on` | no inventory, or a required volume reports `unknown` |
+| `bitlocker` | `volumes`: `system` \| `all` | `system`: the volume named `C:` is `on`; `all`: every fixed volume is `on` | no inventory, no volume to check (no system volume, or `all` with no fixed volumes reported), or a required volume reports `unknown` |
 | `tpm` | `min_version` (optional, e.g. `2.0`) | TPM present and, if given, version ≥ `min_version` | no inventory |
 | `checked_in_within` | `hours` 1–8760 | `last_seen_at` within `hours` | never seen |
 | `inventory_within` | `hours` 1–8760 | inventory received within `hours` | never |
 | `updates_within` | `days` 1–365 | last update installed within `days` | no inventory or no date reported |
 | `no_pending_reboot` | — | inventory says no pending reboot | no inventory |
-| `max_local_admins` | `count` 0–100 | number of local admins ≤ `count` | no inventory |
-| `forbidden_software` | `name` (1–200 chars) | no installed package name contains `name` (case-insensitive) | no inventory |
-| `required_software` | `name` | some installed package name contains `name` | no inventory |
+| `max_local_admins` | `count` 0–100 | number of local admins ≤ `count` | no inventory, or no local admins reported |
+| `forbidden_software` | `name` (1–200 chars) | no installed package name contains `name` (case-insensitive) | no inventory, or no installed software reported |
+| `required_software` | `name` | some installed package name contains `name` | no inventory, or no installed software reported |
 | `profile_applied` | `profile_id` (uuid) | that profile's item status on the device is `succeeded` | no status row or `pending` |
 
 Each failing or unknown rule produces a failure entry `{"rule": <type>, "state": "non_compliant"|"unknown", "detail": <one sentence a person can act on>}`, e.g. "BitLocker is off on C:", "last check-in was 9 days ago (limit 7)". Policy state: any non-compliant rule → non_compliant; else any unknown → unknown; else compliant.
