@@ -190,6 +190,84 @@ func TestDeviceHasItem(t *testing.T) {
 	}
 }
 
+// TestActiveDevicesForItem covers the reverse of EffectiveItems: the set an
+// item reaches, resolved in one query. It must agree with DeviceHasItem
+// device by device - include through any group, exclude through any group
+// wins, and a device that is no longer active is not part of the set.
+func TestActiveDevicesForItem(t *testing.T) {
+	st := storetest.New(t)
+	ctx := context.Background()
+	item := uuid.Must(uuid.NewV7())
+
+	mkGroup := func(name string, members ...uuid.UUID) uuid.UUID {
+		g := store.Group{
+			ID: uuid.Must(uuid.NewV7()), Name: name, Kind: store.GroupStatic,
+			CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		}
+		if err := st.Q().CreateGroup(ctx, g); err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range members {
+			if err := st.Q().AddGroupMember(ctx, g.ID, m, time.Now()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return g.ID
+	}
+	assign := func(groupID uuid.UUID, mode string) {
+		if _, err := st.Q().CreateAssignment(ctx, store.Assignment{
+			ID: uuid.Must(uuid.NewV7()), ItemKind: "script", ItemID: item,
+			GroupID: groupID, Mode: mode, CreatedAt: time.Now(), CreatedBy: "test",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	reached := newDevice(t, st.Q(), "REACHED")
+	twice := newDevice(t, st.Q(), "TWICE")
+	excluded := newDevice(t, st.Q(), "EXCLUDED")
+	retired := newDevice(t, st.Q(), "RETIRED")
+	unrelated := newDevice(t, st.Q(), "UNRELATED")
+
+	assign(mkGroup("First", reached.ID, twice.ID, excluded.ID, retired.ID), store.ModeInclude)
+	// A second include of the same item must not return twice twice.
+	assign(mkGroup("Second", twice.ID), store.ModeInclude)
+	assign(mkGroup("Blocked", excluded.ID), store.ModeExclude)
+	if err := st.Q().SetDeviceStatus(ctx, store.DefaultTenantID, retired.ID, store.DeviceRetired); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := st.Q().ActiveDevicesForItem(ctx, "script", item)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[uuid.UUID]bool{reached.ID: true, twice.ID: true}
+	if len(got) != len(want) {
+		t.Fatalf("reached %d devices, want %d: %v", len(got), len(want), got)
+	}
+	for _, id := range got {
+		if !want[id] {
+			t.Errorf("%v should not have been reached", id)
+		}
+	}
+	// The one-query answer and the per-device one must not disagree.
+	for _, d := range []store.Device{reached, twice, excluded, retired, unrelated} {
+		has, err := st.Q().DeviceHasItem(ctx, d.ID, "script", item)
+		if err != nil {
+			t.Fatal(err)
+		}
+		inSet := false
+		for _, id := range got {
+			inSet = inSet || id == d.ID
+		}
+		// A retired device is assigned the item but is not in the active set,
+		// which is the one place the two answers are meant to differ.
+		if d.ID != retired.ID && has != inSet {
+			t.Errorf("%s: DeviceHasItem %v but in set %v", d.Hostname, has, inSet)
+		}
+	}
+}
+
 // TestEffectiveItemsUsesTheNewestIncludeOptions is the conflict rule: the same
 // script reaching a device through two groups takes the newer assignment's
 // options rather than refusing to run.

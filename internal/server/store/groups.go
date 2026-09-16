@@ -255,6 +255,39 @@ func (q *Queries) ListGroupsForDevice(ctx context.Context, deviceID uuid.UUID) (
 	return out, rows.Err()
 }
 
+// ActiveDevicesForItem returns the active devices one item currently reaches,
+// which is EffectiveItems read backwards: every device whose groups include
+// the item and none of whose groups exclude it. Resolving the whole set in
+// one query is what keeps an on-demand re-evaluation from asking the same
+// include/exclude question once per device in the fleet.
+func (q *Queries) ActiveDevicesForItem(ctx context.Context, kind string, itemID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, `
+		SELECT DISTINCT gm.device_id
+		FROM assignments a
+		JOIN group_members gm ON gm.group_id = a.group_id
+		JOIN devices d ON d.id = gm.device_id AND d.tenant_id = $1 AND d.status = 'active'
+		WHERE a.tenant_id = $1 AND a.mode = 'include' AND a.item_kind = $2 AND a.item_id = $3
+		  AND NOT EXISTS (
+		      SELECT 1 FROM assignments x
+		      JOIN group_members gx ON gx.group_id = x.group_id AND gx.device_id = gm.device_id
+		      WHERE x.mode = 'exclude'
+		        AND x.item_kind = $2 AND x.item_id = $3)
+		ORDER BY gm.device_id`, DefaultTenantID, kind, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
 // MatchDevices runs a compiled rule and returns the matching device IDs.
 func (q *Queries) MatchDevices(ctx context.Context, sql string, args []any) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, sql, args...)

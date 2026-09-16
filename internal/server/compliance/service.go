@@ -350,25 +350,22 @@ func mirrorItemStatus(result Result) (status, detail string) {
 
 // EvaluatePolicy re-evaluates one policy across every device it currently
 // applies to, used after a policy is edited so its devices do not wait for
-// the next sweep. There is no query that resolves an item straight to the
-// devices it reaches (only the reverse, EffectiveItems per device), so this
-// walks every active device and asks whether the policy currently applies to
-// it before re-scoring it - the same O(active devices) cost as the sweeper
-// below, just triggered on demand instead of on a timer.
+// the next sweep. ActiveDevicesForItem resolves that set in one query, so the
+// work is proportional to the devices the policy actually reaches rather than
+// to the size of the fleet: a policy assigned to a dozen machines costs a
+// dozen evaluations even on a estate of thousands.
+//
+// A device whose evaluation fails is logged and skipped rather than failing
+// the request, because one device's bad row should not deny every other
+// device the re-score the edit was made for. The returned count is what was
+// actually evaluated, so a caller that expected more can tell.
 func (s *Service) EvaluatePolicy(ctx context.Context, policyID uuid.UUID) (int, error) {
-	ids, err := s.Store.Q().ActiveDeviceIDs(ctx)
+	ids, err := s.Store.Q().ActiveDevicesForItem(ctx, ItemKindCompliance, policyID)
 	if err != nil {
 		return 0, err
 	}
 	n := 0
 	for _, id := range ids {
-		has, err := s.Store.Q().DeviceHasItem(ctx, id, ItemKindCompliance, policyID)
-		if err != nil {
-			return n, err
-		}
-		if !has {
-			continue
-		}
 		if err := s.EvaluateDevice(ctx, id); err != nil {
 			s.log().Warn("evaluate device for policy", "device_id", id, "policy_id", policyID, "error", err)
 			continue

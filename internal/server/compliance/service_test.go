@@ -337,8 +337,8 @@ func TestCreateBadRulesIsErrBadRequest(t *testing.T) {
 	}
 }
 
-// TestEvaluatePolicyOnlyTouchesDevicesItAppliesTo checks the fallback member
-// resolution: it must count and evaluate the device the policy is assigned
+// TestEvaluatePolicyOnlyTouchesDevicesItAppliesTo checks the set the policy
+// resolves to: it must count and evaluate the device the policy is assigned
 // to, and leave an unrelated active device alone.
 func TestEvaluatePolicyOnlyTouchesDevicesItAppliesTo(t *testing.T) {
 	st := storetest.New(t)
