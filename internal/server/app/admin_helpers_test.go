@@ -74,6 +74,37 @@ func (c *adminClient) do(method, path string, body any) (int, []byte) {
 	return res.StatusCode, out
 }
 
+// doWithHeaders is do but also returns the response headers, for endpoints
+// (like the CSV exports) whose contract lives partly in headers rather than
+// the JSON body every other admin endpoint returns.
+func (c *adminClient) doWithHeaders(method, path string, body any) (int, http.Header, []byte) {
+	c.t.Helper()
+	var r io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			c.t.Fatal(err)
+		}
+		r = bytes.NewReader(b)
+	}
+	req, err := http.NewRequestWithContext(context.Background(), method, c.base+path, r)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.csrf != "" {
+		req.Header.Set(adminapi.CSRFHeader, c.csrf)
+	}
+	res, err := c.http.Do(req)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	defer res.Body.Close()
+	c.setCookies = res.Cookies()
+	out, _ := io.ReadAll(res.Body)
+	return res.StatusCode, res.Header, out
+}
+
 // doRaw sends a non-JSON body, for endpoints that take bytes rather than an
 // object. It keeps do's cookie and CSRF handling.
 func (c *adminClient) doRaw(method, path, contentType string, body io.Reader) (int, []byte) {

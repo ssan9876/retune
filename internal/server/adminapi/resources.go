@@ -5,6 +5,9 @@ import "net/http"
 // mountResources registers the device, command, token, admin and audit routes.
 func (h *Handler) mountResources(mux *http.ServeMux, base string) {
 	mux.Handle("GET "+base+"/devices", h.read(h.listDevices))
+	// Registered ahead of /devices/{id}: ServeMux prefers the literal segment
+	// over the wildcard, so export.csv never gets parsed as a device ID.
+	mux.Handle("GET "+base+"/devices/export.csv", h.read(h.exportDevices))
 	mux.Handle("GET "+base+"/devices/{id}", h.read(h.getDevice))
 	mux.Handle("GET "+base+"/devices/{id}/software", h.read(h.listDeviceSoftware))
 	mux.Handle("POST "+base+"/devices/{id}/retire", h.write(h.retireDevice))
@@ -84,6 +87,7 @@ func (h *Handler) mountResources(mux *http.ServeMux, base string) {
 	mux.Handle("DELETE "+base+"/compliance-policies/{id}", h.write(h.deleteCompliancePolicy))
 	mux.Handle("POST "+base+"/compliance-policies/{id}/evaluate", h.write(h.evaluateCompliancePolicy))
 	mux.Handle("GET "+base+"/compliance-policies/{id}/devices", h.read(h.listPolicyDevices))
+	mux.Handle("GET "+base+"/compliance-policies/{id}/devices/export.csv", h.read(h.exportPolicyDevices))
 
 	mux.Handle("GET "+base+"/devices/{id}/compliance", h.read(h.deviceCompliance))
 
