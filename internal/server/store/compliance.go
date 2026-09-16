@@ -214,6 +214,54 @@ func (q *Queries) ListPolicyCompliance(ctx context.Context, policyID uuid.UUID, 
 	return out, total, rows.Err()
 }
 
+// PolicyStateCounts returns each of the given policies' device_compliance
+// counts by state (compliant, non_compliant, unknown), for the console's
+// policy list rollup column. Unlike ComplianceOverall, this counts each
+// policy's own rows rather than deriving one worst-state-wins verdict per
+// device, so an administrator can see how a policy itself is doing without a
+// separate request per row. A policy with no results yet - never evaluated,
+// or every device it once applied to has since been unassigned - comes back
+// with all three states at zero rather than being absent from the map, so a
+// caller never has to tell "zero" apart from "missing" for a real policy id.
+func (q *Queries) PolicyStateCounts(ctx context.Context, policyIDs []uuid.UUID) (map[uuid.UUID]map[string]int, error) {
+	out := make(map[uuid.UUID]map[string]int, len(policyIDs))
+	for _, id := range policyIDs {
+		out[id] = map[string]int{
+			ComplianceCompliant:    0,
+			ComplianceNonCompliant: 0,
+			ComplianceUnknown:      0,
+		}
+	}
+	if len(policyIDs) == 0 {
+		return out, nil
+	}
+	rows, err := q.db.Query(ctx, `
+		SELECT policy_id, state, count(*)
+		FROM device_compliance
+		WHERE tenant_id = $1 AND policy_id = ANY($2)
+		GROUP BY policy_id, state`, DefaultTenantID, policyIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		var state string
+		var n int
+		if err := rows.Scan(&id, &state, &n); err != nil {
+			return nil, err
+		}
+		if _, ok := out[id]; !ok {
+			// Defensive: policyIDs is the caller's own list, so every row's
+			// policy_id should already be a key, but a stale caller-side
+			// cache should not panic on a map write it didn't expect.
+			out[id] = map[string]int{}
+		}
+		out[id][state] = n
+	}
+	return out, rows.Err()
+}
+
 // ComplianceOverall derives each device's overall state (design §2): the
 // worst state across its rows, or not_evaluated if it has none.
 func (q *Queries) ComplianceOverall(ctx context.Context, deviceIDs []uuid.UUID) (map[uuid.UUID]string, error) {

@@ -20,6 +20,11 @@ type compliancePolicyJSON struct {
 	CreatedAt   time.Time       `json:"created_at"`
 	UpdatedAt   time.Time       `json:"updated_at"`
 	CreatedBy   string          `json:"created_by"`
+	// DeviceCounts is only ever populated by the list endpoint (spec §6's
+	// "list with rollups"): it is one batched query over the whole page
+	// rather than a per-policy round trip, so it is left nil - and so
+	// omitted - everywhere else a policy is returned.
+	DeviceCounts map[string]int `json:"device_counts,omitempty"`
 }
 
 func newCompliancePolicyJSON(p store.CompliancePolicy) compliancePolicyJSON {
@@ -52,14 +57,29 @@ func (h *Handler) writeComplianceError(w http.ResponseWriter, what string, err e
 
 func (h *Handler) listCompliancePolicies(w http.ResponseWriter, r *http.Request) {
 	page := pageFrom(r)
-	rows, total, err := h.Compliance.List(r.Context(), page)
+	ctx := r.Context()
+	rows, total, err := h.Compliance.List(ctx, page)
 	if err != nil {
 		h.internal(w, "list compliance policies", err)
 		return
 	}
+	ids := make([]uuid.UUID, len(rows))
+	for i, p := range rows {
+		ids[i] = p.ID
+	}
+	// One query for the whole page's rollup, not one per policy: the same
+	// shape as exportDevices batching ComplianceOverall over its page of
+	// devices, so listing policies never fans out into N extra round trips.
+	counts, err := h.Store.Q().PolicyStateCounts(ctx, ids)
+	if err != nil {
+		h.internal(w, "policy state counts", err)
+		return
+	}
 	items := make([]compliancePolicyJSON, 0, len(rows))
 	for _, p := range rows {
-		items = append(items, newCompliancePolicyJSON(p))
+		item := newCompliancePolicyJSON(p)
+		item.DeviceCounts = counts[p.ID]
+		items = append(items, item)
 	}
 	writeJSON(w, http.StatusOK, newListResponse(items, total, page))
 }

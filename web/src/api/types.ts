@@ -322,6 +322,10 @@ export interface CompliancePolicy {
   created_at: string;
   updated_at: string;
   created_by: string;
+  // device_counts is only present on the list endpoint's items: a
+  // compliant/non_compliant/unknown rollup batched over the whole page in
+  // one query, not one request per policy. Absent on get/create/update.
+  device_counts?: Record<string, number>;
 }
 
 export interface PolicyDeviceCompliance {

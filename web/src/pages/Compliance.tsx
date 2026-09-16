@@ -433,37 +433,15 @@ function AssignDialog({
   );
 }
 
-/** PolicyRollup shows how many devices currently land in each state for one
- * policy. There is no server-side rollup query for this (unlike a profile's
- * per-setting status endpoint), so it asks for each state's total the same
- * way the device list itself is paged, one cheap limit=1 request per state. */
-function PolicyRollup({ policyID }: { policyID: string }) {
-  const [counts, setCounts] = useState<Record<string, number> | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all(
-      (["compliant", "non_compliant", "unknown"] as const).map((state) =>
-        api
-          .get<ListResponse<PolicyDeviceCompliance>>(
-            `/compliance-policies/${policyID}/devices?state=${state}&limit=1`,
-          )
-          .then((resp) => resp.total)
-          .catch(() => 0),
-      ),
-    ).then(([compliant, nonCompliant, unknown]) => {
-      if (!cancelled) setCounts({ compliant, non_compliant: nonCompliant, unknown });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [policyID]);
-
+/** PolicyRollup renders a policy's device-state counts, which the list
+ * endpoint now batches for the whole page in one query (device_counts on
+ * each item) rather than this component fetching them itself. */
+function PolicyRollup({ counts }: { counts?: Record<string, number> }) {
   if (!counts) return null;
   return (
     <span className="policy__rollup">
-      <StatusDot status="compliant" /> {counts.compliant} <StatusDot status="non_compliant" />{" "}
-      {counts.non_compliant} <StatusDot status="unknown" /> {counts.unknown}
+      <StatusDot status="compliant" /> {counts.compliant ?? 0} <StatusDot status="non_compliant" />{" "}
+      {counts.non_compliant ?? 0} <StatusDot status="unknown" /> {counts.unknown ?? 0}
     </span>
   );
 }
@@ -641,7 +619,7 @@ export default function Compliance() {
             <thead>
               <tr>
                 <th>Name</th>
-                <th className="numeric">Rules</th>
+                <th className="numeric">Rule count</th>
                 <th>Devices</th>
                 <th>Updated</th>
                 <th />
@@ -658,7 +636,7 @@ export default function Compliance() {
                   </td>
                   <td className="numeric">{policy.rules.length}</td>
                   <td>
-                    <PolicyRollup policyID={policy.id} />
+                    <PolicyRollup counts={policy.device_counts} />
                   </td>
                   <td>{relative(policy.updated_at)}</td>
                   <td className="policy__actions">

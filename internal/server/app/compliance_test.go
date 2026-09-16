@@ -119,6 +119,79 @@ func TestCompliancePolicyCRUDAndRoles(t *testing.T) {
 	}
 }
 
+// TestCompliancePolicyListDeviceCounts covers the policy list's per-policy
+// rollup (console's "list with rollups", spec §6): one evaluated policy shows
+// its compliant/non_compliant split, and a policy nothing has ever scored
+// comes back at zero rather than missing the field entirely, so the console
+// never has to special-case an unevaluated policy's row.
+func TestCompliancePolicyListDeviceCounts(t *testing.T) {
+	ctx := context.Background()
+	a, srv := newTestApp(t)
+	admin := signedIn(t, a, srv, store.RoleAdmin)
+
+	scored, err := a.Compliance.Create(ctx, compliance.NewPolicy{
+		Name: "Scored", Rules: json.RawMessage(`[{"type":"no_pending_reboot"}]`), Actor: "test",
+	})
+	if err != nil {
+		t.Fatalf("create scored policy: %v", err)
+	}
+	empty, err := a.Compliance.Create(ctx, compliance.NewPolicy{
+		Name: "Never evaluated", Rules: json.RawMessage(`[{"type":"no_pending_reboot"}]`), Actor: "test",
+	})
+	if err != nil {
+		t.Fatalf("create empty policy: %v", err)
+	}
+
+	status, body := admin.do(http.MethodPost, "/assignments", map[string]any{
+		"item_kind": compliance.ItemKindCompliance, "item_id": scored.ID.String(),
+		"group_id": store.BuiltinGroupID.String(), "mode": "include",
+	})
+	if status != http.StatusCreated {
+		t.Fatalf("assign policy: %d %s", status, body)
+	}
+
+	_, okMTLS := enrollDevice(t, a, srv, "PC-COMPLIANT")
+	if status, body = send(t, okMTLS, http.MethodPut, srv.URL+"/api/agent/v1/inventory", protocol.Inventory{
+		Hostname: "PC-COMPLIANT", PendingReboot: false,
+	}); status != http.StatusOK {
+		t.Fatalf("inventory upload (compliant): %d %s", status, body)
+	}
+	_, failMTLS := enrollDevice(t, a, srv, "PC-FAILS")
+	if status, body = send(t, failMTLS, http.MethodPut, srv.URL+"/api/agent/v1/inventory", protocol.Inventory{
+		Hostname: "PC-FAILS", PendingReboot: true,
+	}); status != http.StatusOK {
+		t.Fatalf("inventory upload (non-compliant): %d %s", status, body)
+	}
+
+	status, body = admin.do(http.MethodGet, "/compliance-policies", nil)
+	if status != http.StatusOK {
+		t.Fatalf("list: %d %s", status, body)
+	}
+	list := decodeJSON[struct {
+		Items []struct {
+			ID           string         `json:"id"`
+			DeviceCounts map[string]int `json:"device_counts"`
+		} `json:"items"`
+	}](t, body)
+
+	var gotScored, gotEmpty *map[string]int
+	for i, item := range list.Items {
+		switch item.ID {
+		case scored.ID.String():
+			gotScored = &list.Items[i].DeviceCounts
+		case empty.ID.String():
+			gotEmpty = &list.Items[i].DeviceCounts
+		}
+	}
+	if gotScored == nil || (*gotScored)[store.ComplianceCompliant] != 1 || (*gotScored)[store.ComplianceNonCompliant] != 1 {
+		t.Fatalf("scored device_counts = %+v", gotScored)
+	}
+	if gotEmpty == nil || (*gotEmpty)[store.ComplianceCompliant] != 0 || (*gotEmpty)[store.ComplianceNonCompliant] != 0 ||
+		(*gotEmpty)[store.ComplianceUnknown] != 0 {
+		t.Fatalf("empty policy device_counts = %+v, want all zero", gotEmpty)
+	}
+}
+
 // TestDeviceComplianceEndpointAndDevicesListField covers both the per-device
 // compliance endpoint and the "compliance" field the devices list gains
 // (spec §5): a device with no assigned policy reads not_evaluated, and one

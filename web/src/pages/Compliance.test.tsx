@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -30,6 +30,7 @@ const policy = {
   created_at: "2026-09-13T00:00:00Z",
   updated_at: "2026-09-13T00:00:00Z",
   created_by: "ops@example.com",
+  device_counts: { compliant: 3, non_compliant: 1, unknown: 0 },
 };
 
 /** listOnly answers every GET with an empty page, except /compliance-policies
@@ -62,7 +63,25 @@ describe("Compliance", () => {
     render_();
     await screen.findByText("Baseline security");
     expect(screen.getByText("What a healthy workstation looks like")).toBeInTheDocument();
-    expect(screen.getByText("1")).toBeInTheDocument();
+    const row = screen.getByText("Baseline security").closest("tr");
+    if (!row) throw new Error("row not found");
+    expect(within(row).getByRole("cell", { name: "1" })).toBeInTheDocument();
+  });
+
+  it("renders the rollup from the list response's own device_counts, with a single request", async () => {
+    listOnly();
+    render_();
+    await screen.findByText("Baseline security");
+
+    const row = screen.getByText("Baseline security").closest("tr");
+    if (!row) throw new Error("row not found");
+    expect(row.textContent).toContain("3");
+    expect(row.textContent).toContain("0");
+
+    // No per-policy /devices?state= calls: the rollup comes from the list
+    // response alone, not a fan-out of extra requests per policy.
+    const rollupCalls = fetchMock.mock.calls.filter((call: unknown[]) => String(call[0]).includes("/devices?state="));
+    expect(rollupCalls).toHaveLength(0);
   });
 
   it("creates a policy and sends the right rules JSON", async () => {

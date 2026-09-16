@@ -343,3 +343,62 @@ func TestComplianceCounts(t *testing.T) {
 		t.Fatalf("counts = %+v", counts)
 	}
 }
+
+func TestPolicyStateCounts(t *testing.T) {
+	st := storetest.New(t)
+	ctx := context.Background()
+	q := st.Q()
+	now := time.Now().UTC()
+
+	scored := newPolicy(t, q, "Scored")
+	empty := newPolicy(t, q, "Empty") // never evaluated
+
+	devA := newDevice(t, q, "a")
+	devB := newDevice(t, q, "b")
+	devC := newDevice(t, q, "c")
+	for _, dc := range []store.DeviceCompliance{
+		{DeviceID: devA.ID, PolicyID: scored.ID, State: store.ComplianceCompliant, Failures: json.RawMessage(`[]`), EvaluatedAt: now},
+		{DeviceID: devB.ID, PolicyID: scored.ID, State: store.ComplianceCompliant, Failures: json.RawMessage(`[]`), EvaluatedAt: now},
+		{DeviceID: devC.ID, PolicyID: scored.ID, State: store.ComplianceNonCompliant, Failures: json.RawMessage(`[]`), EvaluatedAt: now},
+	} {
+		if err := q.UpsertDeviceCompliance(ctx, dc); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	counts, err := q.PolicyStateCounts(ctx, []uuid.UUID{scored.ID, empty.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]int{store.ComplianceCompliant: 2, store.ComplianceNonCompliant: 1, store.ComplianceUnknown: 0}
+	for state, n := range want {
+		if counts[scored.ID][state] != n {
+			t.Errorf("scored[%s] = %d, want %d (%+v)", state, counts[scored.ID][state], n, counts[scored.ID])
+		}
+	}
+	// A policy nothing has scored yet comes back present with all zeroes,
+	// not absent from the map, so a caller never has to special-case it.
+	for _, state := range []string{store.ComplianceCompliant, store.ComplianceNonCompliant, store.ComplianceUnknown} {
+		if n, ok := counts[empty.ID][state]; !ok || n != 0 {
+			t.Errorf("empty[%s] = %d, ok=%v, want 0, true", state, n, ok)
+		}
+	}
+
+	// An id from another tenant's policy (or any id not among the caller's
+	// own) is scoped out by the tenant filter, the same as every other
+	// compliance query, and never picks up a stray row.
+	other := uuid.Must(uuid.NewV7())
+	otherCounts, err := q.PolicyStateCounts(ctx, []uuid.UUID{other})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, state := range []string{store.ComplianceCompliant, store.ComplianceNonCompliant, store.ComplianceUnknown} {
+		if otherCounts[other][state] != 0 {
+			t.Errorf("other[%s] = %d, want 0", state, otherCounts[other][state])
+		}
+	}
+
+	if empty, err := q.PolicyStateCounts(ctx, nil); err != nil || len(empty) != 0 {
+		t.Errorf("nil ids: %v %+v", err, empty)
+	}
+}
