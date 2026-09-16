@@ -27,6 +27,7 @@ type compliancePolicyResp struct {
 func TestCompliancePolicyCRUDAndRoles(t *testing.T) {
 	a, srv := newTestApp(t)
 	admin := signedIn(t, a, srv, store.RoleAdmin)
+	deviceID, _ := enrollDevice(t, a, srv, "PC-ROLE-CHECK")
 
 	status, body := admin.do(http.MethodPost, "/compliance-policies", map[string]any{
 		"name":        "Baseline",
@@ -99,7 +100,8 @@ func TestCompliancePolicyCRUDAndRoles(t *testing.T) {
 		t.Fatalf("evaluate unknown policy: %d", status)
 	}
 
-	// Read-only: GET is open, every write is not.
+	// Read-only: GET is open, every write is not - across every endpoint this
+	// task adds, not just the policy library itself.
 	ro := signedIn(t, a, srv, store.RoleReadOnly)
 	if status, body := ro.do(http.MethodGet, "/compliance-policies", nil); status != http.StatusOK {
 		t.Fatalf("read-only list: %d %s", status, body)
@@ -108,6 +110,12 @@ func TestCompliancePolicyCRUDAndRoles(t *testing.T) {
 		"name": "Nope", "rules": json.RawMessage(`[{"type":"no_pending_reboot"}]`),
 	}); status != http.StatusForbidden {
 		t.Fatalf("read-only create: %d %s", status, body)
+	}
+	if status, body := ro.do(http.MethodGet, "/dashboard", nil); status != http.StatusOK {
+		t.Fatalf("read-only dashboard: %d %s", status, body)
+	}
+	if status, body := ro.do(http.MethodGet, "/devices/"+deviceID.String()+"/compliance", nil); status != http.StatusOK {
+		t.Fatalf("read-only device compliance: %d %s", status, body)
 	}
 }
 

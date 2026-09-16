@@ -49,42 +49,33 @@ type dashboardJSON struct {
 
 // dashboard reports fleet-wide numbers for the console's overview page (spec
 // §5). Its device buckets are exactly FleetBar's (web/src/pages/Devices.tsx),
-// computed here over the whole fleet rather than the browser's capped
-// /devices?limit=200: mutually exclusive by construction, since every device
-// falls into exactly one of "not active" (retired), "active and stale" or
-// "active and not stale". Compliance, failed-deployment and inventory counts
-// are all for active devices only, matching ComplianceCounts.
+// computed in SQL over the whole fleet rather than the browser's capped
+// /devices?limit=200 or - just as bad at scale - pulling every device's row
+// into Go: mutually exclusive by construction, since every device falls into
+// exactly one of "not active" (retired), "active and stale" or "active and
+// not stale". Compliance, failed-deployment and inventory counts are all for
+// active devices only, matching ComplianceCounts.
 func (h *Handler) dashboard(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	rows, err := h.Store.Q().ListDevices(ctx)
+
+	// Same cutoff newDeviceJSON's Stale flag uses (now - staleAfter), so the
+	// dashboard and the device list's FleetBar never disagree about one device.
+	active, stale, retired, err := h.Store.Q().DeviceBucketCounts(ctx, h.Now().Add(-staleAfter))
 	if err != nil {
-		h.internal(w, "list devices", err)
+		h.internal(w, "device bucket counts", err)
 		return
 	}
+	devices := dashboardDevicesJSON{Active: active, Stale: stale, Retired: retired, Total: active + stale + retired}
 
-	var devices dashboardDevicesJSON
-	agentVersions := map[string]int{}
-	osBuilds := map[string]int{}
-	for _, d := range rows {
-		devices.Total++
-		if d.Status != store.DeviceActive {
-			devices.Retired++
-			continue
-		}
-		// Same definition newDeviceJSON uses for its own Stale flag, so this
-		// and the device list's FleetBar never disagree about one device.
-		stale := d.LastSeenAt == nil || h.Now().Sub(*d.LastSeenAt) > staleAfter
-		if stale {
-			devices.Stale++
-		} else {
-			devices.Active++
-		}
-		if d.AgentVersion != "" {
-			agentVersions[d.AgentVersion]++
-		}
-		if d.OSBuild != "" {
-			osBuilds[d.OSBuild]++
-		}
+	agentVersions, err := h.Store.Q().ActiveAgentVersionCounts(ctx)
+	if err != nil {
+		h.internal(w, "active agent version counts", err)
+		return
+	}
+	osBuilds, err := h.Store.Q().ActiveOSBuildCounts(ctx)
+	if err != nil {
+		h.internal(w, "active os build counts", err)
+		return
 	}
 
 	complianceCounts, err := h.Store.Q().ComplianceCounts(ctx)
