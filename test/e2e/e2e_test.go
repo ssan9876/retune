@@ -32,6 +32,7 @@ import (
 	"retune/internal/server/app"
 	"retune/internal/server/apps"
 	"retune/internal/server/auth"
+	"retune/internal/server/compliance"
 	"retune/internal/server/enroll"
 	"retune/internal/server/store"
 	"retune/internal/server/store/storetest"
@@ -538,6 +539,119 @@ func TestAgentSelfUpdateEndToEnd(t *testing.T) {
 	}
 	if rollup[store.ItemSucceeded] != 1 {
 		t.Fatalf("want one succeeded, got %v", rollup)
+	}
+}
+
+// TestComplianceEndToEnd proves the compliance path spec §7 describes: a
+// BitLocker policy assigned to a device's group, inventory that reports
+// BitLocker off, and the device turning up non-compliant with a mirrored
+// failed item status; then inventory that reports BitLocker on turns the same
+// device compliant, with no restart or reassignment in between - exactly the
+// "walk it did not have to wait for the sweeper to see" wiring the inventory
+// path already gives apps and profiles.
+func TestComplianceEndToEnd(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.Server{
+		DatabaseURL: storetest.DatabaseURL(t), PublicURL: "https://127.0.0.1",
+		TLSMode: "self-signed", DataDir: t.TempDir(), CheckinInterval: 2 * time.Minute,
+	}
+	a, err := app.New(ctx, cfg, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	srv := httptest.NewUnstartedServer(a.Handler)
+	srv.TLS = a.TLSConfig
+	srv.StartTLS()
+	defer srv.Close()
+
+	// Enroll one device, exactly as the other end-to-end tests do.
+	maxUses := 1
+	token, _, err := a.Enroll.CreateToken(ctx, enroll.TokenOptions{Label: "compliance-e2e", MaxUses: &maxUses, CreatedBy: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pin := pki.Fingerprint(a.CA.Cert().Raw)
+	facts := protocol.DeviceFacts{Hostname: "PC-COMPLIANCE", Serial: "SN-COMPLIANCE", SMBIOSUUID: "UUID-COMPLIANCE", OSVersion: "Windows 11 Pro"}
+	id, err := enrollment.Enroll(ctx, enrollment.Options{
+		ServerURL: srv.URL, Token: token, Pin: pin, Facts: facts,
+		Store: identity.Store{Dir: t.TempDir(), Keys: identity.PlainKeys{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deviceID := uuid.MustParse(id.DeviceID)
+	dev, err := enrollment.Connect(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A policy requiring BitLocker on the system volume, assigned to the
+	// builtin "All devices" group every enrolled device already belongs to.
+	policy, err := a.Compliance.Create(ctx, compliance.NewPolicy{
+		Name: "BitLocker required", Rules: json.RawMessage(`[{"type":"bitlocker","volumes":"system"}]`), Actor: "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Store.Q().CreateAssignment(ctx, store.Assignment{
+		ID: uuid.Must(uuid.NewV7()), ItemKind: compliance.ItemKindCompliance, ItemID: policy.ID,
+		GroupID: store.BuiltinGroupID, Mode: store.ModeInclude,
+		CreatedAt: time.Now().UTC(), CreatedBy: "test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Inventory with BitLocker off on C: makes the device non-compliant, and
+	// that verdict is mirrored into device_item_status without a separate
+	// evaluation call - ingest evaluates it inline.
+	if _, err := dev.PutInventory(ctx, protocol.Inventory{
+		Hostname: "PC-COMPLIANCE",
+		Disks:    []protocol.Disk{{Name: "C:", BitLocker: "off"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := a.Store.Q().ListDeviceCompliance(ctx, deviceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].PolicyID != policy.ID || results[0].State != store.ComplianceNonCompliant {
+		t.Fatalf("device compliance after BitLocker off = %+v", results)
+	}
+	if !strings.Contains(string(results[0].Failures), "BitLocker") {
+		t.Errorf("failure detail should name BitLocker, got %s", results[0].Failures)
+	}
+	rollup, err := a.Store.Q().ItemStatusRollup(ctx, compliance.ItemKindCompliance, policy.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rollup[store.ItemFailed] != 1 {
+		t.Fatalf("want one failed mirrored status, got %v", rollup)
+	}
+
+	// Inventory with BitLocker on turns the same device compliant, with the
+	// same policy and no reassignment in between.
+	if _, err := dev.PutInventory(ctx, protocol.Inventory{
+		Hostname: "PC-COMPLIANCE",
+		Disks:    []protocol.Disk{{Name: "C:", BitLocker: "on"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err = a.Store.Q().ListDeviceCompliance(ctx, deviceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].State != store.ComplianceCompliant {
+		t.Fatalf("device compliance after BitLocker on = %+v", results)
+	}
+	rollup, err = a.Store.Q().ItemStatusRollup(ctx, compliance.ItemKindCompliance, policy.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rollup[store.ItemSucceeded] != 1 {
+		t.Fatalf("want one succeeded mirrored status, got %v", rollup)
 	}
 }
 
