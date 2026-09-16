@@ -223,8 +223,16 @@ func (s *Service) EvaluateDevice(ctx context.Context, deviceID uuid.UUID) error 
 			return err
 		}
 
+		// scored is policyIDs minus the ones evaluateOne had to skip, so the
+		// cleanup below drops a vanished policy's stale rows instead of
+		// keeping them alive on the strength of an assignment that outlived
+		// the policy it points at.
+		scored := make([]uuid.UUID, 0, len(policyIDs))
 		for _, policyID := range policyIDs {
 			result, failures, err := s.evaluateOne(ctx, q, policyID, facts, now)
+			if errors.Is(err, store.ErrNotFound) {
+				continue
+			}
 			if err != nil {
 				return err
 			}
@@ -241,11 +249,12 @@ func (s *Service) EvaluateDevice(ctx context.Context, deviceID uuid.UUID) error 
 			}); err != nil {
 				return err
 			}
+			scored = append(scored, policyID)
 		}
-		if err := q.DeleteDeviceComplianceExcept(ctx, deviceID, policyIDs); err != nil {
+		if err := q.DeleteDeviceComplianceExcept(ctx, deviceID, scored); err != nil {
 			return err
 		}
-		return q.DeleteItemStatusExcept(ctx, deviceID, ItemKindCompliance, policyIDs)
+		return q.DeleteItemStatusExcept(ctx, deviceID, ItemKindCompliance, scored)
 	})
 }
 
@@ -284,8 +293,19 @@ func (s *Service) buildFacts(ctx context.Context, q *store.Queries, device store
 // database, or written by a future version of this server - does not stop
 // evaluating the device's other policies; it is logged and reported as
 // unknown, the same as any other fact this evaluator cannot make sense of.
+//
+// A policy that is not there at all is different, and returns store.ErrNotFound
+// for the caller to skip: an assignment can name an item that does not exist
+// (createAssignment validates the kind and its options, not the item), and
+// letting that abort the transaction would freeze compliance for every device
+// in the group - no policy scored, nothing written, and only a Warn from the
+// check-in hook to say so.
 func (s *Service) evaluateOne(ctx context.Context, q *store.Queries, policyID uuid.UUID, facts Facts, now time.Time) (Result, []byte, error) {
 	policy, err := q.GetCompliancePolicy(ctx, store.DefaultTenantID, policyID)
+	if errors.Is(err, store.ErrNotFound) {
+		s.log().Warn("compliance policy assigned but missing; skipping it", "policy_id", policyID)
+		return Result{}, nil, err
+	}
 	if err != nil {
 		return Result{}, nil, err
 	}

@@ -284,10 +284,9 @@ func parseRule(raw json.RawMessage) (Rule, error) {
 }
 
 // stringField reads a string-typed key from a rule's raw fields. present is
-// false when the key was absent, distinct from it being set to "" - which
-// matters for max_local_admins-style callers... except no string field is
-// legitimately optional-but-zero-meaningful here; min_version is the one
-// caller that reads present to tell "not given" from "given as empty".
+// false when the key was absent, distinct from it being set to "": tpm's
+// optional min_version is the one caller that needs to tell "not given" from
+// "given as empty".
 func stringField(m map[string]json.RawMessage, key string) (value string, present bool, err error) {
 	raw, ok := m[key]
 	if !ok {
@@ -597,8 +596,8 @@ func evalCheckedInWithin(r Rule, f Facts, now time.Time) (Failure, bool) {
 	}
 	elapsed := now.Sub(*f.Device.LastSeenAt)
 	if elapsed > time.Duration(r.Hours)*time.Hour {
-		days := int(elapsed.Hours() / 24)
-		return nonCompliant(r.Type, fmt.Sprintf("last check-in was %d days ago (limit %d hours)", days, r.Hours)), true
+		return nonCompliant(r.Type, fmt.Sprintf("last check-in was %s ago (limit %s)",
+			humanizeSince(elapsed), plural(r.Hours, "hour"))), true
 	}
 	return Failure{}, false
 }
@@ -609,8 +608,8 @@ func evalInventoryWithin(r Rule, f Facts, now time.Time) (Failure, bool) {
 	}
 	elapsed := now.Sub(*f.InventoryReceivedAt)
 	if elapsed > time.Duration(r.Hours)*time.Hour {
-		days := int(elapsed.Hours() / 24)
-		return nonCompliant(r.Type, fmt.Sprintf("inventory was last received %d days ago (limit %d hours)", days, r.Hours)), true
+		return nonCompliant(r.Type, fmt.Sprintf("inventory was last received %s ago (limit %s)",
+			humanizeSince(elapsed), plural(r.Hours, "hour"))), true
 	}
 	return Failure{}, false
 }
@@ -621,8 +620,8 @@ func evalUpdatesWithin(r Rule, f Facts, now time.Time) (Failure, bool) {
 	}
 	elapsed := now.Sub(*f.Inventory.LastUpdateInstalledAt)
 	if elapsed > time.Duration(r.Days)*24*time.Hour {
-		days := int(elapsed.Hours() / 24)
-		return nonCompliant(r.Type, fmt.Sprintf("the last update was installed %d days ago (limit %d days)", days, r.Days)), true
+		return nonCompliant(r.Type, fmt.Sprintf("the last update was installed %s ago (limit %s)",
+			humanizeSince(elapsed), plural(r.Days, "day"))), true
 	}
 	return Failure{}, false
 }
@@ -689,6 +688,28 @@ func evalProfileApplied(r Rule, f Facts) (Failure, bool) {
 		return nonCompliant(r.Type, fmt.Sprintf("the profile's status is %s, not succeeded", status)), true
 	}
 	return Failure{}, false
+}
+
+// humanizeSince says how long ago something happened in the unit a person
+// would use for it: hours for anything inside two days, whole days beyond
+// that. The within-rules are most often configured in hours - the console
+// offers 24 by default - and rounding those down to whole days turned a real
+// breach into a sentence claiming the device was fine ("last check-in was 0
+// days ago (limit 6 hours)"). Truncating rather than rounding keeps the number
+// a lower bound, so the detail never overstates how stale a device is.
+func humanizeSince(elapsed time.Duration) string {
+	if elapsed < 48*time.Hour {
+		return plural(int(elapsed.Hours()), "hour")
+	}
+	return plural(int(elapsed.Hours()/24), "day")
+}
+
+// plural renders a count with its unit, so a detail never reads "1 days".
+func plural(n int, unit string) string {
+	if n == 1 {
+		return fmt.Sprintf("1 %s", unit)
+	}
+	return fmt.Sprintf("%d %ss", n, unit)
 }
 
 func unknownFailure(rule, detail string) Failure {

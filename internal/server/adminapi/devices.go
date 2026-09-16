@@ -33,8 +33,11 @@ type deviceJSON struct {
 	// Compliance is the device's overall compliance state (design §2); it is
 	// filled in by listDevices/getDevice from a batch ComplianceOverall call,
 	// not by newDeviceJSON itself, since other callers of newDeviceJSON (group
-	// membership, rule preview) have no need to pay for that query.
-	Compliance string `json:"compliance"`
+	// membership, rule preview) have no need to pay for that query. It is
+	// omitted rather than sent empty for those callers: "" is not one of the
+	// four states, and not_evaluated would be a claim about the device this
+	// response never actually checked.
+	Compliance string `json:"compliance,omitempty"`
 }
 
 func (h *Handler) newDeviceJSON(d store.Device) deviceJSON {

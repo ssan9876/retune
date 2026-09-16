@@ -363,6 +363,24 @@ func TestEvaluateCheckedInWithin(t *testing.T) {
 		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 
+	// A breach shorter than a day is the common case - the console's own
+	// default rule is 24 hours - and must not round down to "0 days ago",
+	// which read as though the device were fine. Both the elapsed time and
+	// the limit are pluralised.
+	hourly := mustParse(t, `[{"type":"checked_in_within","hours":6}]`)
+	got = compliance.Evaluate(hourly, compliance.Facts{Device: store.Device{LastSeenAt: ts(7, now)}}, now)
+	if got.State != compliance.StateNonCompliant {
+		t.Fatalf("sub-day breach: got %v", got)
+	}
+	if got.Failures[0].Detail != "last check-in was 7 hours ago (limit 6 hours)" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
+	}
+	singular := mustParse(t, `[{"type":"checked_in_within","hours":1}]`)
+	got = compliance.Evaluate(singular, compliance.Facts{Device: store.Device{LastSeenAt: ts(2, now)}}, now)
+	if got.Failures[0].Detail != "last check-in was 2 hours ago (limit 1 hour)" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
+	}
+
 	if got := compliance.Evaluate(rules, compliance.Facts{Device: store.Device{}}, now); got.State != compliance.StateUnknown {
 		t.Fatalf("never seen: got %v", got)
 	} else if got.Failures[0].Detail != "the device has never checked in" {
@@ -386,6 +404,11 @@ func TestEvaluateInventoryWithin(t *testing.T) {
 	if got := compliance.Evaluate(rules, compliance.Facts{InventoryReceivedAt: stale}, now); got.State != compliance.StateNonCompliant {
 		t.Fatalf("stale: got %v", got)
 	} else if got.Failures[0].Detail != "inventory was last received 2 days ago (limit 24 hours)" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
+	}
+	// The same sub-day rendering as checked_in_within: an hours limit is
+	// reported against hours, not a day count rounded down to zero.
+	if got := compliance.Evaluate(rules, compliance.Facts{InventoryReceivedAt: ts(25, now)}, now); got.Failures[0].Detail != "inventory was last received 25 hours ago (limit 24 hours)" {
 		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 	if got := compliance.Evaluate(rules, compliance.Facts{InventoryReceivedAt: nil}, now); got.State != compliance.StateUnknown {
@@ -413,6 +436,11 @@ func TestEvaluateUpdatesWithin(t *testing.T) {
 		t.Fatalf("stale: got %v", got)
 	}
 	if got.Failures[0].Detail != "the last update was installed 45 days ago (limit 30 days)" {
+		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
+	}
+	// A one-day limit reads as "1 day", not "1 days".
+	daily := mustParse(t, `[{"type":"updates_within","days":1}]`)
+	if got := compliance.Evaluate(daily, compliance.Facts{Inventory: &protocol.Inventory{LastUpdateInstalledAt: ts(72, now)}}, now); got.Failures[0].Detail != "the last update was installed 3 days ago (limit 1 day)" {
 		t.Fatalf("unexpected detail: %q", got.Failures[0].Detail)
 	}
 	if got := compliance.Evaluate(rules, compliance.Facts{Inventory: &protocol.Inventory{}}, now); got.State != compliance.StateUnknown {

@@ -159,6 +159,58 @@ func TestEvaluateDeviceRemovesStaleResultsWhenUnassigned(t *testing.T) {
 	}
 }
 
+// TestEvaluateDeviceSkipsAnAssignmentWithNoPolicy covers the state
+// createAssignment can leave behind: it validates an assignment's kind and
+// options but not that the item exists, so a group can carry an assignment
+// naming a policy id that is not there. That must not stop the device's real
+// policies being scored, and the missing policy must not keep a stale
+// device_compliance row alive through the cleanup.
+func TestEvaluateDeviceSkipsAnAssignmentWithNoPolicy(t *testing.T) {
+	st := storetest.New(t)
+	ctx := context.Background()
+	svc := service(st)
+
+	d := device(t, st, "h1")
+	live := createPolicy(t, svc, "Live", `[{"type":"no_pending_reboot"}]`)
+	assign(t, st, live.ID, d.ID)
+
+	// A second policy, evaluated once, then deleted straight out of the
+	// policy table so only its assignment and its stale result remain.
+	doomed := createPolicy(t, svc, "Doomed", `[{"type":"no_pending_reboot"}]`)
+	assign(t, st, doomed.ID, d.ID)
+	if err := svc.EvaluateDevice(ctx, d.ID); err != nil {
+		t.Fatal(err)
+	}
+	if results, err := st.Q().ListDeviceCompliance(ctx, d.ID); err != nil || len(results) != 2 {
+		t.Fatalf("before the policy vanishes: %v %+v", err, results)
+	}
+	if err := st.Q().DeleteCompliancePolicy(ctx, store.DefaultTenantID, doomed.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.EvaluateDevice(ctx, d.ID); err != nil {
+		t.Fatalf("a dangling assignment must not fail the whole evaluation: %v", err)
+	}
+
+	results, err := st.Q().ListDeviceCompliance(ctx, d.ID)
+	if err != nil || len(results) != 1 {
+		t.Fatalf("results: %v %+v", err, results)
+	}
+	if results[0].PolicyID != live.ID {
+		t.Errorf("surviving result is for %s, want the live policy %s", results[0].PolicyID, live.ID)
+	}
+	// device_compliance cascades off the deleted policy row, but
+	// device_item_status has no foreign key to cascade through: the skipped
+	// policy has to be dropped from the keep list for its mirrored row to go.
+	statuses, err := st.Q().ListDeviceItemStatus(ctx, d.ID, compliance.ItemKindCompliance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := statuses[live.ID]; len(statuses) != 1 || !ok {
+		t.Errorf("item status = %v, want only the live policy's row", statuses)
+	}
+}
+
 // TestComplianceOverallDerivesFromEvaluatedPolicies exercises ComplianceOverall
 // through real evaluation output instead of hand-built rows, so a mismatch
 // between the mapping and the derivation would show up here.

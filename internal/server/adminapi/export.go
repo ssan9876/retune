@@ -65,7 +65,7 @@ func csvRow(w *csv.Writer, cells ...string) error {
 // Logging and closing the connection (by returning) is the honest option:
 // the client sees a truncated download rather than a row of garbage.
 func (h *Handler) logExportErr(msg string, err error) {
-	h.Log.Error(msg, "error", err)
+	h.log().Error(msg, "error", err)
 }
 
 var deviceExportHeader = []string{

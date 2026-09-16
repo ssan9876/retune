@@ -40,7 +40,7 @@ func (h *Handler) createAdmin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
 	default:
 		// A duplicate email trips the unique index.
-		h.Log.Warn("create admin failed", "error", err)
+		h.log().Warn("create admin failed", "error", err)
 		writeError(w, http.StatusBadRequest, "bad_request", "could not create this admin; the email may already be in use")
 	}
 }

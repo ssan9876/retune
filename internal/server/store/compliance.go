@@ -298,38 +298,37 @@ func (q *Queries) ComplianceOverall(ctx context.Context, deviceIDs []uuid.UUID) 
 // table (a device is still active while merely stale, i.e. overdue to check
 // in; retired and replaced devices are excluded).
 func (q *Queries) ComplianceCounts(ctx context.Context) (map[string]int, error) {
+	// The rollup happens in SQL rather than in Go, the same way
+	// DeviceBucketCounts computes the bar beside this one: pulling a row per
+	// (device x policy) back to derive one verdict each is 100k rows on a
+	// 20k-device fleet with five policies, every time the dashboard loads.
+	// The inner CASE ladder is complianceRank written as SQL and the outer one
+	// its inverse, so worst-state-wins agrees with ComplianceOverall exactly;
+	// the device_compliance CHECK constraint is what keeps the three states
+	// exhaustive. max() over a device with no rows is NULL, which is the
+	// not_evaluated the LEFT JOIN exists to produce.
 	rows, err := q.db.Query(ctx, `
-		SELECT d.id, dc.state
-		FROM devices d
-		LEFT JOIN device_compliance dc ON dc.device_id = d.id AND dc.tenant_id = d.tenant_id
-		WHERE d.tenant_id = $1 AND d.status = $2`, DefaultTenantID, DeviceActive)
+		SELECT overall, count(*) FROM (
+			SELECT CASE max(CASE dc.state
+					WHEN 'compliant' THEN 0
+					WHEN 'unknown' THEN 1
+					WHEN 'non_compliant' THEN 2
+				END)
+				WHEN 0 THEN 'compliant'
+				WHEN 1 THEN 'unknown'
+				WHEN 2 THEN 'non_compliant'
+				ELSE 'not_evaluated'
+			END AS overall
+			FROM devices d
+			LEFT JOIN device_compliance dc ON dc.device_id = d.id AND dc.tenant_id = d.tenant_id
+			WHERE d.tenant_id = $1 AND d.status = $2
+			GROUP BY d.id
+		) per_device
+		GROUP BY overall`, DefaultTenantID, DeviceActive)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-
-	overall := map[uuid.UUID]string{}
-	for rows.Next() {
-		var id uuid.UUID
-		var state *string
-		if err := rows.Scan(&id, &state); err != nil {
-			return nil, err
-		}
-		cur, ok := overall[id]
-		if !ok {
-			cur = ComplianceNotEvaluated
-			overall[id] = cur
-		}
-		if state == nil {
-			continue
-		}
-		if cur == ComplianceNotEvaluated || complianceRank[*state] > complianceRank[cur] {
-			overall[id] = *state
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
 
 	counts := map[string]int{
 		ComplianceCompliant:    0,
@@ -337,8 +336,13 @@ func (q *Queries) ComplianceCounts(ctx context.Context) (map[string]int, error) 
 		ComplianceUnknown:      0,
 		ComplianceNotEvaluated: 0,
 	}
-	for _, s := range overall {
-		counts[s]++
+	for rows.Next() {
+		var state string
+		var n int
+		if err := rows.Scan(&state, &n); err != nil {
+			return nil, err
+		}
+		counts[state] = n
 	}
-	return counts, nil
+	return counts, rows.Err()
 }
