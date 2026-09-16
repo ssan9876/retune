@@ -31,6 +31,16 @@ services:
     volumes:
       # Holds the internal CA. Losing it orphans every enrolled device.
       - ca:/var/lib/retune
+    # The image is distroless, so the probe is the server binary asking its
+    # own /readyz - there is no shell or curl in here to call.
+    healthcheck:
+      test: ["CMD", "/retune-server", "healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      # Migrations run at startup, so the first check must not arrive before
+      # the schema is in place on a cold database.
+      start_period: 60s
     depends_on:
       db:
         condition: service_healthy

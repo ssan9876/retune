@@ -131,6 +131,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		Now: time.Now, Log: log,
 	}
 	root := http.NewServeMux()
+	mountHealth(root, st, log)
 	root.Handle("/api/agent/v1/", agent.Routes())
 	root.Handle("/api/admin/v1/", admin.Routes())
 	root.Handle("/", console.Handler())

@@ -154,6 +154,67 @@ server {
 Agents reaching a proxy with a publicly trusted certificate need no pin;
 `--pin` and `SERVER_CERT_FINGERPRINT` are for self-signed servers.
 
+## Health checks
+
+Two unauthenticated endpoints answer the questions an orchestrator asks. A
+load balancer cannot sign in, so neither needs a session; neither reveals
+anything beyond whether the server is working.
+
+| Endpoint | Answers | Fails when |
+|---|---|---|
+| `GET /healthz` | is this process alive? | never, while it can answer at all |
+| `GET /readyz` | can it do any work? | the database is unreachable |
+
+They are deliberately different questions. Restarting a server because its
+database blinked turns a short outage into a longer one, so liveness never
+consults the database. Readiness does, which is what keeps an instance that
+started before its database out of rotation instead of serving errors.
+
+The container image is distroless — no shell, no `curl` — so the Compose
+healthcheck is the server binary probing itself:
+
+```bash
+retune-server healthcheck    # exits 0 when /readyz says ready
+```
+
+It reads `AGENT_API_LISTEN` and `TLS_MODE` from the same configuration the
+server uses, dials loopback, and prints the server's own words on failure so
+`docker inspect` says *why* rather than only that something is wrong.
+
+## Backups
+
+Two things have to be backed up, and they have to be backed up together:
+
+- **`DATA_DIR`** (the `ca` volume in Compose) holds `ca/ca.key` and
+  `ca/ca.crt`, the `secret.key` that protects escrowed BitLocker recovery
+  keys, and the uploaded agent builds in `agents/`. Losing it orphans every
+  enrolled device, makes every escrowed recovery key unreadable, and leaves
+  the database pointing at builds that are no longer there.
+- **The PostgreSQL database**, which holds everything else.
+
+```bash
+docker compose exec -T db pg_dump -U retune retune | gzip > retune-$(date +%F).sql.gz
+docker run --rm -v retune_ca:/data -v "$PWD:/backup" alpine \
+    tar czf /backup/retune-data-$(date +%F).tar.gz -C /data .
+```
+
+To restore, put both back before starting the server:
+
+```bash
+docker compose down
+docker volume rm retune_db retune_ca
+docker volume create retune_db && docker volume create retune_ca
+docker run --rm -v retune_ca:/data -v "$PWD:/backup" alpine \
+    sh -c 'tar xzf /backup/retune-data-DATE.tar.gz -C /data && chown -R 65532:65532 /data'
+docker compose up -d db
+gunzip -c retune-DATE.sql.gz | docker compose exec -T db psql -U retune retune
+docker compose up -d server
+```
+
+Migrations run at startup, so a dump from an older release is brought forward
+on first boot. Restoring the database without `DATA_DIR` is not a restore: the
+devices in it are authenticated by certificates only that CA can vouch for.
+
 ## Enroll a machine
 
 With the MSI, which installs the agent as an automatic service running as
@@ -461,7 +522,7 @@ reported can never be read as a spreadsheet formula by whoever opens the file.
 ## Command-line reference
 
 ```
-retune-server serve | migrate
+retune-server serve | migrate | healthcheck
 retune-server token create [--label L] [--max-uses N] [--expires-in 168h]
 retune-server ca fingerprint | ca cert
 retune-server device list | show <id> | retire <id> | unenroll <id>

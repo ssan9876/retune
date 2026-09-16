@@ -61,6 +61,11 @@ func Open(ctx context.Context, databaseURL string) (*Store, error) {
 // Close releases all connections.
 func (s *Store) Close() { s.pool.Close() }
 
+// Ping checks that the database is reachable, for the readiness probe. It
+// acquires a connection rather than inspecting the pool's own state, because
+// a pool whose connections have all gone stale still reports a healthy size.
+func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
+
 // Q returns Queries that run outside an explicit transaction.
 func (s *Store) Q() *Queries { return &Queries{db: s.pool} }
 

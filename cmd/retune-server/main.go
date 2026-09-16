@@ -30,6 +30,7 @@ const usage = `usage: retune-server <command>
 commands:
   serve                  run the server
   migrate                apply database migrations
+  healthcheck            ask the local server whether it is ready
   token create [flags]   create an enrollment token (--label, --max-uses, --expires-in)
   ca fingerprint         print the internal CA fingerprint for agent pinning
   ca cert                print the internal CA certificate (PEM) for a reverse proxy
@@ -62,6 +63,8 @@ func run(ctx context.Context, args []string, getenv func(string) string, out io.
 			return err
 		}
 		return store.Migrate(url)
+	case "healthcheck":
+		return healthcheckCmd(ctx, getenv, out)
 	case "token":
 		return tokenCmd(ctx, args[1:], getenv, out)
 	case "ca":
