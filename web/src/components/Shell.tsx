@@ -40,6 +40,7 @@ const SECTIONS: Section[] = [
   {
     heading: "Tenant administration",
     links: [
+      { to: "/alerts", label: "Alerts", icon: "bell" },
       { to: "/admins", label: "Admins", icon: "person" },
       { to: "/audit", label: "Audit log", icon: "list" },
     ],

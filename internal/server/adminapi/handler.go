@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"retune/internal/server/agentversions"
+	"retune/internal/server/alerts"
 	"retune/internal/server/apps"
 	"retune/internal/server/auth"
 	"retune/internal/server/bitlocker"
@@ -40,6 +41,7 @@ type Handler struct {
 	Profiles      *profiles.Service
 	Apps          *apps.Service
 	Compliance    *compliance.Service
+	Alerts        *alerts.Service
 	AgentVersions *agentversions.Service
 	BitLocker     *bitlocker.Service
 	Enroll        *enroll.Service

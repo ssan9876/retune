@@ -32,6 +32,8 @@ Go agent runs on each machine.
   looks like — encryption, patch level, check-in recency, forbidden or
   required software and more — evaluated server-side from what is already
   reported, with no agent involvement.
+- **Alerts.** Rules over the same conditions the dashboard counts, delivered
+  to email or a webhook, deduplicated so a fleet-wide fault is one message.
 - **Overview dashboard and CSV export.** A fleet-wide landing page, and CSV
   export of the device list and of one policy's results.
 - **Packaging.** A container image and Compose stack for the server, and an MSI
@@ -81,6 +83,10 @@ session_ttl_hours: 12
 | `session_ttl_hours` | `12` | console session lifetime (1–168) |
 | `sweep_interval_seconds` | `300` | how often expired commands and sessions are cleared (minimum 10) |
 | `agent_release_keys` | — | comma-separated public keys that sign agent builds; uploads are refused until set |
+| `smtp_host`, `smtp_port` | — / `587` | the relay alert email is sent through |
+| `smtp_from` | — | the address alert email comes from; required with `smtp_host` |
+| `smtp_username`, `smtp_password` | — | credentials for that relay, if it wants them |
+| `smtp_starttls` | `true` | upgrade before authenticating; off only for a relay that does not offer it |
 
 Every setting is also an environment variable of the same name in capitals,
 and the environment wins over the file.
@@ -504,6 +510,51 @@ The **Compliance** page lists policies with their compliant/non-compliant
 split, an editor for their rules, and per-policy device results filterable by
 state. The compliance column on **Devices**, and the compliance section on a
 device's own page, both read the same overall and per-policy state.
+
+## Alerts
+
+Everything above, Retune knows silently. An **alert rule** says which of it is
+worth interrupting somebody for, and a **notification channel** says where.
+
+| Rule | Fires for |
+|---|---|
+| A device is non-compliant | each active device failing a compliance policy, or one named policy |
+| A device stops checking in | each active device silent for more than *N* hours, or never seen |
+| A deployment fails | each failed script, app, profile or agent deployment on an active device |
+
+Rules are evaluated every five minutes, under the same advisory lock the other
+sweepers use, so a pair of replicas sends one email rather than two. Each rule
+keeps a row for every subject it is currently firing about, which is what makes
+the alert about a thing rather than about a moment: **a device that is still
+non-compliant on the next pass is not a second email.** It notifies once when a
+subject starts firing and once when it stops, and nothing in between — there
+are no reminders, and no escalation.
+
+Everything that changed on one pass goes out as one message, twenty subjects
+named and the rest counted, so a fleet-wide failure is one thing to read.
+
+**Channels** are email or a webhook.
+
+- Email goes through the relay in `SMTP_HOST` and friends; a channel holds only
+  its recipients. Creating an email channel on a deployment with no relay
+  configured is refused then and there, rather than accepted and silently never
+  delivered.
+- A webhook is `POST`ed JSON over https — `{rule, kind, description, at,
+  firing: [{subject_key, subject}], resolved: […]}` — with a 10-second timeout.
+  Give the channel a shared secret and each request carries
+  `X-Retune-Signature: sha256=<hex>` over the exact body. The secret is
+  encrypted with the same key that protects escrowed BitLocker recovery keys,
+  and can be set or cleared but never read back.
+
+**Send test** on a channel delivers a fixed message, so a wrong relay or a
+typo'd URL is found while you are still looking at the form. Every attempt,
+test or otherwise, is on the **Alerts** page for 30 days with whatever the
+relay or the receiver said about it.
+
+Deleting a channel a rule still delivers to is refused: quietly deleting the
+rules would quietly stop the alerting. Pausing a rule stops its messages but
+keeps its state up to date, so resuming it reports what is wrong now rather
+than replaying a week.
 
 ## Overview and export
 

@@ -4,6 +4,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/mail"
 	"net/netip"
 	"net/url"
 	"strconv"
@@ -33,6 +34,23 @@ type Server struct {
 	// AgentReleaseKeys are the public keys agent builds must be signed by.
 	// Optional at startup; an upload with none configured is refused.
 	AgentReleaseKeys []release.PublicKey
+	// SMTP is the relay alert email is sent through. Optional: without it,
+	// creating an email notification channel is refused rather than accepted
+	// and quietly never delivered.
+	SMTP SMTPConfig
+}
+
+// SMTPConfig is the mail relay. It is process configuration rather than a
+// notification channel's own settings because a deployment has one relay, and
+// a password in a row the console can read back is a password nobody should
+// have stored.
+type SMTPConfig struct {
+	Host     string
+	Port     int
+	From     string
+	Username string
+	Password string
+	StartTLS bool
 }
 
 // LoadServer reads configuration from environment variables via getenv.
@@ -90,6 +108,11 @@ func LoadServer(getenv func(string) string) (Server, error) {
 		}
 		c.AgentReleaseKeys = keys
 	}
+	smtpCfg, err := loadSMTP(lookup)
+	if err != nil {
+		return Server{}, err
+	}
+	c.SMTP = smtpCfg
 	if v := lookup("TRUSTED_PROXIES"); v != "" {
 		proxies, err := parsePrefixes(v)
 		if err != nil {
@@ -129,6 +152,48 @@ func LoadServer(getenv func(string) string) (Server, error) {
 		return Server{}, fmt.Errorf("unsupported TLS_MODE %q (supported: self-signed, provided, behind-proxy)", c.TLSMode)
 	}
 	return c, nil
+}
+
+// loadSMTP reads the mail relay settings. All of them are optional together:
+// a deployment that never sends email configures none of them, and one that
+// does is told about a half-configured relay at startup rather than when the
+// first alert fails.
+func loadSMTP(lookup func(string) string) (SMTPConfig, error) {
+	cfg := SMTPConfig{
+		Host:     strings.TrimSpace(lookup("SMTP_HOST")),
+		Port:     587,
+		From:     strings.TrimSpace(lookup("SMTP_FROM")),
+		Username: lookup("SMTP_USERNAME"),
+		Password: lookup("SMTP_PASSWORD"),
+		StartTLS: true,
+	}
+	if v := lookup("SMTP_PORT"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 65535 {
+			return SMTPConfig{}, errors.New("SMTP_PORT must be a port number")
+		}
+		cfg.Port = n
+	}
+	if v := lookup("SMTP_STARTTLS"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return SMTPConfig{}, errors.New("SMTP_STARTTLS must be true or false")
+		}
+		cfg.StartTLS = b
+	}
+	if cfg.Host == "" && cfg.From == "" {
+		return SMTPConfig{}, nil
+	}
+	if cfg.Host == "" || cfg.From == "" {
+		return SMTPConfig{}, errors.New("SMTP_HOST and SMTP_FROM are both required to send email")
+	}
+	if _, err := mail.ParseAddress(cfg.From); err != nil {
+		return SMTPConfig{}, errors.New("SMTP_FROM must be an email address")
+	}
+	if cfg.Password != "" && cfg.Username == "" {
+		return SMTPConfig{}, errors.New("SMTP_PASSWORD needs SMTP_USERNAME")
+	}
+	return cfg, nil
 }
 
 // parsePrefixes reads a comma-separated list of CIDRs and bare addresses.

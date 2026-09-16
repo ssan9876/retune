@@ -15,6 +15,7 @@ import (
 	"retune/internal/server/adminapi"
 	"retune/internal/server/agentapi"
 	"retune/internal/server/agentversions"
+	"retune/internal/server/alerts"
 	"retune/internal/server/apps"
 	"retune/internal/server/artifacts"
 	"retune/internal/server/auth"
@@ -50,6 +51,7 @@ type App struct {
 	Devices       *devices.Service
 	Groups        *groups.Service
 	Compliance    *compliance.Service
+	Alerts        *alerts.Service
 	Auth          *auth.Service
 	Handler       http.Handler
 	TLSConfig     *tls.Config
@@ -116,6 +118,16 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		return nil, err
 	}
 	locker := &bitlocker.Service{Store: st, Key: secretKey, Now: time.Now}
+	// Alerts share the key that protects escrowed recovery keys: a webhook's
+	// shared secret is the same kind of thing, something the server must be
+	// able to use and nobody should be able to read back out of the console.
+	alerter := &alerts.Service{
+		Store: st, Key: secretKey, Now: time.Now, Log: log,
+		SMTP: alerts.SMTP{
+			Host: cfg.SMTP.Host, Port: cfg.SMTP.Port, From: cfg.SMTP.From,
+			Username: cfg.SMTP.Username, Password: cfg.SMTP.Password, StartTLS: cfg.SMTP.StartTLS,
+		},
+	}
 	dev := &devices.Service{Store: st}
 	authSvc := &auth.Service{
 		Store: st, Now: time.Now, SessionTTL: cfg.SessionTTL,
@@ -127,7 +139,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		ClientCert: clientCert,
 	}
 	admin := &adminapi.Handler{
-		Auth: authSvc, Store: st, Commands: cmd, Devices: dev, Enroll: svc, Groups: grp, Scripts: scr, Profiles: prof, Apps: appSvc, Compliance: comp, AgentVersions: agentVers, BitLocker: locker,
+		Auth: authSvc, Store: st, Commands: cmd, Devices: dev, Enroll: svc, Groups: grp, Scripts: scr, Profiles: prof, Apps: appSvc, Compliance: comp, AgentVersions: agentVers, BitLocker: locker, Alerts: alerter,
 		Now: time.Now, Log: log,
 	}
 	root := http.NewServeMux()
@@ -150,6 +162,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		Devices:       dev,
 		Groups:        grp,
 		Compliance:    comp,
+		Alerts:        alerter,
 		Auth:          authSvc,
 		Handler:       root,
 		TLSConfig:     tlsCfg,

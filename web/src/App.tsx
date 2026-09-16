@@ -5,6 +5,7 @@ import { Spinner } from "./components/ui";
 import Admins from "./pages/Admins";
 import AgentVersions from "./pages/AgentVersions";
 import Apps from "./pages/Apps";
+import Alerts from "./pages/Alerts";
 import Audit from "./pages/Audit";
 import Commands from "./pages/Commands";
 import Compliance from "./pages/Compliance";
@@ -36,6 +37,7 @@ export default function App() {
         <Route path="/compliance" element={<Compliance />} />
         <Route path="/commands" element={<Commands />} />
         <Route path="/tokens" element={<Tokens />} />
+        <Route path="/alerts" element={<Alerts />} />
         <Route path="/audit" element={<Audit />} />
         <Route path="/admins" element={<Admins />} />
         <Route path="*" element={<Navigate to="/devices" replace />} />

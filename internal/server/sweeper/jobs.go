@@ -13,6 +13,7 @@ const (
 	lockCleanupSessions    = 5274002
 	lockEvaluateGroups     = 5274003
 	lockEvaluateCompliance = 5274004
+	lockEvaluateAlerts     = 5274005
 )
 
 // GroupEvaluator recomputes dynamic group membership.
@@ -47,6 +48,23 @@ func ComplianceJob(c ComplianceEvaluator) Job {
 	return Job{
 		Name: "compliance.evaluate", LockID: lockEvaluateCompliance, Interval: 15 * time.Minute,
 		Run: c.EvaluateActive,
+	}
+}
+
+// AlertEvaluator evaluates alert rules and delivers what changed.
+type AlertEvaluator interface {
+	EvaluateAll(ctx context.Context, q *store.Queries, now time.Time) (int64, error)
+}
+
+// AlertJob evaluates every enabled alert rule. Five minutes rather than the
+// compliance pass's fifteen: alerting is cheap (a handful of aggregate
+// queries) and its whole point is to be noticed sooner than the next time
+// somebody opens the console. The advisory lock is what keeps two replicas
+// from each sending the same email.
+func AlertJob(a AlertEvaluator) Job {
+	return Job{
+		Name: "alerts.evaluate", LockID: lockEvaluateAlerts, Interval: 5 * time.Minute,
+		Run: a.EvaluateAll,
 	}
 }
 

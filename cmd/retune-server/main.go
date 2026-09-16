@@ -111,7 +111,8 @@ func serve(ctx context.Context, getenv func(string) string) error {
 	sweep := &sweeper.Runner{
 		Store: a.Store,
 		Jobs: append(sweeper.DefaultJobs(cfg.SweepInterval),
-			sweeper.GroupJob(a.Groups), sweeper.ComplianceJob(a.Compliance)),
+			sweeper.GroupJob(a.Groups), sweeper.ComplianceJob(a.Compliance),
+			sweeper.AlertJob(a.Alerts)),
 		Log: log,
 		Now: time.Now,
 	}

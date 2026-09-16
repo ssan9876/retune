@@ -75,6 +75,23 @@ func (h *Handler) mountResources(mux *http.ServeMux, base string) {
 	mux.Handle("GET "+base+"/agent-versions/{id}", h.read(h.getAgentVersion))
 	mux.Handle("DELETE "+base+"/agent-versions/{id}", h.write(h.deleteAgentVersion))
 
+	mux.Handle("GET "+base+"/notification-channels", h.read(h.listNotificationChannels))
+	mux.Handle("POST "+base+"/notification-channels", h.write(h.createNotificationChannel))
+	mux.Handle("GET "+base+"/notification-channels/{id}", h.read(h.getNotificationChannel))
+	mux.Handle("POST "+base+"/notification-channels/{id}", h.write(h.updateNotificationChannel))
+	mux.Handle("DELETE "+base+"/notification-channels/{id}", h.write(h.deleteNotificationChannel))
+	// Sending a test makes the server talk to the outside world on request,
+	// so it is a write rather than something a read-only account can trigger.
+	mux.Handle("POST "+base+"/notification-channels/{id}/test", h.write(h.testNotificationChannel))
+
+	mux.Handle("GET "+base+"/alert-rules", h.read(h.listAlertRules))
+	mux.Handle("POST "+base+"/alert-rules", h.write(h.createAlertRule))
+	mux.Handle("GET "+base+"/alert-rules/{id}", h.read(h.getAlertRule))
+	mux.Handle("POST "+base+"/alert-rules/{id}", h.write(h.updateAlertRule))
+	mux.Handle("DELETE "+base+"/alert-rules/{id}", h.write(h.deleteAlertRule))
+	mux.Handle("GET "+base+"/alerts", h.read(h.listFiringAlerts))
+	mux.Handle("GET "+base+"/alert-deliveries", h.read(h.listAlertDeliveries))
+
 	mux.Handle("GET "+base+"/assignments", h.read(h.listAssignments))
 	mux.Handle("POST "+base+"/assignments", h.write(h.createAssignment))
 	mux.Handle("DELETE "+base+"/assignments/{id}", h.write(h.deleteAssignment))

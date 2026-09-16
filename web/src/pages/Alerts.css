@@ -1,0 +1,56 @@
+/* The page is four stacked panes - what is wrong, what is watched, where it
+   goes, what was sent - rather than four tabs, because the four answer one
+   question between them and reading them in order is the point. */
+
+.alerts__section {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-pane);
+  box-shadow: var(--shadow-card);
+  padding: var(--pane-padding);
+  margin-bottom: var(--space-4);
+}
+
+.alerts__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.alerts__head h2 {
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+
+.alerts__hint {
+  margin: 2px 0 0;
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+}
+
+.alerts__muted {
+  color: var(--ink-muted);
+}
+
+.alerts__note {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--cell-padding);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--primary);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: var(--text-sm);
+}
+
+/* A webhook that signs its requests says so beside its URL, because the
+   secret itself can never be shown again. */
+.alerts__badge {
+  margin-left: var(--space-2);
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+}

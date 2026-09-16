@@ -373,3 +373,57 @@ export interface SettingStatus {
   detail: string;
   updated_at: string;
 }
+
+/** A notification channel never carries its own secret: the server reports
+ *  only whether one is set, because a shared signing key the console can read
+ *  back is a key every read-only account has. */
+export interface NotificationChannel {
+  id: string;
+  name: string;
+  kind: "email" | "webhook";
+  config: { to?: string[]; url?: string };
+  enabled: boolean;
+  has_secret: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+}
+
+export interface AlertRule {
+  id: string;
+  name: string;
+  kind: string;
+  params: { policy_id?: string; hours?: number; item_kind?: string };
+  /** description is the server's own sentence for what this rule watches, so
+   *  the console and the email it sends never disagree. */
+  description: string;
+  channel_id: string;
+  channel_name: string;
+  channel_kind: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+}
+
+export interface FiringAlert {
+  rule_id: string;
+  rule_name: string;
+  rule_kind: string;
+  subject_key: string;
+  subject: string;
+  firing_since: string;
+  notified_at: string | null;
+}
+
+export interface AlertDelivery {
+  id: string;
+  rule_id: string;
+  rule_name: string;
+  channel_name: string;
+  at: string;
+  ok: boolean;
+  detail: string;
+  firing: number;
+  resolved: number;
+}
