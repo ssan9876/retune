@@ -210,7 +210,7 @@ func (h *Handler) uploadAppPackage(w http.ResponseWriter, r *http.Request) {
 		h.writeAppError(w, "upload app package", err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"file_sha256": sha, "size_bytes": size})
+	writeJSON(w, http.StatusCreated, uploadedPackage{FileSHA256: sha, SizeBytes: size})
 }
 
 func (h *Handler) deleteApp(w http.ResponseWriter, r *http.Request) {
@@ -255,7 +255,7 @@ func (h *Handler) listAppVersions(w http.ResponseWriter, r *http.Request) {
 			CreatedAt: v.CreatedAt, CreatedBy: v.CreatedBy,
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, itemsOf(items))
 }
 
 type appInstallJSON struct {

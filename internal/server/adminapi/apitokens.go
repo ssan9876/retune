@@ -37,22 +37,18 @@ func (h *Handler) listAPITokens(w http.ResponseWriter, r *http.Request) {
 	for _, t := range tokens {
 		items = append(items, newAPITokenJSON(t))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": len(items)})
+	writeJSON(w, http.StatusOK, apiTokenList{Items: items, Total: len(items)})
 }
 
 // createAPIToken returns the token itself once, in this response, and never
 // again: only its hash is kept.
 func (h *Handler) createAPIToken(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Name string `json:"name"`
-		Role string `json:"role"`
-		Days int    `json:"expires_in_days"`
-	}
+	var req createAPITokenRequest
 	if !decode(w, r, &req) {
 		return
 	}
 	plain, tok, err := h.Auth.CreateAPIToken(r.Context(), auth.NewAPIToken{
-		Name: req.Name, Role: req.Role, Days: req.Days, Creator: caller(r).Admin,
+		Name: req.Name, Role: req.Role, Days: req.ExpiresInDays, Creator: caller(r).Admin,
 	})
 	switch {
 	case err == nil:
@@ -66,7 +62,7 @@ func (h *Handler) createAPIToken(w http.ResponseWriter, r *http.Request) {
 		h.internal(w, "create API token", err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"token": plain, "api_token": newAPITokenJSON(tok)})
+	writeJSON(w, http.StatusCreated, createdAPIToken{Token: plain, APIToken: newAPITokenJSON(tok)})
 }
 
 func (h *Handler) revokeAPIToken(w http.ResponseWriter, r *http.Request) {

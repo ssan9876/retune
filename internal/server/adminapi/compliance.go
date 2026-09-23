@@ -168,7 +168,7 @@ func (h *Handler) evaluateCompliancePolicy(w http.ResponseWriter, r *http.Reques
 		h.writeComplianceError(w, "evaluate compliance policy", err)
 		return
 	}
-	writeJSON(w, http.StatusAccepted, map[string]any{"device_count": n, "started": started})
+	writeJSON(w, http.StatusAccepted, evaluationStarted{DeviceCount: n, Started: started})
 }
 
 // decodeFailures turns a device_compliance row's stored failures back into

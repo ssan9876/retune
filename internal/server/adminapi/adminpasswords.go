@@ -46,7 +46,7 @@ func (h *Handler) listAdminPasswords(w http.ResponseWriter, r *http.Request) {
 	for _, p := range rows {
 		items = append(items, newAdminPasswordJSON(p))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, itemsOf(items))
 }
 
 // revealAdminPassword hands back one local admin password, with a reason,
@@ -90,5 +90,5 @@ func (h *Handler) revealAdminPassword(w http.ResponseWriter, r *http.Request) {
 		h.internal(w, "reveal admin password", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"password": password, "admin_password": newAdminPasswordJSON(p)})
+	writeJSON(w, http.StatusOK, revealedPassword{Password: password, AdminPassword: newAdminPasswordJSON(p)})
 }

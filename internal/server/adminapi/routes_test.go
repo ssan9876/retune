@@ -53,6 +53,7 @@ var expectedRoutes = map[string]string{
 	"GET /api/admin/v1/compliance-policies/{id}":                    "scoped",
 	"GET /api/admin/v1/compliance-policies/{id}/devices":            "scoped",
 	"GET /api/admin/v1/compliance-policies/{id}/devices/export.csv": "scoped",
+	"GET /api/admin/v1/openapi.json":                                "public",
 	"GET /api/admin/v1/dashboard":                                   "scoped",
 	"GET /api/admin/v1/devices":                                     "scoped",
 	"GET /api/admin/v1/devices/export.csv":                          "scoped",
@@ -121,28 +122,6 @@ var expectedRoutes = map[string]string{
 	"POST /api/admin/v1/tokens":                                     "fleet+write",
 	"POST /api/admin/v1/tokens/{id}/revoke":                         "fleet+write",
 	"PUT /api/admin/v1/admins/{id}/scope":                           "admin+write",
-}
-
-func routeClass(g guarded) string {
-	if g.open {
-		return "public"
-	}
-	c := "scoped"
-	switch {
-	case g.access.session && g.access.fleet:
-		c = "admin"
-	case g.access.session:
-		c = "session"
-	case g.access.fleet:
-		c = "fleet"
-	}
-	if g.access.admin {
-		c += "+write"
-	}
-	if g.access.operate {
-		c += "+operate"
-	}
-	return c
 }
 
 func TestEveryRouteHasTheClassItShould(t *testing.T) {

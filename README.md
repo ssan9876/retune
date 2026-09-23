@@ -311,6 +311,20 @@ that leaks can therefore neither make replacements for itself to outlive its
 revocation nor read recovery keys out in bulk. Make one token per system, so
 each can be revoked on its own.
 
+### The API's contract
+
+The whole admin API is described in an **OpenAPI 3.1** document:
+[`docs/openapi.json`](docs/openapi.json), also served by every server at
+`GET /api/admin/v1/openapi.json` with no sign-in. Load it into Swagger UI or
+Postman, or generate a client from it. Each operation's `x-retune-access` says
+who may call it (the same classes the server enforces), and `security` says
+whether an API token will do or only a console session.
+
+The document is generated from the routes the server registers and the Go
+types its handlers encode and decode, and a test fails if a route is missing
+from it or the committed copy is stale. After changing the API, regenerate it
+with `go test ./internal/server/adminapi -run TestOpenAPIDocument -update-openapi`.
+
 ## Authenticator codes
 
 An admin who signs in with a password can add an authenticator app (TOTP,
