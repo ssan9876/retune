@@ -424,8 +424,8 @@ Two things have to be backed up, and they have to be backed up together:
 
 - **`DATA_DIR`** (the `ca` volume in Compose) holds `ca/ca.key` and
   `ca/ca.crt`, the `secret.key` that protects escrowed BitLocker recovery
-  keys, authenticator secrets and alert webhook secrets, and the uploaded
-  agent builds in `agents/`. Losing it orphans every enrolled device, makes
+  keys, authenticator secrets and alert webhook secrets, the uploaded
+  agent builds in `agents/`, and uploaded app installers in `app-packages/`. Losing it orphans every enrolled device, makes
   every escrowed recovery key unreadable, locks out every admin who signs in
   with an authenticator code (until `retune-server admin totp --disable`), and
   leaves the database pointing at builds that are no longer there.
@@ -595,9 +595,10 @@ its latest state. Deleting a script removes its assignments and keeps its runs.
 
 ## Applications
 
-Apps live under **Apps**. An app is a winget package — a package ID, and
-optionally an exact version. Every change to what gets installed creates a new
-immutable version; renaming or re-describing an app does not.
+Apps live under **Apps**. An app is either a winget package — a package ID,
+and optionally an exact version — or an installer you upload (below). Every
+change to what gets installed creates a new immutable version; renaming or
+re-describing an app does not.
 
 Assign one to a group and choose what to do:
 
@@ -625,6 +626,33 @@ that group.
 Installs run as the system account, machine-wide. There is no per-user scope:
 the agent is LocalSystem, so a user-scope install would land in the system
 account's profile rather than anyone's.
+
+### Uploaded installers (MSI and EXE)
+
+For software that isn't in winget, choose **An installer I upload** and pick
+an `.msi` or `.exe` of up to 2 GiB. The server keeps it under
+`DATA_DIR/app-packages`, named by its SHA-256; a device downloads it over its
+own mutual-TLS connection only while the app is assigned to it, checks the
+hash, runs it as SYSTEM, and deletes it afterwards.
+
+| Setting | Meaning |
+|---|---|
+| Install arguments | an EXE's silent switches, such as `/S`, passed exactly as written; for an MSI, extra properties after `msiexec /i <file> /qn /norestart` |
+| Uninstall command | the whole command line, environment variables expanded; optional for an MSI detected by product code, which is removed with `msiexec /x` |
+| Success exit codes | default `0, 3010, 1641`; 3010 and 1641 are reported as succeeded, with a note that a restart is needed — Retune never restarts a machine itself |
+| Detection | how a device tells the app is installed, before and after: an MSI product code (with an optional minimum `DisplayVersion`), a registry key or value under `HKEY_LOCAL_MACHINE` (either registry view; optionally equal to something, or at least a version), or a file (optionally with at least a version in its version resource) |
+| Remove the previous version first | on an upgrade, uninstall the version this agent installed before running the new installer, for installers that can't upgrade in place |
+
+Upload a new file to make a new version; devices whose detection rule no
+longer matches install it. MSI major upgrades replace the old version on their
+own; "remove the previous version first" is for the rest, and only ever
+removes a version the agent itself installed. A device without App Installer
+can still install uploaded packages.
+
+Uploaded files no app version uses any more are deleted after a day. Include
+`DATA_DIR/app-packages` in backups, or re-upload after a restore: a version
+whose file is missing fails to install with "the server no longer has this
+package".
 
 ## Updating the agent
 

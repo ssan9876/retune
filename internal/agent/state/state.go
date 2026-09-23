@@ -258,6 +258,10 @@ type AppState struct {
 	// over, while still letting a new version or a changed intent report
 	// fresh.
 	Settled bool `json:"settled"`
+	// InstalledByAgent is the version this agent last installed and hasn't
+	// since removed, or 0. It is what an upgrade that removes the previous
+	// version first removes: never something the agent didn't put there.
+	InstalledByAgent int `json:"installed_by_agent,omitempty"`
 }
 
 // AppState returns what is remembered about an app. An app never seen before

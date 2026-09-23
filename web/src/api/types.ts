@@ -192,6 +192,16 @@ export interface ScriptRun {
   finished_at: string;
 }
 
+export interface DetectionRule {
+  type: "msi_product_code" | "registry" | "file";
+  product_code?: string;
+  key?: string;
+  value?: string;
+  equals?: string;
+  path?: string;
+  version_at_least?: string;
+}
+
 export interface App {
   id: string;
   name: string;
@@ -200,6 +210,15 @@ export interface App {
   pinned_version?: string;
   scope?: string;
   install_args?: string;
+  source?: "winget" | "package";
+  installer_type?: "msi" | "exe";
+  file_name?: string;
+  file_sha256?: string;
+  file_size?: number;
+  uninstall_command?: string;
+  success_exit_codes?: number[];
+  detection?: DetectionRule;
+  uninstall_previous?: boolean;
   current_version: number;
   created_at: string;
   updated_at: string;

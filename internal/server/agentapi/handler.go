@@ -4,6 +4,7 @@ package agentapi
 import (
 	"context"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -69,6 +70,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.Handle("GET /api/agent/v1/profiles/{id}/versions/{version}", h.requireDevice(h.profileVersion))
 	mux.Handle("POST /api/agent/v1/profiles/{id}/status", h.requireDevice(h.profileStatus))
 	mux.Handle("GET /api/agent/v1/apps/{id}/versions/{version}", h.requireDevice(h.appVersion))
+	mux.Handle("GET /api/agent/v1/apps/{id}/versions/{version}/package", h.requireDevice(h.appPackage))
 	mux.Handle("POST /api/agent/v1/apps/{id}/result", h.requireDevice(h.appResult))
 	mux.Handle("GET /api/agent/v1/agent-versions/{id}", h.requireDevice(h.agentVersion))
 	mux.Handle("GET /api/agent/v1/agent-versions/{id}/binary", h.requireDevice(h.agentVersionBinary))
@@ -556,33 +558,43 @@ func (h *Handler) bitlockerStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, protocol.BitLockerHasResponse{Escrowed: has})
 }
 
-// appVersion hands a device the definition of an assigned app. As with
-// scripts and profiles, a device may only read what it has been given, so an
-// unassigned app is a 404 -- the same answer as one that does not exist.
-func (h *Handler) appVersion(w http.ResponseWriter, r *http.Request) {
+// assignedAppVersion reads an app id and version from the path and checks the
+// calling device was given that app. As with scripts and profiles, a device
+// may only read what it has been given, so an unassigned app is a 404 -- the
+// same answer as one that does not exist. It answers itself when it returns
+// false.
+func (h *Handler) assignedAppVersion(w http.ResponseWriter, r *http.Request) (uuid.UUID, int, bool) {
 	a := auth(r)
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		writeError(w, http.StatusNotFound, "app_not_found", "unknown app")
-		return
+		return uuid.Nil, 0, false
 	}
 	version, err := strconv.Atoi(r.PathValue("version"))
 	if err != nil || version < 1 {
 		writeError(w, http.StatusNotFound, "app_not_found", "unknown app version")
-		return
+		return uuid.Nil, 0, false
 	}
-	ctx := r.Context()
-	allowed, err := h.Store.Q().DeviceHasItem(ctx, store.DefaultTenantID, a.Device.ID, protocol.ItemKindApp, id)
+	allowed, err := h.Store.Q().DeviceHasItem(r.Context(), store.DefaultTenantID, a.Device.ID, protocol.ItemKindApp, id)
 	if err != nil {
 		h.Log.Error("check app assignment", "device_id", a.Device.ID, "app_id", id, "error", err)
 		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
-		return
+		return uuid.Nil, 0, false
 	}
 	if !allowed {
 		writeError(w, http.StatusNotFound, "app_not_found", "unknown app")
+		return uuid.Nil, 0, false
+	}
+	return id, version, true
+}
+
+// appVersion hands a device the definition of an assigned app.
+func (h *Handler) appVersion(w http.ResponseWriter, r *http.Request) {
+	id, version, ok := h.assignedAppVersion(w, r)
+	if !ok {
 		return
 	}
-	v, err := h.Apps.Version(ctx, id, version)
+	v, err := h.Apps.Version(r.Context(), id, version)
 	if errors.Is(err, apps.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "app_not_found", "unknown app version")
 		return
@@ -592,10 +604,55 @@ func (h *Handler) appVersion(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
 		return
 	}
-	writeJSON(w, http.StatusOK, protocol.AppVersionResponse{
+	out := protocol.AppVersionResponse{
 		Version: v.Version, PackageID: v.PackageID, PinnedVersion: v.PinnedVersion,
-		Scope: v.Scope, InstallArgs: v.InstallArgs, Hash: v.Hash,
-	})
+		Scope: v.Scope, InstallArgs: v.InstallArgs, Hash: v.Hash, Source: v.Source,
+	}
+	if v.Source == protocol.AppSourcePackage {
+		out.InstallerType, out.FileName, out.FileSHA256, out.FileSize = v.InstallerType, v.FileName, v.FileSHA256, v.FileSize
+		out.UninstallCommand, out.UninstallPrevious = v.UninstallCommand, v.UninstallPrevious
+		for _, c := range v.SuccessExitCodes {
+			out.SuccessExitCodes = append(out.SuccessExitCodes, int(c))
+		}
+		var d protocol.DetectionRule
+		if err := json.Unmarshal(v.Detection, &d); err != nil {
+			h.Log.Error("read app detection rule", "app_id", id, "version", version, "error", err)
+			writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+			return
+		}
+		out.Detection = &d
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// appPackage streams an assigned app version's installer. The agent checks it
+// against the hash in the definition, so a transfer cut short is caught
+// there.
+func (h *Handler) appPackage(w http.ResponseWriter, r *http.Request) {
+	id, version, ok := h.assignedAppVersion(w, r)
+	if !ok {
+		return
+	}
+	f, size, err := h.Apps.OpenPackage(r.Context(), id, version)
+	switch {
+	case errors.Is(err, apps.ErrNotFound):
+		writeError(w, http.StatusNotFound, "app_not_found", "that app version has no package")
+		return
+	case errors.Is(err, apps.ErrNoPackage):
+		h.Log.Error("an app version's package is missing from the data directory", "app_id", id, "version", version)
+		writeError(w, http.StatusNotFound, "package_missing", "the server no longer has this package")
+		return
+	case err != nil:
+		h.Log.Error("open app package", "app_id", id, "version", version, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+		return
+	}
+	defer f.Close()
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+	if _, err := io.Copy(w, f); err != nil {
+		h.Log.Warn("app package download ended early", "app_id", id, "version", version, "error", err)
+	}
 }
 
 // appResult records one install or uninstall reported by a device. Unlike

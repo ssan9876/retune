@@ -93,7 +93,28 @@ type AppVersionResponse struct {
 	// InstallArgs are passed through to the installer, usually empty.
 	InstallArgs string `json:"install_args"`
 	Hash        string `json:"hash"`
+
+	// Source is AppSourceWinget (or empty, from an older server) or
+	// AppSourcePackage. The fields below are for packages only.
+	Source        string `json:"source,omitempty"`
+	InstallerType string `json:"installer_type,omitempty"`
+	FileName      string `json:"file_name,omitempty"`
+	FileSHA256    string `json:"file_sha256,omitempty"`
+	FileSize      int64  `json:"file_size,omitempty"`
+	// UninstallCommand is a whole command line. Empty, for an MSI detected by
+	// product code, means msiexec /x with that code.
+	UninstallCommand string `json:"uninstall_command,omitempty"`
+	// SuccessExitCodes are the installer's exit codes that mean it worked.
+	SuccessExitCodes []int          `json:"success_exit_codes,omitempty"`
+	Detection        *DetectionRule `json:"detection,omitempty"`
+	// UninstallPrevious removes the version this one replaces, with that
+	// version's own uninstall, before installing: for installers that don't
+	// upgrade in place.
+	UninstallPrevious bool `json:"uninstall_previous,omitempty"`
 }
+
+// IsPackage reports whether this version is an uploaded installer.
+func (v AppVersionResponse) IsPackage() bool { return v.Source == AppSourcePackage }
 
 // AppResult is POSTed to /api/agent/v1/apps/{id}/result to report one install
 // or uninstall. Only terminal outcomes are reported.

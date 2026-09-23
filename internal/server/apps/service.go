@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"retune/internal/protocol"
+	"retune/internal/server/artifacts"
 	"retune/internal/server/store"
 )
 
@@ -28,6 +30,9 @@ var (
 type Service struct {
 	Store *store.Store
 	Now   func() time.Time
+	// Packages holds uploaded installers. Left empty, only winget apps can
+	// be created.
+	Packages artifacts.Blobs
 }
 
 func (s *Service) now() time.Time {
@@ -46,6 +51,17 @@ type NewApp struct {
 	Scope         string
 	InstallArgs   string
 	Actor         string
+
+	// Source is protocol.AppSourceWinget (the default) or AppSourcePackage;
+	// the fields below are for packages.
+	Source            string
+	InstallerType     string
+	FileSHA256        string
+	FileName          string
+	UninstallCommand  string
+	SuccessExitCodes  []int
+	Detection         *protocol.DetectionRule
+	UninstallPrevious bool
 }
 
 // Hash identifies a version's definition. Name and description are not part of
@@ -59,6 +75,16 @@ func (in NewApp) validate() error {
 	if strings.TrimSpace(in.Name) == "" {
 		return fmt.Errorf("%w: an app needs a name", ErrBadRequest)
 	}
+	if in.Source == protocol.AppSourcePackage {
+		return nil // validatePackage checks the rest
+	}
+	if in.Source != "" && in.Source != protocol.AppSourceWinget {
+		return fmt.Errorf("%w: source must be %q or %q", ErrBadRequest, protocol.AppSourceWinget, protocol.AppSourcePackage)
+	}
+	if in.InstallerType != "" || in.FileSHA256 != "" || in.FileName != "" || in.UninstallCommand != "" ||
+		len(in.SuccessExitCodes) > 0 || in.Detection != nil || in.UninstallPrevious {
+		return fmt.Errorf("%w: those settings are for uploaded packages, not winget apps", ErrBadRequest)
+	}
 	if strings.TrimSpace(in.PackageID) == "" {
 		return fmt.Errorf("%w: an app needs a winget package id", ErrBadRequest)
 	}
@@ -70,21 +96,56 @@ func (in NewApp) validate() error {
 	return nil
 }
 
+// version builds the version in describes, checking a package's upload.
+func (s *Service) version(in *NewApp, appID uuid.UUID, n int, now time.Time) (store.AppVersion, error) {
+	scope := in.Scope
+	if scope == "" {
+		scope = protocol.ScopeMachine
+	}
+	v := store.AppVersion{
+		AppID: appID, Version: n, PackageID: in.PackageID, PinnedVersion: in.PinnedVersion,
+		Scope: scope, InstallArgs: in.InstallArgs, CreatedAt: now, CreatedBy: in.Actor,
+		Source: protocol.AppSourceWinget,
+	}
+	if in.Source != protocol.AppSourcePackage {
+		v.Hash = Hash(in.PackageID, in.PinnedVersion, scope, in.InstallArgs)
+		return v, nil
+	}
+	size, err := s.validatePackage(in)
+	if err != nil {
+		return store.AppVersion{}, err
+	}
+	detection, err := json.Marshal(in.Detection)
+	if err != nil {
+		return store.AppVersion{}, err
+	}
+	codes := make([]int32, len(in.SuccessExitCodes))
+	for i, c := range in.SuccessExitCodes {
+		codes[i] = int32(c)
+	}
+	v.Source, v.InstallerType, v.FileName, v.FileSHA256, v.FileSize = protocol.AppSourcePackage, in.InstallerType,
+		in.FileName, in.FileSHA256, size
+	v.UninstallCommand, v.SuccessExitCodes, v.Detection, v.UninstallPrevious = in.UninstallCommand, codes,
+		detection, in.UninstallPrevious
+	v.Hash = packageHash(v)
+	return v, nil
+}
+
 // Create adds an app and its first version.
 func (s *Service) Create(ctx context.Context, in NewApp) (store.App, error) {
 	if err := in.validate(); err != nil {
 		return store.App{}, err
-	}
-	scope := in.Scope
-	if scope == "" {
-		scope = protocol.ScopeMachine
 	}
 	now := s.now()
 	a := store.App{
 		ID: uuid.Must(uuid.NewV7()), Name: strings.TrimSpace(in.Name), Description: in.Description,
 		CurrentVersion: 1, CreatedAt: now, UpdatedAt: now, CreatedBy: in.Actor,
 	}
-	err := s.Store.InTx(ctx, func(q *store.Queries) error {
+	first, err := s.version(&in, a.ID, 1, now)
+	if err != nil {
+		return store.App{}, err
+	}
+	err = s.Store.InTx(ctx, func(q *store.Queries) error {
 		if _, err := q.GetAppByName(ctx, a.Name); err == nil {
 			return ErrNameTaken
 		} else if !errors.Is(err, store.ErrNotFound) {
@@ -93,16 +154,16 @@ func (s *Service) Create(ctx context.Context, in NewApp) (store.App, error) {
 		if err := q.CreateApp(ctx, a); err != nil {
 			return err
 		}
-		if err := q.CreateAppVersion(ctx, store.AppVersion{
-			AppID: a.ID, Version: 1, PackageID: in.PackageID, PinnedVersion: in.PinnedVersion,
-			Scope: scope, InstallArgs: in.InstallArgs,
-			Hash: Hash(in.PackageID, in.PinnedVersion, scope, in.InstallArgs), CreatedAt: now, CreatedBy: in.Actor,
-		}); err != nil {
+		if err := q.CreateAppVersion(ctx, first); err != nil {
 			return err
+		}
+		details := map[string]any{"name": a.Name, "source": first.Source}
+		if first.Source == protocol.AppSourcePackage {
+			details["file_name"], details["file_sha256"] = first.FileName, first.FileSHA256
 		}
 		return q.InsertAudit(ctx, store.AuditEntry{
 			Actor: in.Actor, Action: "app.created", TargetKind: "app", TargetID: a.ID.String(),
-			Details: map[string]any{"name": a.Name},
+			Details: details,
 		})
 	})
 	if err != nil {
@@ -118,13 +179,15 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewApp) (store.Ap
 	if err := in.validate(); err != nil {
 		return store.App{}, err
 	}
-	scope := in.Scope
-	if scope == "" {
-		scope = protocol.ScopeMachine
-	}
 	now := s.now()
+	// Built before the transaction, since checking an upload touches the
+	// disk; the version number is filled in below.
+	candidate, err := s.version(&in, id, 0, now)
+	if err != nil {
+		return store.App{}, err
+	}
 	var out store.App
-	err := s.Store.InTx(ctx, func(q *store.Queries) error {
+	err = s.Store.InTx(ctx, func(q *store.Queries) error {
 		a, err := q.GetApp(ctx, store.DefaultTenantID, id)
 		if errors.Is(err, store.ErrNotFound) {
 			return ErrNotFound
@@ -143,14 +206,11 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewApp) (store.Ap
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return err
 		}
-		newHash := Hash(in.PackageID, in.PinnedVersion, scope, in.InstallArgs)
-		newVersion := current.Hash != newHash
+		newVersion := current.Hash != candidate.Hash
 		if newVersion {
 			a.CurrentVersion++
-			if err := q.CreateAppVersion(ctx, store.AppVersion{
-				AppID: id, Version: a.CurrentVersion, PackageID: in.PackageID, PinnedVersion: in.PinnedVersion,
-				Scope: scope, InstallArgs: in.InstallArgs, Hash: newHash, CreatedAt: now, CreatedBy: in.Actor,
-			}); err != nil {
+			candidate.Version = a.CurrentVersion
+			if err := q.CreateAppVersion(ctx, candidate); err != nil {
 				return err
 			}
 		}
@@ -254,9 +314,12 @@ func (s *Service) RecordInstall(ctx context.Context, deviceID, appID uuid.UUID, 
 		// apart from the rollup alone, without opening the install history
 		// first. The version is immutable, so this lookup can never disagree
 		// with what actually ran.
-		packageID := "?"
+		packageID, runner := "?", "winget"
 		if v, err := s.Store.Q().GetAppVersion(ctx, store.DefaultTenantID, appID, r.Version); err == nil {
 			packageID = v.PackageID
+			if v.Source == protocol.AppSourcePackage {
+				packageID, runner = v.FileName, "the installer"
+			}
 		}
 		switch {
 		case strings.HasPrefix(errText, "timed out after"):
@@ -264,7 +327,7 @@ func (s *Service) RecordInstall(ctx context.Context, deviceID, appID uuid.UUID, 
 		case errText != "":
 			detail = fmt.Sprintf("%s: %s", packageID, errText)
 		default:
-			detail = fmt.Sprintf("%s: winget exited %d", packageID, r.ExitCode)
+			detail = fmt.Sprintf("%s: %s exited %d", packageID, runner, r.ExitCode)
 		}
 	}
 

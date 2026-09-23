@@ -69,6 +69,7 @@ func (h *Handler) mountResources(mux *http.ServeMux, base string) {
 
 	h.handle(mux, "GET "+base+"/apps", h.read(h.listApps))
 	h.handle(mux, "POST "+base+"/apps", h.writeFleet(h.createApp))
+	h.handle(mux, "POST "+base+"/app-packages", h.writeFleet(h.uploadAppPackage))
 	h.handle(mux, "GET "+base+"/apps/{id}", h.read(h.getApp))
 	h.handle(mux, "POST "+base+"/apps/{id}", h.writeFleet(h.updateApp))
 	h.handle(mux, "DELETE "+base+"/apps/{id}", h.writeFleet(h.deleteApp))
