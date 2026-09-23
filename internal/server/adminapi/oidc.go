@@ -81,6 +81,9 @@ func (h *Handler) ssoFailed(w http.ResponseWriter, r *http.Request, err error) {
 	redirectToLogin(w, r, sso.Code)
 }
 
+// redirectToLogin sends the browser to the console's root, which shows the
+// sign-in page to anyone not signed in. Not to a /login path: the console has
+// no such route, and a later password sign-in would leave the browser on it.
 func redirectToLogin(w http.ResponseWriter, r *http.Request, code string) {
-	http.Redirect(w, r, "/login?sso_error="+url.QueryEscape(code), http.StatusFound)
+	http.Redirect(w, r, "/?sso_error="+url.QueryEscape(code), http.StatusFound)
 }

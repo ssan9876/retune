@@ -8,6 +8,15 @@ export interface Admin {
   disabled: boolean;
   created_at: string;
   last_login_at?: string;
+  /** "local" signs in with a password here; "oidc" through the identity provider. */
+  auth_source: "local" | "oidc";
+}
+
+/** Setup is what the sign-in page may offer. */
+export interface Setup {
+  needs_setup: boolean;
+  sso: { enabled: boolean; display_name?: string };
+  local_login: boolean;
 }
 
 export interface Device {

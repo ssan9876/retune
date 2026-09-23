@@ -102,7 +102,7 @@ func TestSSOSignInThroughTheBrowser(t *testing.T) {
 	}
 
 	loc := ssoRoundTrip(t, c, srv, idp, oidctest.Person{Subject: "u-1", Email: "ada@example.com", Groups: []string{"it-admins"}})
-	if loc.Path != "/" {
+	if loc.String() != "/" {
 		t.Fatalf("a successful sign-in should land on the console, went to %s", loc)
 	}
 
@@ -133,7 +133,7 @@ func TestSSOFailuresLandOnTheSignInPageWithACode(t *testing.T) {
 	a, srv, idp := newSSOApp(t, nil)
 
 	loc := ssoRoundTrip(t, browser(t, a), srv, idp, oidctest.Person{Subject: "u-2", Email: "eve@example.com", Groups: []string{"sales"}})
-	if loc.Path != "/login" || loc.Query().Get("sso_error") != auth.SSOUnauthorized {
+	if loc.Path != "/" || loc.Query().Get("sso_error") != auth.SSOUnauthorized {
 		t.Fatalf("unmapped: went to %s", loc)
 	}
 
