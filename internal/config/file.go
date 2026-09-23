@@ -45,6 +45,7 @@ type fileConfig struct {
 	OIDCGroupsClaim        string `yaml:"oidc_groups_claim"`
 	OIDCAdminGroups        string `yaml:"oidc_admin_groups"`
 	OIDCReadOnlyGroups     string `yaml:"oidc_readonly_groups"`
+	OIDCHelpdeskGroups     string `yaml:"oidc_helpdesk_groups"`
 	OIDCScopeGroups        string `yaml:"oidc_scope_groups"`
 	OIDCFleetGroups        string `yaml:"oidc_fleet_groups"`
 	OIDCDisplayName        string `yaml:"oidc_display_name"`
@@ -172,6 +173,7 @@ func loadConfigFile(getenv func(string) string) (map[string]string, error) {
 	set("OIDC_GROUPS_CLAIM", f.OIDCGroupsClaim)
 	set("OIDC_ADMIN_GROUPS", f.OIDCAdminGroups)
 	set("OIDC_READONLY_GROUPS", f.OIDCReadOnlyGroups)
+	set("OIDC_HELPDESK_GROUPS", f.OIDCHelpdeskGroups)
 	set("OIDC_SCOPE_GROUPS", f.OIDCScopeGroups)
 	set("OIDC_FLEET_GROUPS", f.OIDCFleetGroups)
 	set("OIDC_DISPLAY_NAME", f.OIDCDisplayName)

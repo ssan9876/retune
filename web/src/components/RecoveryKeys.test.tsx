@@ -7,7 +7,7 @@ import { RecoveryKeys } from "./RecoveryKeys";
 const fetchMock = vi.fn();
 
 vi.mock("../session/SessionContext", () => ({
-  useSession: () => ({ admin: { role: "admin" }, canWrite: true }),
+  useSession: () => ({ admin: { role: "admin" }, canWrite: true, canOperate: true }),
 }));
 
 function json(body: unknown, status = 200) {

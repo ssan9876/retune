@@ -8,11 +8,33 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Admin roles.
+// Admin roles, from most to least access.
 const (
-	RoleAdmin    = "admin"
+	RoleAdmin = "admin"
+	// RoleHelpdesk reads everything an admin can, and does the day-to-day
+	// device actions - lock, restart, collect logs, rotate the local admin
+	// password, reveal a recovery key - but runs no code and changes no
+	// policy.
+	RoleHelpdesk = "helpdesk"
 	RoleReadOnly = "read_only"
 )
+
+// RoleRank orders roles by access: admin 3, helpdesk 2, read_only 1, and 0
+// for anything else.
+func RoleRank(role string) int {
+	switch role {
+	case RoleAdmin:
+		return 3
+	case RoleHelpdesk:
+		return 2
+	case RoleReadOnly:
+		return 1
+	}
+	return 0
+}
+
+// ValidRole reports whether role is one of the roles.
+func ValidRole(role string) bool { return RoleRank(role) > 0 }
 
 // Where an admin signs in: with a password here, or through the identity
 // provider.

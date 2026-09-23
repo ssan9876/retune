@@ -13,6 +13,8 @@ interface SessionValue {
   /** localLogin is false when only SSO may sign in. */
   localLogin: boolean;
   canWrite: boolean;
+  /** canOperate: admin or helpdesk - lock, restart, collect logs, reveal keys. */
+  canOperate: boolean;
   /** signingRequired: scripts and wipes need an operations signature. */
   signingRequired: boolean;
   signIn: (email: string, password: string, totpCode?: string) => Promise<void>;
@@ -99,6 +101,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       sso,
       localLogin,
       canWrite: admin?.role === "admin",
+      canOperate: admin?.role === "admin" || admin?.role === "helpdesk",
       signingRequired,
       signIn,
       signOut,

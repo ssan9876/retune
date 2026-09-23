@@ -213,8 +213,11 @@ func seedAdmin(t *testing.T, a *app.App, email, password, role string) store.Adm
 func signedIn(t *testing.T, a *app.App, srv *httptest.Server, role string) *adminClient {
 	t.Helper()
 	email := "ops@example.com"
-	if role == store.RoleReadOnly {
+	switch role {
+	case store.RoleReadOnly:
 		email = "viewer@example.com"
+	case store.RoleHelpdesk:
+		email = "helpdesk@example.com"
 	}
 	seedAdmin(t, a, email, testPassword, role)
 	c := newAdminClient(t, a, srv)

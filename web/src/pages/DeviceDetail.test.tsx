@@ -7,9 +7,10 @@ import DeviceDetail from "./DeviceDetail";
 
 const fetchMock = vi.fn();
 let canWrite = true;
+let canOperate = true;
 
 vi.mock("../session/SessionContext", () => ({
-  useSession: () => ({ admin: { role: canWrite ? "admin" : "read_only" }, canWrite }),
+  useSession: () => ({ admin: { role: canWrite ? "admin" : "read_only" }, canWrite, canOperate }),
 }));
 
 const detail = {
@@ -80,6 +81,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
   canWrite = true;
+  canOperate = true;
 });
 
 describe("DeviceDetail", () => {
@@ -163,8 +165,23 @@ describe("DeviceDetail", () => {
     });
   });
 
+  it("shows helpdesk the device actions, not the code or destructive ones", async () => {
+    canWrite = false;
+    canOperate = true;
+    mockDetail();
+    renderDetail();
+    await screen.findByRole("heading", { name: "PC-ALPHA" });
+    for (const name of ["Lock", "Restart", "Collect logs", "Rotate admin password"]) {
+      expect(screen.getByRole("button", { name })).toBeInTheDocument();
+    }
+    for (const name of ["Run script", "Wipe…", "Retire device", "Unenroll device"]) {
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+    }
+  });
+
   it("hides write actions from a read-only admin", async () => {
     canWrite = false;
+    canOperate = false;
     mockDetail();
     renderDetail();
     await screen.findByRole("heading", { name: "PC-ALPHA" });

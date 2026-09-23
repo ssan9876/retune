@@ -82,6 +82,7 @@ type OIDCConfig struct {
 	ClientSecret   string
 	GroupsClaim    string
 	AdminGroups    []string
+	HelpdeskGroups []string
 	ReadOnlyGroups []string
 	DisplayName    string
 	// DisableLocalLogin refuses password sign-in, leaving SSO as the only
@@ -355,6 +356,7 @@ func loadOIDC(lookup func(string) string) (OIDCConfig, error) {
 		ClientSecret:   lookup("OIDC_CLIENT_SECRET"),
 		GroupsClaim:    or(strings.TrimSpace(lookup("OIDC_GROUPS_CLAIM")), "groups"),
 		AdminGroups:    splitList(lookup("OIDC_ADMIN_GROUPS")),
+		HelpdeskGroups: splitList(lookup("OIDC_HELPDESK_GROUPS")),
 		ReadOnlyGroups: splitList(lookup("OIDC_READONLY_GROUPS")),
 		DisplayName:    or(strings.TrimSpace(lookup("OIDC_DISPLAY_NAME")), "Sign in with SSO"),
 	}
@@ -399,8 +401,8 @@ func loadOIDC(lookup func(string) string) (OIDCConfig, error) {
 	if u.Scheme != "https" && !(u.Scheme == "http" && local) {
 		return OIDCConfig{}, errors.New("OIDC_ISSUER must be https (http is allowed only for localhost)")
 	}
-	if len(o.AdminGroups) == 0 && len(o.ReadOnlyGroups) == 0 {
-		return OIDCConfig{}, errors.New("SSO needs OIDC_ADMIN_GROUPS or OIDC_READONLY_GROUPS, or nobody could ever be let in")
+	if len(o.AdminGroups) == 0 && len(o.HelpdeskGroups) == 0 && len(o.ReadOnlyGroups) == 0 {
+		return OIDCConfig{}, errors.New("SSO needs OIDC_ADMIN_GROUPS, OIDC_HELPDESK_GROUPS or OIDC_READONLY_GROUPS, or nobody could ever be let in")
 	}
 	return o, nil
 }

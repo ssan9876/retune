@@ -20,7 +20,7 @@ const adminUsage = `usage: retune-server admin list | create | password | totp |
 flags:
   --email E       the account to act on (required except for list)
   --password P    new password; generated and printed when omitted
-  --role R        admin (default) or read_only, for create
+  --role R        admin (default), helpdesk or read_only, for create
   --enable        turn TOTP on, for totp
   --disable       turn TOTP off, for totp`
 
@@ -55,7 +55,7 @@ func bootstrapAdminCmd(ctx context.Context, args []string, getenv func(string) s
 	fs := flag.NewFlagSet("bootstrap-admin", flag.ContinueOnError)
 	email := fs.String("email", "", "email address to sign in with")
 	password := fs.String("password", "", "password; generated when omitted")
-	role := fs.String("role", store.RoleAdmin, "admin or read_only")
+	role := fs.String("role", store.RoleAdmin, "admin, helpdesk or read_only")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -86,7 +86,7 @@ func adminCmd(ctx context.Context, args []string, getenv func(string) string, ou
 	fs := flag.NewFlagSet("admin "+args[0], flag.ContinueOnError)
 	email := fs.String("email", "", "the account to act on")
 	password := fs.String("password", "", "new password; generated when omitted")
-	role := fs.String("role", store.RoleAdmin, "admin or read_only")
+	role := fs.String("role", store.RoleAdmin, "admin, helpdesk or read_only")
 	enable := fs.Bool("enable", false, "turn TOTP on")
 	disable := fs.Bool("disable", false, "turn TOTP off")
 	if err := fs.Parse(args[1:]); err != nil {

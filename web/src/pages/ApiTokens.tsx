@@ -158,6 +158,7 @@ export default function ApiTokens() {
         <Field label="Access">
           <select value={role} onChange={(e) => setRole(e.target.value)}>
             <option value="read_only">Read-only</option>
+            <option value="helpdesk">Helpdesk: device actions, no code or policy</option>
             <option value="admin">Admin: can change things</option>
           </select>
         </Field>
