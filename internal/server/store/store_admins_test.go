@@ -187,3 +187,63 @@ func TestSessionQueries(t *testing.T) {
 		t.Fatalf("sessions for admin must be gone: %v", err)
 	}
 }
+
+// An SSO account is found by issuer and subject, not by email, and the email
+// and role the provider reports can be refreshed without touching a local
+// account that happens to share nothing but a role.
+func TestOIDCAdmins(t *testing.T) {
+	ctx := context.Background()
+	st := storetest.New(t)
+	q := st.Q()
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	local := newAdmin(t, q, "local@example.com", store.RoleAdmin)
+	if local, _ = q.GetAdmin(ctx, store.DefaultTenantID, local.ID); local.AuthSource != store.AuthLocal {
+		t.Fatalf("a local account should say so: %+v", local)
+	}
+
+	sso := store.Admin{
+		ID: uuid.Must(uuid.NewV7()), Email: "sso@example.com", Role: store.RoleReadOnly, CreatedAt: now,
+		AuthSource: store.AuthOIDC, OIDCIssuer: "https://idp.example.com", OIDCSubject: "abc-123",
+	}
+	if err := q.CreateAdmin(ctx, sso); err != nil {
+		t.Fatal(err)
+	}
+	got, err := q.GetAdminByOIDC(ctx, store.DefaultTenantID, "https://idp.example.com", "abc-123")
+	if err != nil || got.ID != sso.ID || got.AuthSource != store.AuthOIDC || got.PasswordHash != "" {
+		t.Fatalf("GetAdminByOIDC = %+v, %v", got, err)
+	}
+	if _, err := q.GetAdminByOIDC(ctx, store.DefaultTenantID, "https://other.example.com", "abc-123"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("the same subject at another issuer is another person: %v", err)
+	}
+	if _, err := q.GetAdminByOIDC(ctx, uuid.Must(uuid.NewV7()), "https://idp.example.com", "abc-123"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("another tenant must not find the account: %v", err)
+	}
+
+	if err := q.UpdateOIDCAdmin(ctx, store.DefaultTenantID, sso.ID, "renamed@example.com", store.RoleAdmin); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = q.GetAdmin(ctx, store.DefaultTenantID, sso.ID)
+	if got.Email != "renamed@example.com" || got.Role != store.RoleAdmin {
+		t.Errorf("after update: %+v", got)
+	}
+	// The update is for SSO accounts only.
+	if err := q.UpdateOIDCAdmin(ctx, store.DefaultTenantID, local.ID, "hijack@example.com", store.RoleReadOnly); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := q.GetAdmin(ctx, store.DefaultTenantID, local.ID); got.Email != "local@example.com" || got.Role != store.RoleAdmin {
+		t.Errorf("a local account must not be changed through the SSO path: %+v", got)
+	}
+
+	// A second account for the same subject is refused by the database.
+	dup := sso
+	dup.ID, dup.Email = uuid.Must(uuid.NewV7()), "dup@example.com"
+	if err := q.CreateAdmin(ctx, dup); err == nil {
+		t.Error("two accounts for one issuer and subject should be refused")
+	}
+	// So is an SSO account without a subject.
+	bad := store.Admin{ID: uuid.Must(uuid.NewV7()), Email: "bad@example.com", Role: store.RoleAdmin, CreatedAt: now,
+		AuthSource: store.AuthOIDC, OIDCIssuer: "https://idp.example.com"}
+	if err := q.CreateAdmin(ctx, bad); err == nil {
+		t.Error("an SSO account with no subject should be refused")
+	}
+}

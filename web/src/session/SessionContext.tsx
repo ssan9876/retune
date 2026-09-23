@@ -2,12 +2,16 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from "react";
 
 import { ApiError, api, onUnauthenticated, setCsrfToken } from "../api/client";
-import type { Admin, SessionResponse } from "../api/types";
+import type { Admin, SessionResponse, Setup } from "../api/types";
 
 interface SessionValue {
   admin: Admin | null;
   loading: boolean;
   needsSetup: boolean;
+  /** sso is the SSO button's text, or null when single sign-on is off. */
+  sso: string | null;
+  /** localLogin is false when only SSO may sign in. */
+  localLogin: boolean;
   canWrite: boolean;
   signIn: (email: string, password: string, totpCode?: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -20,6 +24,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [admin, setAdmin] = useState<Admin | null>(null);
   const [loading, setLoading] = useState(true);
   const [needsSetup, setNeedsSetup] = useState(false);
+  const [sso, setSso] = useState<string | null>(null);
+  const [localLogin, setLocalLogin] = useState(true);
 
   const clear = useCallback(() => {
     setAdmin(null);
@@ -43,8 +49,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (!cancelled) clear();
       }
       try {
-        const setup = await api.get<{ needs_setup: boolean }>("/setup");
-        if (!cancelled) setNeedsSetup(setup.needs_setup);
+        const setup = await api.get<Setup>("/setup");
+        if (!cancelled) {
+          setNeedsSetup(setup.needs_setup);
+          setSso(setup.sso?.enabled ? (setup.sso.display_name ?? "Sign in with SSO") : null);
+          setLocalLogin(setup.local_login ?? true);
+        }
       } catch {
         // The setup hint is optional; ignore a failure here.
       }
@@ -81,11 +91,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       admin,
       loading,
       needsSetup,
+      sso,
+      localLogin,
       canWrite: admin?.role === "admin",
       signIn,
       signOut,
     }),
-    [admin, loading, needsSetup, signIn, signOut],
+    [admin, loading, needsSetup, sso, localLogin, signIn, signOut],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

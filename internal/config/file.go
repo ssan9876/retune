@@ -37,6 +37,14 @@ type fileConfig struct {
 	SMTPPassword           string `yaml:"smtp_password"`
 	SMTPStartTLS           *bool  `yaml:"smtp_starttls"`
 	MetricsToken           string `yaml:"metrics_token"`
+	OIDCIssuer             string `yaml:"oidc_issuer"`
+	OIDCClientID           string `yaml:"oidc_client_id"`
+	OIDCClientSecret       string `yaml:"oidc_client_secret"`
+	OIDCGroupsClaim        string `yaml:"oidc_groups_claim"`
+	OIDCAdminGroups        string `yaml:"oidc_admin_groups"`
+	OIDCReadOnlyGroups     string `yaml:"oidc_readonly_groups"`
+	OIDCDisplayName        string `yaml:"oidc_display_name"`
+	OIDCDisableLocalLogin  *bool  `yaml:"oidc_disable_local_login"`
 	// Pointers, because 0 is a meaningful value here (keep forever) and has
 	// to be told apart from a key that was never written.
 	AuditRetentionDays      *int `yaml:"audit_retention_days"`
@@ -138,6 +146,16 @@ func loadConfigFile(getenv func(string) string) (map[string]string, error) {
 		set("SMTP_STARTTLS", strconv.FormatBool(*f.SMTPStartTLS))
 	}
 	set("METRICS_TOKEN", f.MetricsToken)
+	set("OIDC_ISSUER", f.OIDCIssuer)
+	set("OIDC_CLIENT_ID", f.OIDCClientID)
+	set("OIDC_CLIENT_SECRET", f.OIDCClientSecret)
+	set("OIDC_GROUPS_CLAIM", f.OIDCGroupsClaim)
+	set("OIDC_ADMIN_GROUPS", f.OIDCAdminGroups)
+	set("OIDC_READONLY_GROUPS", f.OIDCReadOnlyGroups)
+	set("OIDC_DISPLAY_NAME", f.OIDCDisplayName)
+	if f.OIDCDisableLocalLogin != nil {
+		set("OIDC_DISABLE_LOCAL_LOGIN", strconv.FormatBool(*f.OIDCDisableLocalLogin))
+	}
 	for key, days := range map[string]*int{
 		"AUDIT_RETENTION_DAYS":       f.AuditRetentionDays,
 		"COMMAND_RETENTION_DAYS":     f.CommandRetentionDays,

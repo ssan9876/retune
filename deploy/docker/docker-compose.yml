@@ -35,6 +35,15 @@ services:
       SMTP_STARTTLS: ${SMTP_STARTTLS:-}
       # Unset leaves /metrics off.
       METRICS_TOKEN: ${METRICS_TOKEN:-}
+      # Single sign-on; see the README. Unset leaves it off.
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:-}
+      OIDC_ADMIN_GROUPS: ${OIDC_ADMIN_GROUPS:-}
+      OIDC_READONLY_GROUPS: ${OIDC_READONLY_GROUPS:-}
+      OIDC_DISPLAY_NAME: ${OIDC_DISPLAY_NAME:-}
+      OIDC_DISABLE_LOCAL_LOGIN: ${OIDC_DISABLE_LOCAL_LOGIN:-}
       # Unset takes the default horizon; 0 keeps that history forever.
       AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-}
       COMMAND_RETENTION_DAYS: ${COMMAND_RETENTION_DAYS:-}

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"retune/internal/config"
@@ -59,6 +60,8 @@ type App struct {
 	// Sweeps records what the sweeper jobs do, for /metrics. The caller that
 	// runs the sweeper passes it to sweeper.Runner.
 	Sweeps *sweeper.Stats
+	// SSO is nil unless single sign-on is configured.
+	SSO *auth.OIDC
 }
 
 // New migrates the database, loads (or creates) the CA, and builds handlers.
@@ -142,8 +145,19 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		Now: time.Now, CheckinInterval: cfg.CheckinInterval, Log: log,
 		ClientCert: clientCert,
 	}
+	authSvc.LocalLoginDisabled = cfg.OIDC.DisableLocalLogin
+	var sso *auth.OIDC
+	if cfg.OIDC.Enabled() {
+		sso = &auth.OIDC{
+			Config: cfg.OIDC, RedirectURL: strings.TrimRight(cfg.PublicURL, "/") + "/api/admin/v1/oidc/callback",
+			Key: secretKey, Store: st, Now: time.Now,
+		}
+		log.Info("single sign-on is on; register this redirect URL with the identity provider",
+			"issuer", cfg.OIDC.Issuer, "redirect_url", sso.RedirectURL)
+	}
 	admin := &adminapi.Handler{
 		Auth: authSvc, Store: st, Commands: cmd, Devices: dev, Enroll: svc, Groups: grp, Scripts: scr, Profiles: prof, Apps: appSvc, Compliance: comp, AgentVersions: agentVers, BitLocker: locker, Alerts: alerter,
+		SSO: sso, SSOName: cfg.OIDC.DisplayName,
 		Now: time.Now, Log: log,
 	}
 	root := http.NewServeMux()
@@ -173,6 +187,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		Handler:       root,
 		TLSConfig:     tlsCfg,
 		Sweeps:        sweeps,
+		SSO:           sso,
 	}, nil
 }
 

@@ -120,6 +120,7 @@ export default function Admins() {
             <thead>
               <tr>
                 <th>Email</th>
+                <th>Signs in with</th>
                 <th>Role</th>
                 <th>Authenticator</th>
                 <th>Account</th>
@@ -131,8 +132,11 @@ export default function Admins() {
               {items.map((admin) => (
                 <tr key={admin.id}>
                   <td>{admin.email}</td>
+                  <td>{admin.auth_source === "oidc" ? "SSO" : "Password"}</td>
                   <td>{admin.role === "admin" ? "Admin" : "Read-only"}</td>
-                  <td>{admin.totp_enabled ? "On" : "Off"}</td>
+                  <td>
+                    {admin.auth_source === "oidc" ? "at the identity provider" : admin.totp_enabled ? "On" : "Off"}
+                  </td>
                   <td>
                     <StatusDot
                       status={admin.disabled ? "retired" : "active"}
@@ -143,12 +147,18 @@ export default function Admins() {
                   {canWrite ? (
                     <td>
                       <div className="actions" style={{ marginTop: 0 }}>
-                        <Button variant="quiet" onClick={() => void changePassword(admin)}>
-                          Change password
-                        </Button>
-                        <Button variant="quiet" onClick={() => void toggleTOTP(admin)}>
-                          {admin.totp_enabled ? "Turn off authenticator" : "Set up authenticator"}
-                        </Button>
+                        {/* An SSO account's password and MFA belong to the
+                            identity provider; the server refuses to set them. */}
+                        {admin.auth_source !== "oidc" ? (
+                          <>
+                            <Button variant="quiet" onClick={() => void changePassword(admin)}>
+                              Change password
+                            </Button>
+                            <Button variant="quiet" onClick={() => void toggleTOTP(admin)}>
+                              {admin.totp_enabled ? "Turn off authenticator" : "Set up authenticator"}
+                            </Button>
+                          </>
+                        ) : null}
                         <Button variant="quiet" onClick={() => void toggleDisabled(admin)}>
                           {admin.disabled ? "Enable account" : "Disable account"}
                         </Button>

@@ -14,6 +14,13 @@ const (
 	RoleReadOnly = "read_only"
 )
 
+// Where an admin signs in: with a password here, or through the identity
+// provider.
+const (
+	AuthLocal = "local"
+	AuthOIDC  = "oidc"
+)
+
 // Admin is a console user.
 type Admin struct {
 	ID           uuid.UUID
@@ -24,6 +31,11 @@ type Admin struct {
 	CreatedAt    time.Time
 	LastLoginAt  *time.Time
 	DisabledAt   *time.Time
+	// AuthSource is AuthLocal or AuthOIDC. An OIDC account has no password
+	// and no TOTP secret, and is identified by OIDCIssuer and OIDCSubject.
+	AuthSource  string
+	OIDCIssuer  string
+	OIDCSubject string
 }
 
 // Session is one signed-in browser. Only the hash of the token is stored.
@@ -38,19 +50,44 @@ type Session struct {
 	IP         string
 }
 
-const adminCols = `id, email, password_hash, totp_secret, role, created_at, last_login_at, disabled_at`
+const adminCols = `id, email, password_hash, totp_secret, role, created_at, last_login_at, disabled_at,
+	auth_source, coalesce(oidc_issuer, ''), coalesce(oidc_subject, '')`
 
 func scanAdmin(row pgx.Row) (Admin, error) {
 	var a Admin
-	err := row.Scan(&a.ID, &a.Email, &a.PasswordHash, &a.TOTPSecret, &a.Role, &a.CreatedAt, &a.LastLoginAt, &a.DisabledAt)
+	err := row.Scan(&a.ID, &a.Email, &a.PasswordHash, &a.TOTPSecret, &a.Role, &a.CreatedAt, &a.LastLoginAt, &a.DisabledAt,
+		&a.AuthSource, &a.OIDCIssuer, &a.OIDCSubject)
 	return a, notFound(err)
 }
 
 func (q *Queries) CreateAdmin(ctx context.Context, a Admin) error {
+	source := a.AuthSource
+	if source == "" {
+		source = AuthLocal
+	}
 	_, err := q.db.Exec(ctx, `
-		INSERT INTO admins (id, tenant_id, email, password_hash, totp_secret, role, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		a.ID, DefaultTenantID, a.Email, a.PasswordHash, a.TOTPSecret, a.Role, a.CreatedAt)
+		INSERT INTO admins (id, tenant_id, email, password_hash, totp_secret, role, created_at,
+		                    auth_source, oidc_issuer, oidc_subject)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, ''), NULLIF($10, ''))`,
+		a.ID, DefaultTenantID, a.Email, a.PasswordHash, a.TOTPSecret, a.Role, a.CreatedAt,
+		source, a.OIDCIssuer, a.OIDCSubject)
+	return err
+}
+
+// GetAdminByOIDC finds the account an identity provider's subject signs in as.
+func (q *Queries) GetAdminByOIDC(ctx context.Context, tenantID uuid.UUID, issuer, subject string) (Admin, error) {
+	return scanAdmin(q.db.QueryRow(ctx,
+		`SELECT `+adminCols+` FROM admins WHERE tenant_id = $1 AND oidc_issuer = $2 AND oidc_subject = $3`,
+		tenantID, issuer, subject))
+}
+
+// UpdateOIDCAdmin refreshes what the provider says about an account at each
+// sign-in: its email, which the provider owns, and its role, which is worked
+// out again from the groups claim every time.
+func (q *Queries) UpdateOIDCAdmin(ctx context.Context, tenantID, id uuid.UUID, email, role string) error {
+	_, err := q.db.Exec(ctx,
+		`UPDATE admins SET email = $3, role = $4 WHERE tenant_id = $1 AND id = $2 AND auth_source = 'oidc'`,
+		tenantID, id, email, role)
 	return err
 }
 
@@ -128,11 +165,13 @@ func (q *Queries) GetSessionWithAdmin(ctx context.Context, tokenHash []byte) (Se
 	var a Admin
 	err := q.db.QueryRow(ctx, `
 		SELECT s.token_hash, s.admin_id, s.csrf_token, s.created_at, s.expires_at, s.last_seen_at, s.user_agent, s.ip,
-		       a.id, a.email, a.password_hash, a.totp_secret, a.role, a.created_at, a.last_login_at, a.disabled_at
+		       a.id, a.email, a.password_hash, a.totp_secret, a.role, a.created_at, a.last_login_at, a.disabled_at,
+		       a.auth_source, coalesce(a.oidc_issuer, ''), coalesce(a.oidc_subject, '')
 		FROM sessions s JOIN admins a ON a.id = s.admin_id
 		WHERE s.token_hash = $1`, tokenHash).
 		Scan(&s.TokenHash, &s.AdminID, &s.CSRFToken, &s.CreatedAt, &s.ExpiresAt, &s.LastSeenAt, &s.UserAgent, &s.IP,
-			&a.ID, &a.Email, &a.PasswordHash, &a.TOTPSecret, &a.Role, &a.CreatedAt, &a.LastLoginAt, &a.DisabledAt)
+			&a.ID, &a.Email, &a.PasswordHash, &a.TOTPSecret, &a.Role, &a.CreatedAt, &a.LastLoginAt, &a.DisabledAt,
+			&a.AuthSource, &a.OIDCIssuer, &a.OIDCSubject)
 	if err != nil {
 		return Session{}, Admin{}, notFound(err)
 	}

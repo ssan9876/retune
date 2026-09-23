@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import Admins from "./Admins";
@@ -26,9 +26,19 @@ beforeEach(() => {
               totp_enabled: true,
               disabled: false,
               created_at: "2026-09-12T12:00:00Z",
+              auth_source: "local",
+            },
+            {
+              id: "a2",
+              email: "ada@example.com",
+              role: "read_only",
+              totp_enabled: false,
+              disabled: false,
+              created_at: "2026-09-22T12:00:00Z",
+              auth_source: "oidc",
             },
           ],
-          total: 1,
+          total: 2,
           limit: 50,
           offset: 0,
         }),
@@ -51,7 +61,19 @@ describe("Admins", () => {
     canWrite = true;
     render(<Admins />);
     expect(await screen.findByRole("button", { name: "Add admin" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Turn off authenticator" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Disable account" })).toBeInTheDocument();
+    const row = screen.getByText("ops@example.com").closest("tr") as HTMLElement;
+    expect(within(row).getByRole("button", { name: "Turn off authenticator" })).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "Disable account" })).toBeInTheDocument();
+  });
+
+  it("marks SSO accounts, and offers them no password or authenticator", async () => {
+    canWrite = true;
+    render(<Admins />);
+    const row = (await screen.findByText("ada@example.com")).closest("tr") as HTMLElement;
+    expect(within(row).getByText("SSO")).toBeInTheDocument();
+    expect(within(row).getByText("at the identity provider")).toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: "Change password" })).not.toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: /authenticator/ })).not.toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "Disable account" })).toBeInTheDocument();
   });
 });

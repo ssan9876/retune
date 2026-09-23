@@ -36,3 +36,16 @@
   margin-top: var(--space-2);
   word-break: break-all;
 }
+
+.login__sso {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+}
+
+.login__or {
+  margin: var(--space-4) 0;
+  text-align: center;
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+}
