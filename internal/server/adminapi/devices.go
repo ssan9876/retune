@@ -126,7 +126,7 @@ func (h *Handler) getDevice(w http.ResponseWriter, r *http.Request) {
 	}
 	detail.Device.Compliance = overall[id]
 
-	inv, err := q.GetInventory(ctx, id)
+	inv, err := q.GetInventory(ctx, store.DefaultTenantID, id)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 	case err != nil:

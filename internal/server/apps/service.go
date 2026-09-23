@@ -139,7 +139,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewApp) (store.Ap
 			return err
 		}
 
-		current, err := q.GetAppVersion(ctx, id, a.CurrentVersion)
+		current, err := q.GetAppVersion(ctx, store.DefaultTenantID, id, a.CurrentVersion)
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return err
 		}
@@ -206,7 +206,7 @@ func (s *Service) List(ctx context.Context, page store.Page) ([]store.App, int, 
 }
 
 func (s *Service) Version(ctx context.Context, id uuid.UUID, version int) (store.AppVersion, error) {
-	v, err := s.Store.Q().GetAppVersion(ctx, id, version)
+	v, err := s.Store.Q().GetAppVersion(ctx, store.DefaultTenantID, id, version)
 	if errors.Is(err, store.ErrNotFound) {
 		return store.AppVersion{}, ErrNotFound
 	}
@@ -255,7 +255,7 @@ func (s *Service) RecordInstall(ctx context.Context, deviceID, appID uuid.UUID, 
 		// first. The version is immutable, so this lookup can never disagree
 		// with what actually ran.
 		packageID := "?"
-		if v, err := s.Store.Q().GetAppVersion(ctx, appID, r.Version); err == nil {
+		if v, err := s.Store.Q().GetAppVersion(ctx, store.DefaultTenantID, appID, r.Version); err == nil {
 			packageID = v.PackageID
 		}
 		switch {

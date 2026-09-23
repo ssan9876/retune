@@ -229,10 +229,14 @@ func TestUploadRejections(t *testing.T) {
 	svc, priv := service(t, st)
 	other, _ := release.GenerateKey()
 
+	// stored marks the rejections that come after the bytes are written, the
+	// only ones for which "nothing left behind" says anything: the others are
+	// refused before a byte reaches the artifact store.
 	cases := map[string]struct {
-		in   agentversions.NewVersion
-		body string
-		want string
+		in     agentversions.NewVersion
+		body   string
+		want   string
+		stored bool
 	}{
 		"no signature header": {
 			in: agentversions.NewVersion{Version: "1.0.0", Actor: "ops"},
@@ -249,18 +253,25 @@ func TestUploadRejections(t *testing.T) {
 			},
 			body: "b", want: agentversions.SignatureHeader + ":",
 		},
+		"notes too long": {
+			in: func() agentversions.NewVersion {
+				n := signed(priv, "1.0.0", "b", "ops")
+				n.Notes = strings.Repeat("x", agentversions.MaxNotesLength+1)
+				return n
+			}(), body: "b", want: "notes may be at most",
+		},
 		"unknown key": {
 			in: signed(other, "1.0.0", "b", "ops"), body: "b", want: "not a configured release key",
 		},
 		"bytes differ from the signed hash": {
-			in: signed(priv, "1.0.0", "b", "ops"), body: "not b", want: "hash to",
+			in: signed(priv, "1.0.0", "b", "ops"), body: "not b", want: "hash to", stored: true,
 		},
 		"declared version differs from the signed one": {
 			in: func() agentversions.NewVersion {
 				n := signed(priv, "1.0.0", "b", "ops")
 				n.Version = "1.0.1"
 				return n
-			}(), body: "b", want: "does not match the signed version",
+			}(), body: "b", want: "does not match the signed version", stored: true,
 		},
 		"forged signature": {
 			in: func() agentversions.NewVersion {
@@ -268,7 +279,7 @@ func TestUploadRejections(t *testing.T) {
 				sig := release.Sign(priv, release.Manifest{Version: "1.0.0", SHA256: hex.EncodeToString(sum[:])})
 				sig.Signature[0] ^= 1
 				return withSignature("1.0.0", "ops", sig)
-			}(), body: "b", want: "did not verify",
+			}(), body: "b", want: "did not verify", stored: true,
 		},
 	}
 	for name, tc := range cases {
@@ -276,6 +287,9 @@ func TestUploadRejections(t *testing.T) {
 			_, err := svc.Upload(ctx, tc.in, strings.NewReader(tc.body))
 			if !errors.Is(err, agentversions.ErrBadRequest) || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("want ErrBadRequest containing %q, got %v", tc.want, err)
+			}
+			if !tc.stored {
+				return
 			}
 			if _, _, err := svc.Artifacts.Open(tc.in.Version); err == nil {
 				t.Error("a refused upload must not leave its bytes behind")
@@ -297,6 +311,23 @@ func TestUploadRejections(t *testing.T) {
 	}
 	if rejected != len(cases) {
 		t.Errorf("%d rejection audit entries, want %d", rejected, len(cases))
+	}
+}
+
+// The notes limit counts characters, not bytes: notes written in a script
+// that needs several bytes a character get the same room as ASCII.
+func TestUploadAcceptsNotesAtTheLimit(t *testing.T) {
+	st := storetest.New(t)
+	ctx := context.Background()
+	svc, priv := service(t, st)
+	in := signed(priv, "1.0.0", "b", "ops")
+	in.Notes = strings.Repeat("é", agentversions.MaxNotesLength)
+	v, err := svc.Upload(ctx, in, strings.NewReader("b"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Notes != in.Notes {
+		t.Error("the notes should be stored as sent")
 	}
 }
 

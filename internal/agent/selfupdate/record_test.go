@@ -1,6 +1,10 @@
 package selfupdate_test
 
 import (
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -44,6 +48,43 @@ func TestRecordRoundTripKeepsTheServiceArguments(t *testing.T) {
 	}
 	if _, found, _ := selfupdate.ReadRecord(dir); found {
 		t.Error("the record should be gone")
+	}
+}
+
+// A service with no arguments reads back as no arguments, whether the caller
+// had a nil slice or an empty one.
+func TestRecordWithNoArgumentsRoundTripsAsEmpty(t *testing.T) {
+	for name, args := range map[string][]string{"nil": nil, "empty": {}} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := selfupdate.WriteRecord(dir, selfupdate.Record{FromArgs: args}); err != nil {
+				t.Fatal(err)
+			}
+			got, _, err := selfupdate.ReadRecord(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.FromArgs == nil || len(got.FromArgs) != 0 {
+				t.Errorf("FromArgs = %#v, want an empty slice", got.FromArgs)
+			}
+		})
+	}
+}
+
+// A write that cannot be put in place leaves nothing behind: a stray temp
+// file would sit in the data directory until the next successful write.
+func TestWriteRecordCleansUpAFailedRename(t *testing.T) {
+	dir := t.TempDir()
+	// A non-empty directory where the record belongs makes the rename fail
+	// on every platform.
+	if err := os.MkdirAll(filepath.Join(dir, selfupdate.RecordName, "x"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := selfupdate.WriteRecord(dir, selfupdate.Record{Status: selfupdate.StatusPending}); err == nil {
+		t.Fatal("the write should fail")
+	}
+	if _, err := os.Stat(filepath.Join(dir, selfupdate.RecordName+".tmp")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("the temp file should be gone, stat err = %v", err)
 	}
 }
 

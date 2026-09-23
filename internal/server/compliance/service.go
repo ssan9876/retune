@@ -286,7 +286,7 @@ func (s *Service) EvaluateDevice(ctx context.Context, deviceID uuid.UUID) error 
 func (s *Service) buildFacts(ctx context.Context, q *store.Queries, device store.Device) (Facts, error) {
 	facts := Facts{Device: device}
 
-	inv, err := q.GetInventory(ctx, device.ID)
+	inv, err := q.GetInventory(ctx, store.DefaultTenantID, device.ID)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		// No inventory yet; every inventory-backed rule reports unknown.

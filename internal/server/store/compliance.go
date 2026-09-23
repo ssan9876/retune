@@ -151,8 +151,8 @@ func (q *Queries) DeleteDeviceComplianceExcept(ctx context.Context, deviceID uui
 		keep = []uuid.UUID{}
 	}
 	_, err := q.db.Exec(ctx, `
-		DELETE FROM device_compliance WHERE device_id = $1 AND NOT (policy_id = ANY($2))`,
-		deviceID, keep)
+		DELETE FROM device_compliance WHERE tenant_id = $1 AND device_id = $2 AND NOT (policy_id = ANY($3))`,
+		DefaultTenantID, deviceID, keep)
 	return err
 }
 
@@ -160,7 +160,7 @@ func (q *Queries) DeleteDeviceComplianceExcept(ctx context.Context, deviceID uui
 // used when a policy is deleted outright (in the same transaction as the
 // policy row and its mirrored item-status rows).
 func (q *Queries) DeleteComplianceForPolicy(ctx context.Context, policyID uuid.UUID) error {
-	_, err := q.db.Exec(ctx, `DELETE FROM device_compliance WHERE policy_id = $1`, policyID)
+	_, err := q.db.Exec(ctx, `DELETE FROM device_compliance WHERE tenant_id = $1 AND policy_id = $2`, DefaultTenantID, policyID)
 	return err
 }
 

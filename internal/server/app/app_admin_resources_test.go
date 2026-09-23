@@ -215,7 +215,7 @@ func TestTokenAuditAndAdminEndpoints(t *testing.T) {
 		t.Fatal("admin must be disabled")
 	}
 	// The signed-in admin is the only enabled admin, so disabling them fails.
-	me, _ := a.Store.Q().GetAdminByEmail(ctx, "ops@example.com")
+	me, _ := a.Store.Q().GetAdminByEmail(ctx, store.DefaultTenantID, "ops@example.com")
 	if status, body = c.do(http.MethodPost, "/admins/"+me.ID.String()+"/disabled", map[string]any{"disabled": true}); status != http.StatusConflict {
 		t.Fatalf("disabling the last admin: %d %s", status, body)
 	}

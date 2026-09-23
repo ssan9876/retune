@@ -95,13 +95,13 @@ func TestStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, hw := range [][2]string{{"", "U1"}, {"SN1", ""}, {"SN1", "U1"}} {
-		found, err := q.FindActiveDeviceByHardware(ctx, hw[0], hw[1])
+		found, err := q.FindActiveDeviceByHardware(ctx, store.DefaultTenantID, hw[0], hw[1])
 		if err != nil || found.ID != d1.ID {
 			t.Fatalf("FindActiveDeviceByHardware(%q,%q) = %v, %v", hw[0], hw[1], found.ID, err)
 		}
 	}
 	for _, hw := range [][2]string{{"", ""}, {"SN-x", "U-x"}} {
-		if _, err := q.FindActiveDeviceByHardware(ctx, hw[0], hw[1]); !errors.Is(err, store.ErrNotFound) {
+		if _, err := q.FindActiveDeviceByHardware(ctx, store.DefaultTenantID, hw[0], hw[1]); !errors.Is(err, store.ErrNotFound) {
 			t.Fatalf("FindActiveDeviceByHardware(%q,%q) err = %v, want ErrNotFound", hw[0], hw[1], err)
 		}
 	}

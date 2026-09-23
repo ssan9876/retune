@@ -102,8 +102,8 @@ func (q *Queries) ExpireCommands(ctx context.Context, now time.Time) (int64, err
 func (q *Queries) PendingCommands(ctx context.Context, deviceID uuid.UUID) ([]Command, error) {
 	return q.queryCommands(ctx, `
 		SELECT `+commandCols+` FROM commands
-		WHERE device_id = $1 AND status IN ('queued', 'delivered', 'running')
-		ORDER BY created_at, id`, deviceID)
+		WHERE tenant_id = $1 AND device_id = $2 AND status IN ('queued', 'delivered', 'running')
+		ORDER BY created_at, id`, DefaultTenantID, deviceID)
 }
 
 func (q *Queries) MarkCommandsDelivered(ctx context.Context, ids []uuid.UUID, at time.Time) error {
@@ -116,7 +116,7 @@ func (q *Queries) MarkCommandsDelivered(ctx context.Context, ids []uuid.UUID, at
 	}
 	_, err := q.db.Exec(ctx, `
 		UPDATE commands SET status = 'delivered', delivered_at = $2
-		WHERE id = ANY($1::uuid[]) AND status = 'queued'`, text, at)
+		WHERE tenant_id = $3 AND id = ANY($1::uuid[]) AND status = 'queued'`, text, at, DefaultTenantID)
 	return err
 }
 
@@ -164,6 +164,6 @@ func (q *Queries) GetCommandResult(ctx context.Context, tenantID, id uuid.UUID) 
 // ListCommands returns a device's newest commands first.
 func (q *Queries) ListCommands(ctx context.Context, deviceID uuid.UUID, limit int) ([]Command, error) {
 	return q.queryCommands(ctx, `
-		SELECT `+commandCols+` FROM commands WHERE device_id = $1
-		ORDER BY created_at DESC, id DESC LIMIT $2`, deviceID, limit)
+		SELECT `+commandCols+` FROM commands WHERE tenant_id = $1 AND device_id = $2
+		ORDER BY created_at DESC, id DESC LIMIT $3`, DefaultTenantID, deviceID, limit)
 }

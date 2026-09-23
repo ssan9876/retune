@@ -86,7 +86,7 @@ func (s *Service) Escrow(ctx context.Context, deviceID uuid.UUID, volumeID, meth
 
 // Has reports whether a volume's key is already escrowed.
 func (s *Service) Has(ctx context.Context, deviceID uuid.UUID, volumeID string) (bool, error) {
-	return s.Store.Q().HasBitLockerKey(ctx, deviceID, strings.TrimSpace(volumeID))
+	return s.Store.Q().HasBitLockerKey(ctx, store.DefaultTenantID, deviceID, strings.TrimSpace(volumeID))
 }
 
 // List returns the escrowed volumes of a device, without any keys.

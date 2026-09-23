@@ -130,7 +130,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewScript) (store
 			return err
 		}
 
-		current, err := q.GetScriptVersion(ctx, id, sc.CurrentVersion)
+		current, err := q.GetScriptVersion(ctx, store.DefaultTenantID, id, sc.CurrentVersion)
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return err
 		}
@@ -196,7 +196,7 @@ func (s *Service) List(ctx context.Context, page store.Page) ([]store.Script, in
 }
 
 func (s *Service) Version(ctx context.Context, id uuid.UUID, version int) (store.ScriptVersion, error) {
-	v, err := s.Store.Q().GetScriptVersion(ctx, id, version)
+	v, err := s.Store.Q().GetScriptVersion(ctx, store.DefaultTenantID, id, version)
 	if errors.Is(err, store.ErrNotFound) {
 		return store.ScriptVersion{}, ErrNotFound
 	}

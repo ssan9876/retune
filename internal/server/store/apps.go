@@ -138,11 +138,11 @@ func (q *Queries) CreateAppVersion(ctx context.Context, v AppVersion) error {
 	return err
 }
 
-func (q *Queries) GetAppVersion(ctx context.Context, appID uuid.UUID, version int) (AppVersion, error) {
+func (q *Queries) GetAppVersion(ctx context.Context, tenantID, appID uuid.UUID, version int) (AppVersion, error) {
 	var v AppVersion
 	err := q.db.QueryRow(ctx, `
 		SELECT app_id, version, package_id, pinned_version, scope, install_args, hash, created_at, created_by
-		FROM app_versions WHERE app_id = $1 AND version = $2`, appID, version).
+		FROM app_versions WHERE tenant_id = $1 AND app_id = $2 AND version = $3`, tenantID, appID, version).
 		Scan(&v.AppID, &v.Version, &v.PackageID, &v.PinnedVersion, &v.Scope, &v.InstallArgs, &v.Hash, &v.CreatedAt, &v.CreatedBy)
 	return v, notFound(err)
 }
@@ -151,7 +151,7 @@ func (q *Queries) GetAppVersion(ctx context.Context, appID uuid.UUID, version in
 func (q *Queries) ListAppVersions(ctx context.Context, appID uuid.UUID) ([]AppVersion, error) {
 	rows, err := q.db.Query(ctx, `
 		SELECT app_id, version, package_id, pinned_version, scope, install_args, hash, created_at, created_by
-		FROM app_versions WHERE app_id = $1 ORDER BY version DESC`, appID)
+		FROM app_versions WHERE tenant_id = $1 AND app_id = $2 ORDER BY version DESC`, DefaultTenantID, appID)
 	if err != nil {
 		return nil, err
 	}

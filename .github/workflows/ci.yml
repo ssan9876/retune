@@ -58,6 +58,13 @@ jobs:
           go run ./cmd/retune-sign sign --key "$RUNNER_TEMP/release/release.key" --version 0.1.${{ github.run_number }} bin/retune-agent
           go run ./cmd/retune-sign verify --trust "$PUB" bin/retune-agent bin/retune-agent.sig
 
+      - uses: actions/upload-artifact@v7
+        with:
+          name: retune-agent-linux
+          path: |
+            bin/retune-agent
+            bin/retune-agent.sig
+
       # Builds the console and the binary the same way a deployment does.
       - name: Build the server image
         run: docker build -f deploy/docker/Dockerfile -t retune-server:ci .
@@ -102,9 +109,12 @@ jobs:
           $pub = (Get-Content "$env:RUNNER_TEMP\release\release.pub").Trim()
           pwsh deploy/msi/build.ps1 -Version 0.1.${{ github.run_number }} -ReleaseKey "$env:RUNNER_TEMP\release\release.key" -TrustedKeys $pub
 
+      # The build and its signature travel together: Agent versions takes both,
+      # and a signature without the exact bytes it signed verifies nothing.
       - uses: actions/upload-artifact@v7
         with:
-          name: retune-agent-msi
+          name: retune-agent-windows
           path: |
             bin/retune-agent.msi
+            bin/retune-agent.exe
             bin/retune-agent.exe.sig

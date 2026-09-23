@@ -10,6 +10,7 @@ import (
 	"io"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -35,6 +36,10 @@ var (
 // binary of a few megabytes; a hundred times that is a mistake or an attack,
 // not a release.
 const MaxUploadBytes = 128 << 20
+
+// MaxNotesLength caps a build's release notes, in characters. Notes are shown
+// on the console's list of builds; anything longer belongs in a changelog.
+const MaxNotesLength = 2000
 
 // SignatureHeader carries the build's release signature: the base64 of its
 // .sig sidecar. It is defined here, not in adminapi, because the service is
@@ -79,6 +84,10 @@ func (s *Service) Upload(ctx context.Context, in NewVersion, body io.Reader) (st
 	version := strings.TrimSpace(in.Version)
 	if version == "" {
 		return store.AgentVersion{}, s.reject(ctx, in, ErrBadRequest, "a build needs a version")
+	}
+	if utf8.RuneCountInString(in.Notes) > MaxNotesLength {
+		return store.AgentVersion{}, s.reject(ctx, in, ErrBadRequest,
+			fmt.Sprintf("notes may be at most %d characters", MaxNotesLength))
 	}
 	if _, err := s.Store.Q().GetAgentVersionByVersion(ctx, version); err == nil {
 		return store.AgentVersion{}, s.reject(ctx, in, ErrVersionTaken, "a build for this version already exists")

@@ -33,4 +33,7 @@ func TestBitLockerQueriesAreScopedByTenant(t *testing.T) {
 	if _, err := q.GetBitLockerKey(ctx, store.DefaultTenantID, k.ID); err != nil {
 		t.Errorf("the owning tenant should still see the row: %v", err)
 	}
+	if ok, err := q.HasBitLockerKey(ctx, other, d.ID, "C:"); err != nil || ok {
+		t.Errorf("another tenant must not see the key as escrowed: %v %v", ok, err)
+	}
 }

@@ -140,11 +140,11 @@ func (q *Queries) CreateScriptVersion(ctx context.Context, v ScriptVersion) erro
 	return err
 }
 
-func (q *Queries) GetScriptVersion(ctx context.Context, scriptID uuid.UUID, version int) (ScriptVersion, error) {
+func (q *Queries) GetScriptVersion(ctx context.Context, tenantID, scriptID uuid.UUID, version int) (ScriptVersion, error) {
 	var v ScriptVersion
 	err := q.db.QueryRow(ctx, `
 		SELECT script_id, version, body, detection_body, hash, created_at, created_by
-		FROM script_versions WHERE script_id = $1 AND version = $2`, scriptID, version).
+		FROM script_versions WHERE tenant_id = $1 AND script_id = $2 AND version = $3`, tenantID, scriptID, version).
 		Scan(&v.ScriptID, &v.Version, &v.Body, &v.DetectionBody, &v.Hash, &v.CreatedAt, &v.CreatedBy)
 	return v, notFound(err)
 }
@@ -153,7 +153,7 @@ func (q *Queries) GetScriptVersion(ctx context.Context, scriptID uuid.UUID, vers
 func (q *Queries) ListScriptVersions(ctx context.Context, scriptID uuid.UUID) ([]ScriptVersion, error) {
 	rows, err := q.db.Query(ctx, `
 		SELECT script_id, version, body, detection_body, hash, created_at, created_by
-		FROM script_versions WHERE script_id = $1 ORDER BY version DESC`, scriptID)
+		FROM script_versions WHERE tenant_id = $1 AND script_id = $2 ORDER BY version DESC`, DefaultTenantID, scriptID)
 	if err != nil {
 		return nil, err
 	}
@@ -225,17 +225,17 @@ func (q *Queries) ListScriptRuns(ctx context.Context, scriptID uuid.UUID, device
 
 // DeviceHasItem reports whether an item is assigned to a device, so the agent
 // API can refuse to hand out a script the caller was not given.
-func (q *Queries) DeviceHasItem(ctx context.Context, deviceID uuid.UUID, kind string, itemID uuid.UUID) (bool, error) {
+func (q *Queries) DeviceHasItem(ctx context.Context, tenantID, deviceID uuid.UUID, kind string, itemID uuid.UUID) (bool, error) {
 	var ok bool
 	err := q.db.QueryRow(ctx, `
 		SELECT EXISTS (
 		    SELECT 1 FROM assignments a
-		    JOIN group_members gm ON gm.group_id = a.group_id AND gm.device_id = $1
-		    WHERE a.mode = 'include' AND a.item_kind = $2 AND a.item_id = $3
+		    JOIN group_members gm ON gm.group_id = a.group_id AND gm.device_id = $2
+		    WHERE a.tenant_id = $1 AND a.mode = 'include' AND a.item_kind = $3 AND a.item_id = $4
 		      AND NOT EXISTS (
 		          SELECT 1 FROM assignments x
-		          JOIN group_members gx ON gx.group_id = x.group_id AND gx.device_id = $1
-		          WHERE x.mode = 'exclude' AND x.item_kind = $2 AND x.item_id = $3))`,
-		deviceID, kind, itemID).Scan(&ok)
+		          JOIN group_members gx ON gx.group_id = x.group_id AND gx.device_id = $2
+		          WHERE x.tenant_id = $1 AND x.mode = 'exclude' AND x.item_kind = $3 AND x.item_id = $4))`,
+		tenantID, deviceID, kind, itemID).Scan(&ok)
 	return ok, err
 }

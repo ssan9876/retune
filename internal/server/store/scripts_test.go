@@ -42,7 +42,7 @@ func TestScriptVersionsAreImmutable(t *testing.T) {
 	addVersion(t, st, s.ID, 1, "first")
 	addVersion(t, st, s.ID, 2, "second")
 
-	v1, err := st.Q().GetScriptVersion(ctx, s.ID, 1)
+	v1, err := st.Q().GetScriptVersion(ctx, store.DefaultTenantID, s.ID, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestScriptVersionsAreImmutable(t *testing.T) {
 		t.Fatalf("want newest first, got %+v", versions)
 	}
 
-	if _, err := st.Q().GetScriptVersion(ctx, s.ID, 9); !errors.Is(err, store.ErrNotFound) {
+	if _, err := st.Q().GetScriptVersion(ctx, store.DefaultTenantID, s.ID, 9); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("want ErrNotFound for a missing version, got %v", err)
 	}
 }
@@ -79,10 +79,14 @@ func TestScriptQueriesAreScopedByTenant(t *testing.T) {
 	st := storetest.New(t)
 	ctx := context.Background()
 	s := newScript(t, st, "Scoped Script")
+	addVersion(t, st, s.ID, 1, "one")
 	other := uuid.Must(uuid.NewV7())
 
 	if _, err := st.Q().GetScript(ctx, other, s.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("another tenant must not see the row: %v", err)
+	}
+	if _, err := st.Q().GetScriptVersion(ctx, other, s.ID, 1); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("another tenant must not see the version: %v", err)
 	}
 	changed := s
 	changed.Name = "Hacked"
@@ -127,7 +131,7 @@ func TestScriptRunsOutliveTheScript(t *testing.T) {
 	}
 
 	// The versions go with the script.
-	if _, err := st.Q().GetScriptVersion(ctx, s.ID, 1); !errors.Is(err, store.ErrNotFound) {
+	if _, err := st.Q().GetScriptVersion(ctx, store.DefaultTenantID, s.ID, 1); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("versions should be deleted with the script, got %v", err)
 	}
 }
@@ -182,11 +186,14 @@ func TestDeviceHasItem(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if ok, err := st.Q().DeviceHasItem(ctx, d.ID, "script", item); err != nil || !ok {
+	if ok, err := st.Q().DeviceHasItem(ctx, store.DefaultTenantID, d.ID, "script", item); err != nil || !ok {
 		t.Fatalf("the assigned device should have the item: %v %v", ok, err)
 	}
-	if ok, err := st.Q().DeviceHasItem(ctx, other.ID, "script", item); err != nil || ok {
+	if ok, err := st.Q().DeviceHasItem(ctx, store.DefaultTenantID, other.ID, "script", item); err != nil || ok {
 		t.Fatalf("an unassigned device must not: %v %v", ok, err)
+	}
+	if ok, err := st.Q().DeviceHasItem(ctx, uuid.Must(uuid.NewV7()), d.ID, "script", item); err != nil || ok {
+		t.Fatalf("another tenant must not see the assignment: %v %v", ok, err)
 	}
 }
 
@@ -252,7 +259,7 @@ func TestActiveDevicesForItem(t *testing.T) {
 	}
 	// The one-query answer and the per-device one must not disagree.
 	for _, d := range []store.Device{reached, twice, excluded, retired, unrelated} {
-		has, err := st.Q().DeviceHasItem(ctx, d.ID, "script", item)
+		has, err := st.Q().DeviceHasItem(ctx, store.DefaultTenantID, d.ID, "script", item)
 		if err != nil {
 			t.Fatal(err)
 		}

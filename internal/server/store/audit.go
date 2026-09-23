@@ -32,7 +32,7 @@ func (q *Queries) InsertAudit(ctx context.Context, a AuditEntry) error {
 func (q *Queries) ListAudit(ctx context.Context, limit int) ([]AuditEntry, error) {
 	rows, err := q.db.Query(ctx, `
 		SELECT actor, action, target_kind, target_id, details, at
-		FROM audit_log ORDER BY at DESC, id DESC LIMIT $1`, limit)
+		FROM audit_log WHERE tenant_id = $2 ORDER BY at DESC, id DESC LIMIT $1`, limit, DefaultTenantID)
 	if err != nil {
 		return nil, err
 	}

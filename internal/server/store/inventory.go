@@ -41,11 +41,11 @@ type HardwareInfo struct {
 	Model        string
 }
 
-func (q *Queries) GetInventory(ctx context.Context, deviceID uuid.UUID) (DeviceInventory, error) {
+func (q *Queries) GetInventory(ctx context.Context, tenantID, deviceID uuid.UUID) (DeviceInventory, error) {
 	var inv DeviceInventory
 	err := q.db.QueryRow(ctx, `
 		SELECT device_id, collected_at, received_at, hash, software_hash, data, ram_gb, disk_free_gb
-		FROM device_inventory WHERE device_id = $1`, deviceID).
+		FROM device_inventory WHERE tenant_id = $1 AND device_id = $2`, tenantID, deviceID).
 		Scan(&inv.DeviceID, &inv.CollectedAt, &inv.ReceivedAt, &inv.Hash, &inv.SoftwareHash, &inv.Data, &inv.RAMGB, &inv.DiskFreeGB)
 	return inv, notFound(err)
 }
@@ -61,14 +61,15 @@ func (q *Queries) UpsertInventory(ctx context.Context, inv DeviceInventory) erro
 			software_hash = EXCLUDED.software_hash,
 			data          = EXCLUDED.data,
 			ram_gb        = EXCLUDED.ram_gb,
-			disk_free_gb  = EXCLUDED.disk_free_gb`,
+			disk_free_gb  = EXCLUDED.disk_free_gb
+		WHERE device_inventory.tenant_id = EXCLUDED.tenant_id`,
 		inv.DeviceID, DefaultTenantID, inv.CollectedAt, inv.ReceivedAt, inv.Hash, inv.SoftwareHash, inv.Data, inv.RAMGB, inv.DiskFreeGB)
 	return err
 }
 
 // ReplaceSoftware swaps a device's package list.
 func (q *Queries) ReplaceSoftware(ctx context.Context, deviceID uuid.UUID, sw []Software) error {
-	if _, err := q.db.Exec(ctx, `DELETE FROM device_software WHERE device_id = $1`, deviceID); err != nil {
+	if _, err := q.db.Exec(ctx, `DELETE FROM device_software WHERE tenant_id = $1 AND device_id = $2`, DefaultTenantID, deviceID); err != nil {
 		return err
 	}
 	if len(sw) == 0 {
@@ -90,7 +91,7 @@ func (q *Queries) ReplaceSoftware(ctx context.Context, deviceID uuid.UUID, sw []
 func (q *Queries) ListSoftware(ctx context.Context, deviceID uuid.UUID) ([]Software, error) {
 	rows, err := q.db.Query(ctx, `
 		SELECT name, version, publisher, install_date, scope FROM device_software
-		WHERE device_id = $1 ORDER BY lower(name), version`, deviceID)
+		WHERE tenant_id = $1 AND device_id = $2 ORDER BY lower(name), version`, DefaultTenantID, deviceID)
 	if err != nil {
 		return nil, err
 	}

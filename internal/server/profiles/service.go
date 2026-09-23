@@ -138,7 +138,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewProfile) (stor
 			return err
 		}
 
-		current, err := q.GetProfileVersion(ctx, id, p.CurrentVersion)
+		current, err := q.GetProfileVersion(ctx, store.DefaultTenantID, id, p.CurrentVersion)
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return err
 		}
@@ -212,7 +212,7 @@ func (s *Service) List(ctx context.Context, page store.Page) ([]store.Profile, i
 
 // Version returns one version's settings, decoded.
 func (s *Service) Version(ctx context.Context, id uuid.UUID, version int) (store.ProfileVersion, []protocol.Setting, error) {
-	v, err := s.Store.Q().GetProfileVersion(ctx, id, version)
+	v, err := s.Store.Q().GetProfileVersion(ctx, store.DefaultTenantID, id, version)
 	if errors.Is(err, store.ErrNotFound) {
 		return store.ProfileVersion{}, nil, ErrNotFound
 	}

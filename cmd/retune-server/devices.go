@@ -98,7 +98,7 @@ func deviceShow(ctx context.Context, st *store.Store, id uuid.UUID, out io.Write
 	fmt.Fprintf(out, "Agent version: %s\nEnrolled:      %s\nLast seen:     %s\nCert expires:  %s\n",
 		orDash(d.AgentVersion), d.EnrolledAt.Format(time.RFC3339), timeOrNever(d.LastSeenAt), d.CertExpiresAt.Format(time.RFC3339))
 
-	inv, err := q.GetInventory(ctx, id)
+	inv, err := q.GetInventory(ctx, store.DefaultTenantID, id)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		fmt.Fprintln(out, "Inventory:     none yet")

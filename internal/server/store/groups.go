@@ -210,9 +210,9 @@ func (q *Queries) ListGroupMembers(ctx context.Context, groupID uuid.UUID, page 
 		       d.prev_cert_serial, d.os_build, d.manufacturer, d.model, count(*) OVER () AS total
 		FROM group_members m
 		JOIN devices d ON d.id = m.device_id
-		WHERE m.group_id = $1
+		WHERE m.tenant_id = $4 AND m.group_id = $1
 		ORDER BY lower(d.hostname), d.enrolled_at
-		LIMIT $2 OFFSET $3`, groupID, p.Limit, p.Offset)
+		LIMIT $2 OFFSET $3`, groupID, p.Limit, p.Offset, DefaultTenantID)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -237,8 +237,8 @@ func (q *Queries) ListGroupsForDevice(ctx context.Context, deviceID uuid.UUID) (
 		SELECT g.id, g.name, g.description, g.kind, g.rule, g.created_at, g.updated_at, g.evaluated_at
 		FROM group_members m
 		JOIN device_groups g ON g.id = m.group_id
-		WHERE m.device_id = $1
-		ORDER BY lower(g.name)`, deviceID)
+		WHERE m.tenant_id = $1 AND m.device_id = $2
+		ORDER BY lower(g.name)`, DefaultTenantID, deviceID)
 	if err != nil {
 		return nil, err
 	}
@@ -312,9 +312,9 @@ func (q *Queries) DevicesByIDs(ctx context.Context, ids []uuid.UUID, page Page) 
 	p := page.Normalized()
 	rows, err := q.db.Query(ctx, `
 		SELECT `+deviceCols+` FROM devices
-		WHERE id = ANY($1::uuid[])
+		WHERE tenant_id = $4 AND id = ANY($1::uuid[])
 		ORDER BY lower(hostname), enrolled_at
-		LIMIT $2 OFFSET $3`, ids, p.Limit, p.Offset)
+		LIMIT $2 OFFSET $3`, ids, p.Limit, p.Offset, DefaultTenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -424,14 +424,14 @@ func (q *Queries) EffectiveItems(ctx context.Context, deviceID uuid.UUID) ([]Ite
 	rows, err := q.db.Query(ctx, `
 		SELECT DISTINCT ON (a.item_kind, a.item_id) a.item_kind, a.item_id, a.options
 		FROM assignments a
-		JOIN group_members gm ON gm.group_id = a.group_id AND gm.device_id = $1
-		WHERE a.mode = 'include'
+		JOIN group_members gm ON gm.group_id = a.group_id AND gm.device_id = $2
+		WHERE a.tenant_id = $1 AND a.mode = 'include'
 		  AND NOT EXISTS (
 		      SELECT 1 FROM assignments x
-		      JOIN group_members gx ON gx.group_id = x.group_id AND gx.device_id = $1
-		      WHERE x.mode = 'exclude'
+		      JOIN group_members gx ON gx.group_id = x.group_id AND gx.device_id = $2
+		      WHERE x.tenant_id = $1 AND x.mode = 'exclude'
 		        AND x.item_kind = a.item_kind AND x.item_id = a.item_id)
-		ORDER BY a.item_kind, a.item_id, a.created_at DESC`, deviceID)
+		ORDER BY a.item_kind, a.item_id, a.created_at DESC`, DefaultTenantID, deviceID)
 	if err != nil {
 		return nil, err
 	}
