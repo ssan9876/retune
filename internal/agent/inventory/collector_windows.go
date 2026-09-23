@@ -109,6 +109,7 @@ func (WindowsCollector) Collect(_ context.Context) (protocol.Inventory, error) {
 		Name: strings.TrimSpace(o.Caption), Version: o.Version, Build: o.BuildNumber,
 		InstallDate: timePtr(o.InstallDate), LastBoot: timePtr(o.LastBootUpTime),
 	}
+	inv.OS.UBR = updateBuildRevision()
 
 	var csRows []win32ComputerSystem
 	if err := queryOne("SELECT Manufacturer, Model, TotalPhysicalMemory FROM Win32_ComputerSystem", &csRows); err != nil {
@@ -421,4 +422,21 @@ func lastUpdateInstalled() *time.Time {
 		}
 	}
 	return timePtr(latest)
+}
+
+// updateBuildRevision reads how far this feature release has been patched,
+// the 2605 in 26100.2605. WMI's BuildNumber stops at the dot.
+func updateBuildRevision() *int {
+	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE\Microsoft\Windows NT\CurrentVersion`,
+		registry.QUERY_VALUE|registry.WOW64_64KEY)
+	if err != nil {
+		return nil
+	}
+	defer k.Close()
+	ubr, _, err := k.GetIntegerValue("UBR")
+	if err != nil {
+		return nil
+	}
+	n := int(ubr)
+	return &n
 }

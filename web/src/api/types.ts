@@ -280,6 +280,13 @@ export interface Setting {
   active_hours_start?: number;
   active_hours_end?: number;
   auto_restart?: boolean;
+  quality_deadline_days?: number;
+  feature_deadline_days?: number;
+  deadline_grace_days?: number;
+  pause_quality_from?: string;
+  pause_feature_from?: string;
+  target_product?: string;
+  target_version?: string;
   require_encryption?: boolean;
   method?: string;
   escrow_recovery_key?: boolean;
@@ -409,6 +416,8 @@ export interface ComplianceRule {
   profile_id?: string;
   /** firewall_enabled: the profiles to check; absent means all three. */
   profiles?: string[];
+  /** os_build_min_per_release: base build -> minimum patched build. */
+  minimums?: Record<string, string>;
 }
 
 export interface CompliancePolicy {

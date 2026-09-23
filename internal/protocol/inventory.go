@@ -60,9 +60,13 @@ type FirewallProfileState struct {
 
 // OSInfo describes the operating system.
 type OSInfo struct {
-	Name        string     `json:"name"`
-	Version     string     `json:"version"`
-	Build       string     `json:"build"`
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	Build   string `json:"build"`
+	// UBR is the update build revision, the part after the dot in
+	// 26100.2605: how far a feature release has been patched. Nil when the
+	// agent is too old to report it.
+	UBR         *int       `json:"ubr,omitempty"`
 	InstallDate *time.Time `json:"install_date,omitempty"`
 	LastBoot    *time.Time `json:"last_boot,omitempty"`
 }

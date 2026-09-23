@@ -13,13 +13,13 @@ The working list for making Retune usable by an enterprise, started on 2026-09-2
 | Admins limited to some device groups (M18) | #10 |
 | Audit log streaming to a SIEM, filters, CSV export | #11 |
 | Authenticator hardening: one use per TOTP code, secrets sealed at rest | #12 |
+| Uploaded MSI/EXE apps with detection rules and in-app upgrades | #13 |
 
 ## To do, in order
 
 | # | item | why an enterprise needs it | notes |
 |---|---|---|---|
-| 3 | **Uploaded line-of-business apps**: MSI/EXE packages, detection rules, supersedence | most enterprise software isn't in winget | in progress; spec: `drafts/app-packages-spec.md` |
-| 4 | **Windows Update rings**: deadlines, pause, target release, patch compliance | patching on a schedule is table stakes | draft: `drafts/update-rings-spec.md`; applying needs a VM to verify |
+| 4 | **Windows Update rings**: deadlines, pause, target release, patch compliance | patching on a schedule is table stakes | in progress; applying needs a VM to verify |
 | 5 | **Remote actions**: lock, collect logs, local admin password rotation (LAPS-style), wipe | lost or stolen devices, helpdesk support | draft: `drafts/remote-actions-spec.md`; built against fakes, needs a VM to verify |
 | 6 | **Signed command payloads**: scripts and wipes signed by an operations key the agent trusts | a compromised server can't run arbitrary code | draft: `drafts/signed-commands-spec.md` |
 | 7 | **Certificate, Wi-Fi and VPN profiles** | network access on managed devices | draft: `drafts/network-profiles-spec.md` |

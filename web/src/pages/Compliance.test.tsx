@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import Compliance from "./Compliance";
+import Compliance, { parseMinimums } from "./Compliance";
 
 const fetchMock = vi.fn();
 
@@ -377,5 +377,19 @@ describe("Compliance", () => {
     await userEvent.click(screen.getByText("Baseline security"));
     const link = await screen.findByRole("link", { name: "Export CSV" });
     expect(link).toHaveAttribute("href", "/api/admin/v1/compliance-policies/pol-1/devices/export.csv");
+  });
+});
+
+describe("parseMinimums", () => {
+  it("keys each patched build by its release", () => {
+    expect(parseMinimums("26100.2605\n  22631.4751 \r\n\n")).toEqual({
+      "26100": "26100.2605",
+      "22631": "22631.4751",
+    });
+  });
+
+  it("keeps a line that isn't a build, so it can be flagged", () => {
+    expect(parseMinimums("24H2")).toEqual({ "24H2": "" });
+    expect(parseMinimums("26100")).toEqual({ "26100": "" });
   });
 });

@@ -119,6 +119,57 @@ function describe(s: Setting): string {
   }
 }
 
+/** today is the local date as YYYY-MM-DD, what a pause starts from. */
+export function today(now = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/** pauseEnds is when Windows lifts a pause that started on from: 35 days later. */
+export function pauseEnds(from: string): string {
+  const [y, m, d] = from.split("-").map(Number);
+  const end = new Date(y, m - 1, d + 35);
+  return today(end);
+}
+
+/** PauseField pauses one kind of update from a date, and says when it lapses. */
+function PauseField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string | undefined;
+  onChange: (value: string | undefined) => void;
+}) {
+  const lapsed = value !== undefined && pauseEnds(value) < today();
+  return (
+    <Field
+      label={label}
+      hint={
+        value
+          ? lapsed
+            ? `This pause ended on ${pauseEnds(value)}. Remove it, or pause again.`
+            : `Paused until ${pauseEnds(value)}; Windows lifts a pause after 35 days on its own.`
+          : "Stops these updates for 35 days, for when one is causing trouble."
+      }
+    >
+      {value ? (
+        <div className="inline-field">
+          <input type="date" value={value} onChange={(e) => onChange(e.target.value || undefined)} />
+          <Button variant="quiet" onClick={() => onChange(undefined)}>
+            Remove pause
+          </Button>
+        </div>
+      ) : (
+        <Button variant="quiet" onClick={() => onChange(today())}>
+          Pause from today
+        </Button>
+      )}
+    </Field>
+  );
+}
+
 /** SettingFields renders the fields the chosen kind needs, and nothing else. */
 function SettingFields({
   setting,
@@ -355,6 +406,88 @@ function SettingFields({
             <option value="false">Never</option>
             <option value="true">Allowed</option>
           </select>
+        </Field>
+
+        <h4 className="settings__subhead">Deadlines</h4>
+        <Field
+          label="Install quality updates within (days)"
+          hint="Once an update is offered, it installs — and the machine restarts — by this many days, whatever the user does. Empty leaves it alone."
+        >
+          <input
+            type="number"
+            min={0}
+            max={30}
+            value={setting.quality_deadline_days ?? ""}
+            onChange={(e) => set({ quality_deadline_days: numberOrUndefined(e.target.value) })}
+          />
+        </Field>
+        <Field label="Install feature updates within (days)">
+          <input
+            type="number"
+            min={0}
+            max={30}
+            value={setting.feature_deadline_days ?? ""}
+            onChange={(e) => set({ feature_deadline_days: numberOrUndefined(e.target.value) })}
+          />
+        </Field>
+        {setting.quality_deadline_days !== undefined || setting.feature_deadline_days !== undefined ? (
+          <Field
+            label="Grace period (days)"
+            hint="Extra days for a machine that was off when the deadline passed, so it isn't restarted the moment it comes back."
+          >
+            <input
+              type="number"
+              min={0}
+              max={7}
+              value={setting.deadline_grace_days ?? ""}
+              onChange={(e) => set({ deadline_grace_days: numberOrUndefined(e.target.value) })}
+            />
+          </Field>
+        ) : null}
+
+        <h4 className="settings__subhead">Pause</h4>
+        <PauseField
+          label="Pause quality updates"
+          value={setting.pause_quality_from}
+          onChange={(v) => set({ pause_quality_from: v })}
+        />
+        <PauseField
+          label="Pause feature updates"
+          value={setting.pause_feature_from}
+          onChange={(v) => set({ pause_feature_from: v })}
+        />
+
+        <h4 className="settings__subhead">Feature release</h4>
+        <Field
+          label="Stay on"
+          hint="Holds machines on one Windows release — they still get its monthly updates — until you choose another. Empty leaves it alone."
+        >
+          <div className="inline-field">
+            <select
+              aria-label="Target product"
+              value={setting.target_product ?? ""}
+              onChange={(e) =>
+                set(
+                  e.target.value === ""
+                    ? { target_product: undefined, target_version: undefined }
+                    : { target_product: e.target.value },
+                )
+              }
+            >
+              <option value="">Leave alone</option>
+              <option value="Windows 11">Windows 11</option>
+              <option value="Windows 10">Windows 10</option>
+            </select>
+            {setting.target_product ? (
+              <input
+                aria-label="Target version"
+                className="mono"
+                placeholder="24H2"
+                value={setting.target_version ?? ""}
+                onChange={(e) => set({ target_version: e.target.value.trim().toUpperCase() || undefined })}
+              />
+            ) : null}
+          </div>
         </Field>
       </>
     );

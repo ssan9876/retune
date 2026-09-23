@@ -41,3 +41,24 @@
   gap: var(--space-2);
   padding: 0 var(--space-2);
 }
+
+/* The Windows Update form's groups: deadlines, pause, feature release. */
+.settings__subhead {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  margin: var(--space-4) 0 var(--space-2);
+}
+
+/* A control with a companion beside it, wrapping on a narrow screen. */
+.inline-field {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.inline-field > input,
+.inline-field > select {
+  flex: 1 1 8rem;
+  min-width: 0;
+}

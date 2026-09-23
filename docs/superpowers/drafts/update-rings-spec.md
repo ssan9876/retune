@@ -1,6 +1,6 @@
 # M20 — Windows Update rings: deadlines, pause, target release, patch compliance
 
-Status: self-approved overnight under the user's standing directive; decisions ledgered for morning review. Builds on M1–M19 (extends M8's `windows_update` setting and M12's rule engine). **No update policy is changed on this machine** (standing rule) — handler changes are tested through the registry translation with fakes.
+Status: built in the update-rings PR; see "As built" below. Originally self-approved overnight under the user's standing directive; decisions ledgered for morning review. Builds on M1–M19 (extends M8's `windows_update` setting and M12's rule engine). **No update policy is changed on this machine** (standing rule) — handler changes are tested through the registry translation with fakes.
 
 ## 1. What and why
 
@@ -37,3 +37,10 @@ The profile editor's Windows Update form gains the new fields (deadline sliders,
 ## 5. Testing
 
 Validation (bounds, pause window, target release shape); `UpdatePolicyValues` translation golden tests for every new field and their combinations; revert via the existing registry handler with a fake; rule-engine tables for both rules; console tests. No update policy is applied to this machine.
+
+## As built
+
+- **Pauses** are `pause_quality_from` / `pause_feature_from`, a start date, rather than "pause until". That is what the policy takes (`Pause*UpdatesStartTime`), and Windows ends every pause 35 days after it. A pause turns the matching deferral policy on at 0 days if the profile doesn't defer, because the start time belongs to that policy. The `PauseQualityUpdates` DWORD from older Windows 10 isn't written.
+- **Target release** is two flat fields, `target_product` ("Windows 10" / "Windows 11") and `target_version` (e.g. `24H2`), rather than an object.
+- **`update_deadline_met`** already existed as `updates_within` (M12), so no new rule was added for it.
+- **`os_build_min_per_release`** needed the patch level. The agent now reports `os.ubr` from `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\UBR`. A device whose agent predates this is reported unknown. The console takes one full build per line and derives the release from it.
