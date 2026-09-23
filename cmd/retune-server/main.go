@@ -42,7 +42,8 @@ commands:
   command queue [flags]  queue a command (--device, --type, --script, --script-file, --timeout, --delay, --message, --ttl)
   command show <id>      show a command and its result
   bootstrap-admin        create the first console account (--email, --password, --role)
-  admin <subcommand>     manage console accounts (list, create, password, totp, disable, enable)`
+  admin <subcommand>     manage console accounts (list, create, password, totp, disable, enable)
+  rotate-secret-key      re-seal every stored secret under a new server key (--dry-run, --out)`
 
 func main() {
 	if err := run(context.Background(), os.Args[1:], os.Getenv, os.Stdout); err != nil {
@@ -78,6 +79,8 @@ func run(ctx context.Context, args []string, getenv func(string) string, out io.
 		return bootstrapAdminCmd(ctx, args[1:], getenv, out)
 	case "admin":
 		return adminCmd(ctx, args[1:], getenv, out)
+	case "rotate-secret-key":
+		return rotateKeyCmd(ctx, args[1:], getenv, out)
 	default:
 		return fmt.Errorf("unknown command %q\n%s", args[0], usage)
 	}

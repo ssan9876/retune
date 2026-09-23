@@ -40,9 +40,9 @@ func (s *Service) now() time.Time {
 	return time.Now()
 }
 
-// context binds a ciphertext to the device and volume it came from, so a row
+// EscrowContext binds a ciphertext to the device and volume it came from, so a row
 // copied to another device does not decrypt.
-func escrowContext(deviceID uuid.UUID, volumeID string) []byte {
+func EscrowContext(deviceID uuid.UUID, volumeID string) []byte {
 	return []byte(deviceID.String() + "/" + strings.ToUpper(volumeID))
 }
 
@@ -62,7 +62,7 @@ func (s *Service) Escrow(ctx context.Context, deviceID uuid.UUID, volumeID, meth
 		return errors.New("this server has no key to protect recovery keys with")
 	}
 
-	ciphertext, nonce, err := s.Key.Seal([]byte(recoveryPassword), escrowContext(deviceID, volumeID))
+	ciphertext, nonce, err := s.Key.Seal([]byte(recoveryPassword), EscrowContext(deviceID, volumeID))
 	if err != nil {
 		return err
 	}
@@ -109,7 +109,7 @@ func (s *Service) Reveal(ctx context.Context, id uuid.UUID, actor, reason string
 		return store.BitLockerKey{}, "", err
 	}
 
-	plaintext, err := s.Key.Open(k.Ciphertext, k.Nonce, escrowContext(k.DeviceID, k.VolumeID))
+	plaintext, err := s.Key.Open(k.Ciphertext, k.Nonce, EscrowContext(k.DeviceID, k.VolumeID))
 	if err != nil {
 		return store.BitLockerKey{}, "", err
 	}

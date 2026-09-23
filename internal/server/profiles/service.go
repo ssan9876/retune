@@ -127,6 +127,42 @@ func (s *Service) seal(profileID uuid.UUID, setting protocol.Setting) (*protocol
 	}, nil
 }
 
+// ResealSettings re-encrypts the secrets in one version's stored settings from
+// one server key to another, for key rotation, and returns the settings and
+// the version hash to store. A version with no secrets is unchanged.
+func ResealSettings(from, to *secrets.Key, profileID uuid.UUID, stored []byte) (settings []byte, hash string, changed bool, err error) {
+	var list []protocol.Setting
+	if err := json.Unmarshal(stored, &list); err != nil {
+		return nil, "", false, fmt.Errorf("decode stored settings: %w", err)
+	}
+	opener := &Service{Key: from}
+	sealer := &Service{Key: to}
+	for i, st := range list {
+		if st.SealedSecret == nil {
+			continue
+		}
+		opened, err := opener.ForAgent(profileID, []protocol.Setting{st})
+		if err != nil {
+			return nil, "", false, err
+		}
+		sealed, err := sealer.seal(profileID, opened[0])
+		if err != nil {
+			return nil, "", false, err
+		}
+		list[i].SealedSecret = sealed
+		changed = true
+	}
+	if !changed {
+		return stored, "", false, nil
+	}
+	if settings, err = json.Marshal(list); err != nil {
+		return nil, "", false, err
+	}
+	// The hash counts a secret by its MAC, which the new key changes.
+	hash, err = versionHash(settings)
+	return settings, hash, true, err
+}
+
 // versionHash identifies stored settings for "did anything change": a sealed
 // secret counts by its MAC, since its ciphertext differs every time it is
 // sealed.

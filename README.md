@@ -529,6 +529,35 @@ Migrations run at startup, so a dump from an older release is brought forward
 on first boot. Restoring the database without `DATA_DIR` is not a restore: the
 devices in it are authenticated by certificates only that CA can vouch for.
 
+### Rotating the secret key
+
+If `secret.key` may have been exposed — a backup that went astray, a server
+that was compromised — retire it: stop every server, then
+
+```bash
+retune-server rotate-secret-key --dry-run   # proves the current key opens everything
+retune-server rotate-secret-key
+```
+
+and start the servers again. Every authenticator secret, BitLocker recovery
+key, local admin password, webhook secret and Wi-Fi or VPN passphrase is
+decrypted with the old key and re-encrypted with a new one, in a single
+transaction: either all of it moves or none does. The command refuses to run
+while any server is connected to the database (each running server holds a
+lock that says so), and changes nothing if a stored value doesn't open with
+the key it was given.
+
+The new key replaces `DATA_DIR/secret.key`; the old one is kept beside it as
+`secret.key.old-<time>`. Copy the new key to every server and into your
+backups, then destroy the old one and any backup that holds it. With
+`CA_KEY_SOURCE=env`, pass `--out FILE`: the new key is written there, and you
+set `SECRET_KEY` to it on every server before starting them. The rotation is
+recorded in the audit log as `secret_key.rotated`.
+
+Old database backups are still sealed under the old key, which is what makes
+destroying it worthwhile, and also why a restore from before the rotation
+needs the key from before it.
+
 ## Enroll a machine
 
 A machine that enrolls with the same serial number or SMBIOS UUID as a device

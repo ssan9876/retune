@@ -63,6 +63,9 @@ type App struct {
 	Sweeps *sweeper.Stats
 	// SSO is nil unless single sign-on is configured.
 	SSO *auth.OIDC
+
+	// releaseRunning lets go of the lock that says this server is running.
+	releaseRunning func()
 }
 
 // New migrates the database, loads (or creates) the CA, and builds handlers.
@@ -74,13 +77,29 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	if err != nil {
 		return nil, err
 	}
+	// Held for as long as the server runs, so the secret key can't be
+	// rotated underneath it. A rotation in progress holds this start until
+	// it is done.
+	releaseRunning, err := st.HoldRunningLock(ctx)
+	if err != nil {
+		st.Close()
+		return nil, err
+	}
+	// On any failure from here the deferred cleanup lets go of the lock and
+	// closes the pool.
+	built := false
+	defer func() {
+		if !built {
+			releaseRunning()
+			st.Close()
+		}
+	}()
 	var keys ca.KeyStore = ca.FileKeyStore{Dir: filepath.Join(cfg.DataDir, "ca")}
 	if cfg.CAKeySource == "env" {
 		keys = ca.EnvKeyStore{CertPEM: os.Getenv("CA_CERT_PEM"), KeyPEM: os.Getenv("CA_KEY_PEM")}
 	}
 	authority, err := ca.LoadOrCreate(ctx, keys, time.Now())
 	if err != nil {
-		st.Close()
 		return nil, err
 	}
 	// Behind a proxy there is no handshake here, so the device certificate
@@ -92,7 +111,6 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	} else {
 		serverCert, err := loadServerCert(cfg, authority)
 		if err != nil {
-			st.Close()
 			return nil, err
 		}
 		tlsCfg = &tls.Config{
@@ -122,7 +140,6 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	}
 	secretKey, err := serverSecret(cfg)
 	if err != nil {
-		st.Close()
 		return nil, err
 	}
 	locker := &bitlocker.Service{Store: st, Key: secretKey, Now: time.Now}
@@ -146,7 +163,6 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		Limiter: auth.NewLimiter(10, 15*time.Minute, time.Now), Issuer: "Retune", Key: secretKey,
 	}
 	if n, err := authSvc.SealTOTPSecrets(ctx); err != nil {
-		st.Close()
 		return nil, fmt.Errorf("seal authenticator secrets: %w", err)
 	} else if n > 0 {
 		log.Info("sealed authenticator secrets stored by an earlier version", "count", n)
@@ -181,7 +197,8 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	root.Handle("/api/admin/v1/", admin.Routes())
 	root.Handle("/", console.Handler())
 
-	return &App{
+	built = true
+	a := &App{
 		Store:         st,
 		CA:            authority,
 		Enroll:        svc,
@@ -201,11 +218,19 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		TLSConfig:     tlsCfg,
 		Sweeps:        sweeps,
 		SSO:           sso,
-	}, nil
+	}
+	a.releaseRunning = releaseRunning
+	return a, nil
 }
 
 // Close releases the database pool.
-func (a *App) Close() { a.Store.Close() }
+func (a *App) Close() {
+	if a.releaseRunning != nil {
+		a.releaseRunning()
+		a.releaseRunning = nil
+	}
+	a.Store.Close()
+}
 
 func loadServerCert(cfg config.Server, authority *ca.CA) (tls.Certificate, error) {
 	switch cfg.TLSMode {

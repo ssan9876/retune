@@ -105,5 +105,15 @@ func openTOTP(key *secrets.Key, adminID uuid.UUID, stored string) (string, error
 	return string(plain), nil
 }
 
+// ResealTOTP re-encrypts a stored authenticator secret from one server key to
+// another, for key rotation.
+func ResealTOTP(from, to *secrets.Key, adminID uuid.UUID, stored string) (string, error) {
+	plain, err := openTOTP(from, adminID, stored)
+	if err != nil {
+		return "", err
+	}
+	return sealTOTP(to, adminID, plain)
+}
+
 // IsSealedTOTP reports whether a stored secret is already sealed.
 func IsSealedTOTP(stored string) bool { return strings.HasPrefix(stored, sealedPrefix) }

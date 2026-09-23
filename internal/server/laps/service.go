@@ -44,9 +44,9 @@ func (s *Service) now() time.Time {
 	return time.Now()
 }
 
-// sealContext binds a ciphertext to its device and account, so a row copied
+// SealContext binds a ciphertext to its device and account, so a row copied
 // to another device or account doesn't decrypt.
-func sealContext(deviceID uuid.UUID, account string) []byte {
+func SealContext(deviceID uuid.UUID, account string) []byte {
 	return []byte("admin-password:" + deviceID.String() + "/" + strings.ToUpper(account))
 }
 
@@ -83,7 +83,7 @@ func (s *Service) Escrow(ctx context.Context, deviceID uuid.UUID, req protocol.A
 	if c.Status != store.CommandRunning {
 		return fmt.Errorf("%w: the command is %s, not running", ErrConflict, c.Status)
 	}
-	ciphertext, nonce, err := s.Key.Seal([]byte(req.Password), sealContext(deviceID, account))
+	ciphertext, nonce, err := s.Key.Seal([]byte(req.Password), SealContext(deviceID, account))
 	if err != nil {
 		return err
 	}
@@ -143,7 +143,7 @@ func (s *Service) Reveal(ctx context.Context, id uuid.UUID, actor, reason string
 	if err != nil {
 		return store.AdminPassword{}, "", err
 	}
-	plaintext, err := s.Key.Open(p.Ciphertext, p.Nonce, sealContext(p.DeviceID, p.Account))
+	plaintext, err := s.Key.Open(p.Ciphertext, p.Nonce, SealContext(p.DeviceID, p.Account))
 	if err != nil {
 		return store.AdminPassword{}, "", err
 	}

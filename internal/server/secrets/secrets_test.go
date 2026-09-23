@@ -125,3 +125,19 @@ func TestFromHex(t *testing.T) {
 		t.Errorf("a valid key should be accepted, got %v", err)
 	}
 }
+
+func TestOpenRefusesADamagedNonce(t *testing.T) {
+	k, _, err := secrets.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ct, nonce, err := k.Seal([]byte("x"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range [][]byte{nil, nonce[:4]} {
+		if _, err := k.Open(ct, bad, nil); err == nil {
+			t.Errorf("nonce of %d bytes opened", len(bad))
+		}
+	}
+}
