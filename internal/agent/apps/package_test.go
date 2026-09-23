@@ -157,7 +157,8 @@ func TestPackagesInstallMSI(t *testing.T) {
 		t.Fatalf("commands %+v, file present while running %v", run.commands, run.present)
 	}
 	c := run.commands[0]
-	if !strings.HasSuffix(strings.ToLower(c.Path), `system32\msiexec.exe`) {
+	// The separator is the platform's; the agent only runs this on Windows.
+	if filepath.Base(filepath.Dir(c.Path)) != "System32" || filepath.Base(c.Path) != "msiexec.exe" {
 		t.Errorf("path = %q", c.Path)
 	}
 	want := `msiexec.exe /i "` + file + `" /qn /norestart TARGETDIR="C:\Contoso"`
