@@ -117,4 +117,5 @@ func (h *Handler) mountResources(mux *http.ServeMux, base string) {
 	h.handle(mux, "GET "+base+"/dashboard", h.read(h.dashboard))
 
 	h.handle(mux, "GET "+base+"/audit", h.readFleet(h.listAudit))
+	h.handle(mux, "GET "+base+"/audit/export.csv", h.readFleet(h.exportAudit))
 }

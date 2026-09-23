@@ -326,3 +326,39 @@ func TestSessionMaxLifetime(t *testing.T) {
 		}
 	}
 }
+
+func TestAuditStream(t *testing.T) {
+	load := func(extra map[string]string) (Server, error) {
+		m := map[string]string{"DATABASE_URL": "postgres://x", "PUBLIC_URL": "https://h"}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return LoadServer(env(m))
+	}
+	if c, err := load(nil); err != nil || c.AuditStream.Enabled() {
+		t.Fatalf("unset: %+v %v", c.AuditStream, err)
+	}
+	c, err := load(map[string]string{
+		"AUDIT_SYSLOG_ADDRESS": "tls://siem.example.com:6514",
+		"AUDIT_WEBHOOK_URL":    "https://http-inputs.example.splunkcloud.com/services/collector/raw",
+		"AUDIT_WEBHOOK_HEADER": "Authorization: Splunk 0000",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := c.AuditStream
+	if a.SyslogNetwork != "tls" || a.SyslogAddress != "siem.example.com:6514" || a.WebhookHeader != "Authorization: Splunk 0000" {
+		t.Fatalf("config = %+v", a)
+	}
+	for name, bad := range map[string]map[string]string{
+		"no port":         {"AUDIT_SYSLOG_ADDRESS": "tcp://siem.example.com"},
+		"wrong scheme":    {"AUDIT_SYSLOG_ADDRESS": "http://siem.example.com:514"},
+		"plain http hook": {"AUDIT_WEBHOOK_URL": "http://siem.example.com/in"},
+		"header no hook":  {"AUDIT_WEBHOOK_HEADER": "Authorization: x"},
+		"header no colon": {"AUDIT_WEBHOOK_URL": "https://s/in", "AUDIT_WEBHOOK_HEADER": "Authorization x"},
+	} {
+		if _, err := load(bad); err == nil {
+			t.Errorf("%s should be refused", name)
+		}
+	}
+}

@@ -46,6 +46,9 @@ type fileConfig struct {
 	OIDCReadOnlyGroups     string `yaml:"oidc_readonly_groups"`
 	OIDCDisplayName        string `yaml:"oidc_display_name"`
 	OIDCDisableLocalLogin  *bool  `yaml:"oidc_disable_local_login"`
+	AuditSyslogAddress     string `yaml:"audit_syslog_address"`
+	AuditWebhookURL        string `yaml:"audit_webhook_url"`
+	AuditWebhookHeader     string `yaml:"audit_webhook_header"`
 	// Pointers, because 0 is a meaningful value here (keep forever) and has
 	// to be told apart from a key that was never written.
 	AuditRetentionDays      *int `yaml:"audit_retention_days"`
@@ -150,6 +153,9 @@ func loadConfigFile(getenv func(string) string) (map[string]string, error) {
 		set("SMTP_STARTTLS", strconv.FormatBool(*f.SMTPStartTLS))
 	}
 	set("METRICS_TOKEN", f.MetricsToken)
+	set("AUDIT_SYSLOG_ADDRESS", f.AuditSyslogAddress)
+	set("AUDIT_WEBHOOK_URL", f.AuditWebhookURL)
+	set("AUDIT_WEBHOOK_HEADER", f.AuditWebhookHeader)
 	set("OIDC_ISSUER", f.OIDCIssuer)
 	set("OIDC_CLIENT_ID", f.OIDCClientID)
 	set("OIDC_CLIENT_SECRET", f.OIDCClientSecret)

@@ -97,6 +97,9 @@ session_ttl_hours: 12
 | `command_retention_days` | `90` | how long finished commands and their output are kept; `0` keeps them forever |
 | `script_run_retention_days` | `90` | how long script run history is kept; `0` keeps it forever |
 | `app_install_retention_days` | `90` | how long app install history is kept; `0` keeps it forever |
+| `audit_syslog_address` | — | send the audit log to a syslog server: `udp://`, `tcp://` or `tls://host:port` |
+| `audit_webhook_url` | — | send the audit log to an HTTPS endpoint as newline-delimited JSON |
+| `audit_webhook_header` | — | one header sent with each webhook post, as `Name: value`, e.g. an `Authorization` header |
 | `oidc_issuer`, `oidc_client_id`, `oidc_client_secret` | — | turn on single sign-on; all three or none |
 | `oidc_admin_groups`, `oidc_readonly_groups` | — | comma-separated group names that grant each role |
 | `oidc_groups_claim` | `groups` | the ID token claim that lists a person's groups |
@@ -353,6 +356,50 @@ rows per table per run, so the first run on a large, old database spreads
 itself over a few hours rather than holding one long lock. Each run that
 deletes anything leaves one `retention.pruned` entry in the audit log with
 the counts. Alert delivery history is kept for 30 days and has no setting.
+
+## The audit log
+
+Everything an admin, an API token or the server itself changes is written to
+the audit log. **Audit** in the console lists it newest first, filtered by
+who, by action (both match part of the text, ignoring case) and by date, and
+its **Export CSV** link (`GET /audit/export.csv` on the admin API, which takes
+the listing's `actor`, `action`, `since` and `until` parameters) downloads
+whatever the filters show, guarded against spreadsheet formulas like the other
+exports.
+
+### Sending it to a SIEM
+
+Set either destination, or both, and the server copies each audit entry there:
+
+- `AUDIT_SYSLOG_ADDRESS`, as `tls://siem.example.com:6514`, `tcp://…:514` or
+  `udp://…:514`. Each entry is one RFC 5424 message, facility 13 (log audit),
+  severity 5 (notice), app name `retune`, the action as the message ID and the
+  entry as JSON for the text. TCP and TLS use octet-counted framing (RFC 6587);
+  TLS checks the server's certificate against the system's trusted roots.
+- `AUDIT_WEBHOOK_URL`, an `https://` URL that is posted batches of up to 500
+  entries as newline-delimited JSON (`application/x-ndjson`), with
+  `AUDIT_WEBHOOK_HEADER` sent alongside, e.g.
+  `Authorization: Bearer <token>`. Anything but a 2xx answer fails the batch,
+  and redirects aren't followed.
+
+Each entry looks like:
+
+```json
+{"id":"0192…","at":"2026-09-22T10:00:00.123456Z","actor":"alice","action":"device.retired","target_kind":"device","target_id":"0191…","details":{"hostname":"PC-1"}}
+```
+
+Delivery is at least once and in order. Entries are sent every 30 seconds,
+once they are two minutes old (an entry is stamped when its change begins, so
+this leaves time for a slow change to commit before later ones are sent). A
+destination that is down is retried from the same place on the next run, and
+the server records how far each destination has got, so a restart neither
+loses nor repeats more than one batch; a receiver that must not see a
+duplicate should key on `id`. A destination starts from when it is first
+configured: to load earlier history into a SIEM, use the CSV export.
+
+The destinations are server settings, not console ones, so an admin can't
+quietly redirect the record of what admins do. The `audit.stream` sweeper job
+on `/metrics` shows whether sending is working, and failures are logged.
 
 ## Backups
 

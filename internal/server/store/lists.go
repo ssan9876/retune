@@ -1,6 +1,8 @@
 package store
 
 import (
+	"time"
+	"encoding/json"
 	"context"
 
 	"github.com/google/uuid"
@@ -124,12 +126,37 @@ func (q *Queries) ListEnrollmentTokens(ctx context.Context) ([]EnrollmentToken, 
 	return out, rows.Err()
 }
 
+// AuditFilter narrows the audit log. Actor and Action match a substring,
+// case-insensitively; Since and Until bound the time, either left zero for
+// no bound.
+type AuditFilter struct {
+	Actor  string
+	Action string
+	Since  time.Time
+	Until  time.Time
+	Page   Page
+}
+
 // ListAuditPage returns one page of audit entries, newest first, and the total.
-func (q *Queries) ListAuditPage(ctx context.Context, page Page) ([]AuditEntry, int, error) {
-	p := page.Normalized()
+func (q *Queries) ListAuditPage(ctx context.Context, f AuditFilter) ([]AuditEntry, int, error) {
+	p := f.Page.Normalized()
+	var since, until *time.Time
+	if !f.Since.IsZero() {
+		since = &f.Since
+	}
+	if !f.Until.IsZero() {
+		until = &f.Until
+	}
 	rows, err := q.db.Query(ctx, `
-		SELECT actor, action, target_kind, target_id, details, at, count(*) OVER () AS total
-		FROM audit_log WHERE tenant_id = $3 ORDER BY at DESC, id DESC LIMIT $1 OFFSET $2`, p.Limit, p.Offset, DefaultTenantID)
+		SELECT id, actor, action, target_kind, target_id, details, at, count(*) OVER () AS total
+		FROM audit_log
+		WHERE tenant_id = $3
+		  AND ($4 = '' OR actor ILIKE '%' || $4 || '%')
+		  AND ($5 = '' OR action ILIKE '%' || $5 || '%')
+		  AND ($6::timestamptz IS NULL OR at >= $6)
+		  AND ($7::timestamptz IS NULL OR at < $7)
+		ORDER BY at DESC, id DESC LIMIT $1 OFFSET $2`,
+		p.Limit, p.Offset, DefaultTenantID, f.Actor, f.Action, since, until)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -139,10 +166,10 @@ func (q *Queries) ListAuditPage(ctx context.Context, page Page) ([]AuditEntry, i
 	for rows.Next() {
 		var a AuditEntry
 		var raw []byte
-		if err := rows.Scan(&a.Actor, &a.Action, &a.TargetKind, &a.TargetID, &raw, &a.At, &total); err != nil {
+		if err := rows.Scan(&a.ID, &a.Actor, &a.Action, &a.TargetKind, &a.TargetID, &raw, &a.At, &total); err != nil {
 			return nil, 0, err
 		}
-		if err := unmarshalDetails(raw, &a); err != nil {
+		if err := json.Unmarshal(raw, &a.Details); err != nil {
 			return nil, 0, err
 		}
 		out = append(out, a)

@@ -292,7 +292,7 @@ func TestDeleteClearsEverythingAndAudits(t *testing.T) {
 		t.Errorf("item status rows should be gone: %v %v", err, statuses)
 	}
 
-	audit, _, err := st.Q().ListAuditPage(ctx, store.Page{})
+	audit, _, err := st.Q().ListAuditPage(ctx, store.AuditFilter{Page: store.Page{}})
 	if err != nil {
 		t.Fatal(err)
 	}

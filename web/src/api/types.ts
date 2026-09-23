@@ -130,6 +130,7 @@ export interface Token {
 }
 
 export interface AuditEntry {
+  id: string;
   actor: string;
   action: string;
   target_kind: string;

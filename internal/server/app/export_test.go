@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -249,5 +250,85 @@ func TestExportPolicyDevicesCSVEmpty(t *testing.T) {
 	}
 	if got := strings.TrimRight(string(body), "\r\n"); got != strings.Join(wantHeader, ",") {
 		t.Fatalf("body = %q, want exactly the header row", body)
+	}
+}
+
+// TestAuditFilterAndExport covers the audit log's filters, shared by the
+// listing and the CSV export, and formula-guarding in the export.
+func TestAuditFilterAndExport(t *testing.T) {
+	a, srv := newTestApp(t)
+	admin := signedIn(t, a, srv, store.RoleAdmin)
+	ctx := context.Background()
+	old := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for _, e := range []store.AuditEntry{
+		{Actor: "carol", Action: "device.delete", TargetKind: "device", TargetID: "d1", At: old},
+		{Actor: "=cmd|' /C calc'!A0", Action: "script.create", TargetKind: "script", TargetID: "s1",
+			Details: map[string]any{"name": "@SUM(1)"}},
+	} {
+		if err := a.Store.Q().InsertAudit(ctx, e); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var list struct {
+		Items []struct{ Actor, Action string } `json:"items"`
+		Total int                              `json:"total"`
+	}
+	get := func(q string) {
+		t.Helper()
+		status, body := admin.do(http.MethodGet, "/audit?"+q, nil)
+		if status != http.StatusOK {
+			t.Fatalf("audit?%s: %d %s", q, status, body)
+		}
+		list.Items = nil
+		if err := json.Unmarshal(body, &list); err != nil {
+			t.Fatal(err)
+		}
+	}
+	get("actor=CAROL")
+	if list.Total != 1 || list.Items[0].Action != "device.delete" {
+		t.Fatalf("actor filter: %+v", list)
+	}
+	get("action=script.")
+	if list.Total != 1 || list.Items[0].Action != "script.create" {
+		t.Fatalf("action filter: %+v", list)
+	}
+	get("until=2026-02-01T00:00:00Z")
+	if list.Total != 1 || list.Items[0].Actor != "carol" {
+		t.Fatalf("until filter: %+v", list)
+	}
+	get("since=2026-02-01T00:00:00Z&action=device.delete")
+	if list.Total != 0 {
+		t.Fatalf("since filter: %+v", list)
+	}
+	if status, _ := admin.do(http.MethodGet, "/audit?since=yesterday", nil); status != http.StatusBadRequest {
+		t.Fatalf("bad since: %d", status)
+	}
+
+	status, headers, body := admin.doWithHeaders(http.MethodGet, "/audit/export.csv?action=script.", nil)
+	if status != http.StatusOK {
+		t.Fatalf("export audit: %d %s", status, body)
+	}
+	if cd := headers.Get("Content-Disposition"); !strings.HasPrefix(cd, "attachment") {
+		t.Fatalf("content-disposition = %q", cd)
+	}
+	header, rows := parseCSV(t, body)
+	if strings.Join(header, ",") != "at,actor,action,target_kind,target_id,details,id" {
+		t.Fatalf("header = %v", header)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows = %v", rows)
+	}
+	if !strings.HasPrefix(rows[0][1], "'=") {
+		t.Fatalf("actor cell %q isn't guarded", rows[0][1])
+	}
+	if !strings.Contains(rows[0][5], `"name":"@SUM(1)"`) {
+		t.Fatalf("details cell = %q", rows[0][5])
+	}
+
+	// Everything, unfiltered: the entries above plus the admin's sign-in.
+	_, _, body = admin.doWithHeaders(http.MethodGet, "/audit/export.csv", nil)
+	if _, rows := parseCSV(t, body); len(rows) < 3 {
+		t.Fatalf("unfiltered export has %d rows", len(rows))
 	}
 }

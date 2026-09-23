@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -17,14 +18,19 @@ func (q *Queries) InsertAudit(ctx context.Context, a AuditEntry) error {
 	if err != nil {
 		return fmt.Errorf("marshal audit details: %w", err)
 	}
+	// At is normally left zero, for the database's clock; tests set it.
+	var at *time.Time
+	if !a.At.IsZero() {
+		at = &a.At
+	}
 	id, err := uuid.NewV7()
 	if err != nil {
 		return err
 	}
 	_, err = q.db.Exec(ctx, `
-		INSERT INTO audit_log (id, tenant_id, actor, action, target_kind, target_id, details)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		id, DefaultTenantID, a.Actor, a.Action, a.TargetKind, a.TargetID, b)
+		INSERT INTO audit_log (id, tenant_id, actor, action, target_kind, target_id, details, at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, now()))`,
+		id, DefaultTenantID, a.Actor, a.Action, a.TargetKind, a.TargetID, b, at)
 	return err
 }
 
