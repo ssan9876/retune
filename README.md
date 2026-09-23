@@ -494,6 +494,13 @@ without failing, past about 200. [docs/sizing.md](docs/sizing.md) has the
 numbers, recommended machines by fleet size, and how to measure your own with
 `retune-loadsim`.
 
+## High availability
+
+Two or more servers can run behind a load balancer against one PostgreSQL and
+a shared `DATA_DIR`, with no sticky sessions. Background jobs, migrations,
+alerts, reports and approvals are already safe to run on several at once.
+[docs/high-availability.md](docs/high-availability.md) covers the layout, the
+load balancer, what must be shared, what is still per server, and upgrades.
 ## Backups
 
 Two things have to be backed up, and they have to be backed up together:

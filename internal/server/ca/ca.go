@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io/fs"
 	"math/big"
 	"net"
 	"time"
@@ -42,6 +43,11 @@ func LoadOrCreate(ctx context.Context, ks KeyStore, now time.Time) (*CA, error) 
 			return nil, err
 		}
 		if err := ks.Save(ctx, certPEM, keyPEM); err != nil {
+			if errors.Is(err, fs.ErrExist) {
+				// Another server sharing this directory made one first: use
+				// theirs, once they have finished writing it.
+				return awaitOther(ctx, ks)
+			}
 			return nil, fmt.Errorf("save CA: %w", err)
 		}
 		return c, nil
@@ -50,6 +56,30 @@ func LoadOrCreate(ctx context.Context, ks KeyStore, now time.Time) (*CA, error) 
 		return nil, fmt.Errorf("load CA: %w", err)
 	}
 	return parse(certPEM, keyPEM)
+}
+
+// awaitOther loads the CA another server is creating, waiting a few
+// seconds for it to finish writing.
+func awaitOther(ctx context.Context, ks KeyStore) (*CA, error) {
+	var lastErr error
+	for range 50 {
+		certPEM, keyPEM, err := ks.Load(ctx)
+		if err == nil {
+			c, err := parse(certPEM, keyPEM)
+			if err == nil {
+				return c, nil
+			}
+			lastErr = err
+		} else {
+			lastErr = err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	return nil, fmt.Errorf("another server was creating the CA, and it never became readable: %w", lastErr)
 }
 
 // Load returns the existing CA without creating one, for commands that only
