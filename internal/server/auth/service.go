@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"retune/internal/server/secrets"
 	"retune/internal/server/store"
 )
 
@@ -82,6 +83,9 @@ type Service struct {
 	Issuer     string
 	// LocalLoginDisabled refuses every password sign-in.
 	LocalLoginDisabled bool
+	// Key seals authenticator secrets at rest. Turning TOTP on, and signing in
+	// with it, need it.
+	Key *secrets.Key
 }
 
 // SessionInfo is a freshly created session.
@@ -156,7 +160,22 @@ func (s *Service) Authenticate(ctx context.Context, email, password, totpCode st
 		if totpCode == "" {
 			return store.Admin{}, ErrTOTPRequired
 		}
-		if !ValidateTOTP(admin.TOTPSecret, totpCode) {
+		secret, err := openTOTP(s.Key, admin.ID, admin.TOTPSecret)
+		if err != nil {
+			return store.Admin{}, fmt.Errorf("open the authenticator secret for %s: %w", admin.Email, err)
+		}
+		step, ok := matchTOTP(secret, totpCode, s.Now())
+		if !ok {
+			s.fail(key)
+			return store.Admin{}, ErrTOTPInvalid
+		}
+		// A code is good for a minute or so; whoever watched it being typed
+		// mustn't be able to use it too.
+		fresh, err := s.Store.Q().ClaimTOTPStep(ctx, store.DefaultTenantID, admin.ID, step)
+		if err != nil {
+			return store.Admin{}, err
+		}
+		if !fresh {
 			s.fail(key)
 			return store.Admin{}, ErrTOTPInvalid
 		}
@@ -403,7 +422,11 @@ func (s *Service) EnableTOTP(ctx context.Context, id uuid.UUID, actor string) (s
 		if secret, url, err = NewTOTPSecret(s.Issuer, admin.Email); err != nil {
 			return err
 		}
-		if err := q.UpdateAdminTOTP(ctx, store.DefaultTenantID, id, secret); err != nil {
+		sealed, err := sealTOTP(s.Key, id, secret)
+		if err != nil {
+			return err
+		}
+		if err := q.UpdateAdminTOTP(ctx, store.DefaultTenantID, id, sealed); err != nil {
 			return err
 		}
 		return q.InsertAudit(ctx, store.AuditEntry{
@@ -414,6 +437,26 @@ func (s *Service) EnableTOTP(ctx context.Context, id uuid.UUID, actor string) (s
 		return "", "", err
 	}
 	return secret, url, nil
+}
+
+// SealTOTPSecrets seals any authenticator secret stored in the clear by an
+// earlier version, and reports how many it sealed. The server runs it at
+// startup.
+func (s *Service) SealTOTPSecrets(ctx context.Context) (int, error) {
+	plain, err := s.Store.Q().ListPlainTOTPSecrets(ctx)
+	if err != nil || len(plain) == 0 {
+		return 0, err
+	}
+	for i, p := range plain {
+		sealed, err := sealTOTP(s.Key, p.AdminID, p.Secret)
+		if err != nil {
+			return i, err
+		}
+		if err := s.Store.Q().ReplaceTOTPSecret(ctx, p.TenantID, p.AdminID, p.Secret, sealed); err != nil {
+			return i, err
+		}
+	}
+	return len(plain), nil
 }
 
 // DisableTOTP turns two-factor authentication off for an admin.

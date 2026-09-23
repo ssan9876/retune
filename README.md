@@ -261,6 +261,23 @@ that leaks can therefore neither make replacements for itself to outlive its
 revocation nor read recovery keys out in bulk. Make one token per system, so
 each can be revoked on its own.
 
+## Authenticator codes
+
+An admin who signs in with a password can add an authenticator app (TOTP,
+six digits, 30 seconds) from the console or with `retune-server admin totp
+--email E --enable`. Codes from one step either side of the server's clock
+are accepted, for drift. **Each code works once**: the server remembers the
+latest step used, so a code someone saw being typed can't be used after it,
+and neither can any older code.
+
+The authenticator secret is sealed with the server key in
+`DATA_DIR/secret.key` before it is stored, bound to its account, so a copy
+of the database alone doesn't reveal it. Secrets stored in the clear by an
+earlier version are sealed the first time the new version starts. Run
+`admin totp --enable` where the server's `DATA_DIR` is (inside the container,
+with Compose), or with `CA_KEY_SOURCE=env` and `SECRET_KEY` set as the
+server has them: it won't create a key of its own.
+
 ## Health checks
 
 Two unauthenticated endpoints answer the questions an orchestrator asks. A
@@ -407,9 +424,11 @@ Two things have to be backed up, and they have to be backed up together:
 
 - **`DATA_DIR`** (the `ca` volume in Compose) holds `ca/ca.key` and
   `ca/ca.crt`, the `secret.key` that protects escrowed BitLocker recovery
-  keys, and the uploaded agent builds in `agents/`. Losing it orphans every
-  enrolled device, makes every escrowed recovery key unreadable, and leaves
-  the database pointing at builds that are no longer there.
+  keys, authenticator secrets and alert webhook secrets, and the uploaded
+  agent builds in `agents/`. Losing it orphans every enrolled device, makes
+  every escrowed recovery key unreadable, locks out every admin who signs in
+  with an authenticator code (until `retune-server admin totp --disable`), and
+  leaves the database pointing at builds that are no longer there.
 - **The PostgreSQL database**, which holds everything else.
 
 ```bash
