@@ -49,11 +49,11 @@ func (q *Queries) GetBitLockerKey(ctx context.Context, tenantID, id uuid.UUID) (
 
 // HasBitLockerKey reports whether a volume's key is already escrowed, which is
 // what lets an agent know it has nothing more to do.
-func (q *Queries) HasBitLockerKey(ctx context.Context, deviceID uuid.UUID, volumeID string) (bool, error) {
+func (q *Queries) HasBitLockerKey(ctx context.Context, tenantID, deviceID uuid.UUID, volumeID string) (bool, error) {
 	var ok bool
 	err := q.db.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM bitlocker_keys WHERE device_id = $1 AND volume_id = $2)`,
-		deviceID, volumeID).Scan(&ok)
+		`SELECT EXISTS (SELECT 1 FROM bitlocker_keys WHERE tenant_id = $1 AND device_id = $2 AND volume_id = $3)`,
+		tenantID, deviceID, volumeID).Scan(&ok)
 	return ok, err
 }
 

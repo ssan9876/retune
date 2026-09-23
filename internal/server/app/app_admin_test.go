@@ -91,7 +91,7 @@ func TestLockoutAndDisabledAccount(t *testing.T) {
 
 	// Disable the second account, which is not rate limited, and check the
 	// error it gets. (ops@example.com is locked out, so it would see 429 first.)
-	second, err := a.Store.Q().GetAdminByEmail(ctx, "ops2@example.com")
+	second, err := a.Store.Q().GetAdminByEmail(ctx, store.DefaultTenantID, "ops2@example.com")
 	if err != nil {
 		t.Fatal(err)
 	}

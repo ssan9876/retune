@@ -60,12 +60,13 @@ func (q *Queries) GetAdmin(ctx context.Context, tenantID, id uuid.UUID) (Admin, 
 }
 
 // GetAdminByEmail looks an admin up case-insensitively.
-func (q *Queries) GetAdminByEmail(ctx context.Context, email string) (Admin, error) {
-	return scanAdmin(q.db.QueryRow(ctx, `SELECT `+adminCols+` FROM admins WHERE lower(email) = lower($1)`, email))
+func (q *Queries) GetAdminByEmail(ctx context.Context, tenantID uuid.UUID, email string) (Admin, error) {
+	return scanAdmin(q.db.QueryRow(ctx,
+		`SELECT `+adminCols+` FROM admins WHERE tenant_id = $1 AND lower(email) = lower($2)`, tenantID, email))
 }
 
 func (q *Queries) ListAdmins(ctx context.Context) ([]Admin, error) {
-	rows, err := q.db.Query(ctx, `SELECT `+adminCols+` FROM admins ORDER BY created_at, id`)
+	rows, err := q.db.Query(ctx, `SELECT `+adminCols+` FROM admins WHERE tenant_id = $1 ORDER BY created_at, id`, DefaultTenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +84,7 @@ func (q *Queries) ListAdmins(ctx context.Context) ([]Admin, error) {
 
 func (q *Queries) CountAdmins(ctx context.Context) (int, error) {
 	var n int
-	err := q.db.QueryRow(ctx, `SELECT count(*) FROM admins`).Scan(&n)
+	err := q.db.QueryRow(ctx, `SELECT count(*) FROM admins WHERE tenant_id = $1`, DefaultTenantID).Scan(&n)
 	return n, err
 }
 
@@ -150,7 +151,7 @@ func (q *Queries) DeleteSession(ctx context.Context, tokenHash []byte) error {
 }
 
 func (q *Queries) DeleteSessionsForAdmin(ctx context.Context, adminID uuid.UUID) error {
-	_, err := q.db.Exec(ctx, `DELETE FROM sessions WHERE admin_id = $1`, adminID)
+	_, err := q.db.Exec(ctx, `DELETE FROM sessions WHERE tenant_id = $1 AND admin_id = $2`, DefaultTenantID, adminID)
 	return err
 }
 

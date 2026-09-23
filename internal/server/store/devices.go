@@ -33,16 +33,16 @@ func (q *Queries) GetDevice(ctx context.Context, tenantID, id uuid.UUID) (Device
 
 // FindActiveDeviceByHardware finds an active device with the same non-empty
 // SMBIOS UUID or serial number (used to detect reimaged machines).
-func (q *Queries) FindActiveDeviceByHardware(ctx context.Context, serial, smbiosUUID string) (Device, error) {
+func (q *Queries) FindActiveDeviceByHardware(ctx context.Context, tenantID uuid.UUID, serial, smbiosUUID string) (Device, error) {
 	if serial == "" && smbiosUUID == "" {
 		return Device{}, ErrNotFound
 	}
 	return scanDevice(q.db.QueryRow(ctx, `
 		SELECT `+deviceCols+` FROM devices
-		WHERE status = 'active'
-		  AND ((smbios_uuid <> '' AND smbios_uuid = $1) OR (serial <> '' AND serial = $2))
+		WHERE tenant_id = $1 AND status = 'active'
+		  AND ((smbios_uuid <> '' AND smbios_uuid = $2) OR (serial <> '' AND serial = $3))
 		ORDER BY enrolled_at DESC
-		LIMIT 1`, smbiosUUID, serial))
+		LIMIT 1`, tenantID, smbiosUUID, serial))
 }
 
 func (q *Queries) MarkDeviceReplaced(ctx context.Context, tenantID, oldID, newID uuid.UUID) error {
@@ -67,7 +67,8 @@ func (q *Queries) RecordCheckin(ctx context.Context, tenantID, id uuid.UUID, age
 
 // ListDevices returns every device, ordered by hostname.
 func (q *Queries) ListDevices(ctx context.Context) ([]Device, error) {
-	rows, err := q.db.Query(ctx, `SELECT `+deviceCols+` FROM devices ORDER BY lower(hostname), enrolled_at`)
+	rows, err := q.db.Query(ctx, `SELECT `+deviceCols+` FROM devices WHERE tenant_id = $1 ORDER BY lower(hostname), enrolled_at`,
+		DefaultTenantID)
 	if err != nil {
 		return nil, err
 	}

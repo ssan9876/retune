@@ -122,11 +122,11 @@ func (q *Queries) CreateProfileVersion(ctx context.Context, v ProfileVersion) er
 	return err
 }
 
-func (q *Queries) GetProfileVersion(ctx context.Context, profileID uuid.UUID, version int) (ProfileVersion, error) {
+func (q *Queries) GetProfileVersion(ctx context.Context, tenantID, profileID uuid.UUID, version int) (ProfileVersion, error) {
 	var v ProfileVersion
 	err := q.db.QueryRow(ctx, `
 		SELECT profile_id, version, settings, hash, created_at, created_by
-		FROM profile_versions WHERE profile_id = $1 AND version = $2`, profileID, version).
+		FROM profile_versions WHERE tenant_id = $1 AND profile_id = $2 AND version = $3`, tenantID, profileID, version).
 		Scan(&v.ProfileID, &v.Version, &v.Settings, &v.Hash, &v.CreatedAt, &v.CreatedBy)
 	return v, notFound(err)
 }
@@ -134,7 +134,7 @@ func (q *Queries) GetProfileVersion(ctx context.Context, profileID uuid.UUID, ve
 func (q *Queries) ListProfileVersions(ctx context.Context, profileID uuid.UUID) ([]ProfileVersion, error) {
 	rows, err := q.db.Query(ctx, `
 		SELECT profile_id, version, settings, hash, created_at, created_by
-		FROM profile_versions WHERE profile_id = $1 ORDER BY version DESC`, profileID)
+		FROM profile_versions WHERE tenant_id = $1 AND profile_id = $2 ORDER BY version DESC`, DefaultTenantID, profileID)
 	if err != nil {
 		return nil, err
 	}
@@ -167,8 +167,8 @@ func (q *Queries) SetSettingStatus(ctx context.Context, s SettingStatus) error {
 func (q *Queries) ClearSettingStatus(ctx context.Context, deviceID, profileID uuid.UUID, keep []string) error {
 	_, err := q.db.Exec(ctx, `
 		DELETE FROM profile_setting_status
-		WHERE device_id = $1 AND profile_id = $2 AND NOT (identity = ANY($3::text[]))`,
-		deviceID, profileID, keep)
+		WHERE tenant_id = $1 AND device_id = $2 AND profile_id = $3 AND NOT (identity = ANY($4::text[]))`,
+		DefaultTenantID, deviceID, profileID, keep)
 	return err
 }
 
@@ -176,8 +176,8 @@ func (q *Queries) ClearSettingStatus(ctx context.Context, deviceID, profileID uu
 // one profile, used when the profile stops applying to it.
 func (q *Queries) ClearDeviceProfileStatus(ctx context.Context, deviceID, profileID uuid.UUID) error {
 	_, err := q.db.Exec(ctx,
-		`DELETE FROM profile_setting_status WHERE device_id = $1 AND profile_id = $2`,
-		deviceID, profileID)
+		`DELETE FROM profile_setting_status WHERE tenant_id = $1 AND device_id = $2 AND profile_id = $3`,
+		DefaultTenantID, deviceID, profileID)
 	return err
 }
 

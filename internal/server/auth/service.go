@@ -71,7 +71,7 @@ func (s *Service) Authenticate(ctx context.Context, email, password, totpCode st
 	if s.Limiter != nil && !s.Limiter.Allowed(key) {
 		return store.Admin{}, ErrTooManyAttempts
 	}
-	admin, err := s.Store.Q().GetAdminByEmail(ctx, key)
+	admin, err := s.Store.Q().GetAdminByEmail(ctx, store.DefaultTenantID, key)
 	if errors.Is(err, store.ErrNotFound) {
 		VerifyPassword(dummyHash(), password) // keep the timing similar
 		s.fail(key)

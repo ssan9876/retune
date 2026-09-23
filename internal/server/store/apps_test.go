@@ -40,7 +40,7 @@ func TestAppRoundTrip(t *testing.T) {
 		t.Fatalf("app = %+v", got)
 	}
 
-	v, err := q.GetAppVersion(ctx, a.ID, 1)
+	v, err := q.GetAppVersion(ctx, store.DefaultTenantID, a.ID, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,10 +73,19 @@ func TestAppQueriesAreScopedByTenant(t *testing.T) {
 	if err := q.CreateApp(ctx, a); err != nil {
 		t.Fatal(err)
 	}
+	if err := q.CreateAppVersion(ctx, store.AppVersion{
+		AppID: a.ID, Version: 1, PackageID: "7zip.7zip", Scope: "machine",
+		Hash: "abc", CreatedAt: now, CreatedBy: "ops",
+	}); err != nil {
+		t.Fatal(err)
+	}
 	other := uuid.Must(uuid.NewV7())
 
 	if _, err := q.GetApp(ctx, other, a.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("another tenant must not see the row: %v", err)
+	}
+	if _, err := q.GetAppVersion(ctx, other, a.ID, 1); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("another tenant must not see the version: %v", err)
 	}
 	changed := a
 	changed.Name = "Hacked"
@@ -121,7 +130,7 @@ func TestAppVersionsAreImmutable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	v1, err := q.GetAppVersion(ctx, a.ID, 1)
+	v1, err := q.GetAppVersion(ctx, store.DefaultTenantID, a.ID, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +146,7 @@ func TestAppVersionsAreImmutable(t *testing.T) {
 		t.Fatalf("want newest first, got %+v", versions)
 	}
 
-	if _, err := q.GetAppVersion(ctx, a.ID, 9); !errors.Is(err, store.ErrNotFound) {
+	if _, err := q.GetAppVersion(ctx, store.DefaultTenantID, a.ID, 9); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("want ErrNotFound for a missing version, got %v", err)
 	}
 }
@@ -187,7 +196,7 @@ func TestAppInstallsSurviveDeletion(t *testing.T) {
 	}
 
 	// The version is deleted with the app.
-	if _, err := q.GetAppVersion(ctx, a.ID, 1); !errors.Is(err, store.ErrNotFound) {
+	if _, err := q.GetAppVersion(ctx, store.DefaultTenantID, a.ID, 1); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("versions should be deleted with the app, got %v", err)
 	}
 }

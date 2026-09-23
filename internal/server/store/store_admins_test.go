@@ -41,11 +41,11 @@ func TestAdminQueries(t *testing.T) {
 	if n, _ := q.CountAdmins(ctx); n != 2 {
 		t.Fatalf("CountAdmins = %d", n)
 	}
-	got, err := q.GetAdminByEmail(ctx, "ops@EXAMPLE.com")
+	got, err := q.GetAdminByEmail(ctx, store.DefaultTenantID, "ops@EXAMPLE.com")
 	if err != nil || got.ID != a.ID || got.Role != store.RoleAdmin {
 		t.Fatalf("GetAdminByEmail (case-insensitive) = %+v, err = %v", got, err)
 	}
-	if _, err := q.GetAdminByEmail(ctx, "nobody@example.com"); !errors.Is(err, store.ErrNotFound) {
+	if _, err := q.GetAdminByEmail(ctx, store.DefaultTenantID, "nobody@example.com"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("unknown email err = %v", err)
 	}
 	if err := q.CreateAdmin(ctx, store.Admin{
@@ -98,6 +98,9 @@ func TestAdminQueriesAreScopedByTenant(t *testing.T) {
 
 	if _, err := q.GetAdmin(ctx, other, a.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("another tenant must not see the row: %v", err)
+	}
+	if _, err := q.GetAdminByEmail(ctx, other, a.Email); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("another tenant must not find the row by email: %v", err)
 	}
 	if err := q.UpdateAdminPassword(ctx, other, a.ID, "hacked"); err != nil {
 		t.Fatal(err)

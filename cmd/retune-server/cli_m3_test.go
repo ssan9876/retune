@@ -77,7 +77,7 @@ func TestAdminCLI(t *testing.T) {
 		t.Fatal("bootstrap-admin must refuse once an admin exists")
 	}
 
-	admin, err := st.Q().GetAdminByEmail(ctx, "ops@example.com")
+	admin, err := st.Q().GetAdminByEmail(ctx, store.DefaultTenantID, "ops@example.com")
 	if err != nil || admin.Role != store.RoleAdmin {
 		t.Fatalf("admin = %+v, err = %v", admin, err)
 	}
@@ -93,7 +93,7 @@ func TestAdminCLI(t *testing.T) {
 	}
 
 	runOut(t, e, "admin", "password", "--email", "ops@example.com", "--password", "a whole new password")
-	updated, _ := st.Q().GetAdminByEmail(ctx, "ops@example.com")
+	updated, _ := st.Q().GetAdminByEmail(ctx, store.DefaultTenantID, "ops@example.com")
 	if updated.PasswordHash == admin.PasswordHash {
 		t.Fatal("the password hash must change")
 	}
@@ -101,11 +101,11 @@ func TestAdminCLI(t *testing.T) {
 	if out := runOut(t, e, "admin", "totp", "--email", "ops@example.com", "--enable"); !strings.Contains(out, "otpauth://") {
 		t.Fatalf("admin totp --enable = %q", out)
 	}
-	if cur, _ := st.Q().GetAdminByEmail(ctx, "ops@example.com"); cur.TOTPSecret == "" {
+	if cur, _ := st.Q().GetAdminByEmail(ctx, store.DefaultTenantID, "ops@example.com"); cur.TOTPSecret == "" {
 		t.Fatal("TOTP secret must be stored")
 	}
 	runOut(t, e, "admin", "totp", "--email", "ops@example.com", "--disable")
-	if cur, _ := st.Q().GetAdminByEmail(ctx, "ops@example.com"); cur.TOTPSecret != "" {
+	if cur, _ := st.Q().GetAdminByEmail(ctx, store.DefaultTenantID, "ops@example.com"); cur.TOTPSecret != "" {
 		t.Fatal("TOTP secret must be cleared")
 	}
 	if err := run(ctx, []string{"admin", "totp", "--email", "ops@example.com"}, e, io.Discard); err == nil {
@@ -113,11 +113,11 @@ func TestAdminCLI(t *testing.T) {
 	}
 
 	runOut(t, e, "admin", "disable", "--email", "viewer@example.com")
-	if cur, _ := st.Q().GetAdminByEmail(ctx, "viewer@example.com"); cur.DisabledAt == nil {
+	if cur, _ := st.Q().GetAdminByEmail(ctx, store.DefaultTenantID, "viewer@example.com"); cur.DisabledAt == nil {
 		t.Fatal("viewer must be disabled")
 	}
 	runOut(t, e, "admin", "enable", "--email", "viewer@example.com")
-	if cur, _ := st.Q().GetAdminByEmail(ctx, "viewer@example.com"); cur.DisabledAt != nil {
+	if cur, _ := st.Q().GetAdminByEmail(ctx, store.DefaultTenantID, "viewer@example.com"); cur.DisabledAt != nil {
 		t.Fatal("viewer must be enabled again")
 	}
 	if err := run(ctx, []string{"admin", "disable", "--email", "ops@example.com"}, e, io.Discard); err == nil {

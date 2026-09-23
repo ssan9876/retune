@@ -87,7 +87,8 @@ func (q *Queries) ItemStatusRollup(ctx context.Context, itemKind string, itemID 
 // same transaction as the item row.
 func (q *Queries) DeleteItemStatusForItem(ctx context.Context, kind string, itemID uuid.UUID) error {
 	_, err := q.db.Exec(ctx,
-		`DELETE FROM device_item_status WHERE item_kind = $1 AND item_id = $2`, kind, itemID)
+		`DELETE FROM device_item_status WHERE tenant_id = $1 AND item_kind = $2 AND item_id = $3`,
+		DefaultTenantID, kind, itemID)
 	return err
 }
 
@@ -103,8 +104,8 @@ func (q *Queries) DeleteItemStatusExcept(ctx context.Context, deviceID uuid.UUID
 	}
 	_, err := q.db.Exec(ctx, `
 		DELETE FROM device_item_status
-		WHERE device_id = $1 AND item_kind = $2 AND NOT (item_id = ANY($3))`,
-		deviceID, kind, keep)
+		WHERE tenant_id = $1 AND device_id = $2 AND item_kind = $3 AND NOT (item_id = ANY($4))`,
+		DefaultTenantID, deviceID, kind, keep)
 	return err
 }
 

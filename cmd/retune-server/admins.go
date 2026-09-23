@@ -103,7 +103,7 @@ func adminCmd(ctx context.Context, args []string, getenv func(string) string, ou
 		return createAdmin(ctx, svc, *email, *password, *role, out)
 	}
 
-	admin, err := st.Q().GetAdminByEmail(ctx, *email)
+	admin, err := st.Q().GetAdminByEmail(ctx, store.DefaultTenantID, *email)
 	if errors.Is(err, store.ErrNotFound) {
 		return fmt.Errorf("no admin with email %s", *email)
 	}

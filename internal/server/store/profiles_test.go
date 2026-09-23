@@ -24,10 +24,18 @@ func TestProfileQueriesAreScopedByTenant(t *testing.T) {
 	if err := q.CreateProfile(ctx, p); err != nil {
 		t.Fatal(err)
 	}
+	if err := q.CreateProfileVersion(ctx, store.ProfileVersion{
+		ProfileID: p.ID, Version: 1, Settings: []byte(`[]`), Hash: "h", CreatedAt: now, CreatedBy: "ops",
+	}); err != nil {
+		t.Fatal(err)
+	}
 	other := uuid.Must(uuid.NewV7())
 
 	if _, err := q.GetProfile(ctx, other, p.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("another tenant must not see the row: %v", err)
+	}
+	if _, err := q.GetProfileVersion(ctx, other, p.ID, 1); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("another tenant must not see the version: %v", err)
 	}
 	changed := p
 	changed.Name = "Hacked"

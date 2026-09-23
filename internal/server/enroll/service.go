@@ -117,7 +117,7 @@ func (s *Service) Enroll(ctx context.Context, req protocol.EnrollRequest) (proto
 			return err
 		}
 
-		prev, err := q.FindActiveDeviceByHardware(ctx, req.Device.Serial, req.Device.SMBIOSUUID)
+		prev, err := q.FindActiveDeviceByHardware(ctx, store.DefaultTenantID, req.Device.Serial, req.Device.SMBIOSUUID)
 		replacing := err == nil
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return err

@@ -87,7 +87,7 @@ func TestInventoryService(t *testing.T) {
 		t.Fatalf("device after ingest = %+v", dev)
 	}
 
-	stored, err := q.GetInventory(ctx, d.ID)
+	stored, err := q.GetInventory(ctx, store.DefaultTenantID, d.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

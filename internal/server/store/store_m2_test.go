@@ -56,6 +56,17 @@ func TestDeviceQueriesAreScopedByTenant(t *testing.T) {
 	if err := q.ClearPrevCertSerial(ctx, other, dev.ID); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := q.FindActiveDeviceByHardware(ctx, other, dev.Serial, dev.SMBIOSUUID); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("another tenant must not match the hardware: %v", err)
+	}
+	if err := q.UpsertInventory(ctx, store.DeviceInventory{
+		DeviceID: dev.ID, CollectedAt: now, ReceivedAt: now, Hash: "h", Data: []byte(`{}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.GetInventory(ctx, other, dev.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("another tenant must not see the inventory: %v", err)
+	}
 
 	got, err := q.GetDevice(ctx, store.DefaultTenantID, dev.ID)
 	if err != nil || got.Status == "retired" || got.ReplacedBy != nil || got.AgentVersion == "9.9.9" ||
@@ -71,7 +82,7 @@ func TestInventoryAndDeviceUpdates(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	d := newDevice(t, q, "PC-1")
 
-	if _, err := q.GetInventory(ctx, d.ID); !errors.Is(err, store.ErrNotFound) {
+	if _, err := q.GetInventory(ctx, store.DefaultTenantID, d.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("GetInventory before upload = %v", err)
 	}
 
@@ -82,7 +93,7 @@ func TestInventoryAndDeviceUpdates(t *testing.T) {
 	if err := q.UpsertInventory(ctx, inv); err != nil {
 		t.Fatal(err)
 	}
-	got, err := q.GetInventory(ctx, d.ID)
+	got, err := q.GetInventory(ctx, store.DefaultTenantID, d.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +109,7 @@ func TestInventoryAndDeviceUpdates(t *testing.T) {
 	if err := q.UpsertInventory(ctx, inv); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ = q.GetInventory(ctx, d.ID); got.Hash != "h2" || got.RAMGB != 32 {
+	if got, _ = q.GetInventory(ctx, store.DefaultTenantID, d.ID); got.Hash != "h2" || got.RAMGB != 32 {
 		t.Fatalf("after upsert = %+v", got)
 	}
 

@@ -57,7 +57,7 @@ type Service struct {
 // agentHash is the hash the agent last stored; an empty or differing value
 // means the agent and server disagree, so a fresh upload is due.
 func (s *Service) Due(ctx context.Context, deviceID uuid.UUID, agentHash string) (bool, error) {
-	inv, err := s.Store.Q().GetInventory(ctx, deviceID)
+	inv, err := s.Store.Q().GetInventory(ctx, store.DefaultTenantID, deviceID)
 	if errors.Is(err, store.ErrNotFound) {
 		return true, nil
 	}
@@ -85,7 +85,7 @@ func (s *Service) Ingest(ctx context.Context, deviceID uuid.UUID, inv protocol.I
 	now := s.Now()
 
 	err = s.Store.InTx(ctx, func(q *store.Queries) error {
-		prev, err := q.GetInventory(ctx, deviceID)
+		prev, err := q.GetInventory(ctx, store.DefaultTenantID, deviceID)
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return err
 		}

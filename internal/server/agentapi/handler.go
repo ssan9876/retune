@@ -391,7 +391,7 @@ func (h *Handler) scriptVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	allowed, err := h.Store.Q().DeviceHasItem(ctx, a.Device.ID, protocol.ItemKindScript, id)
+	allowed, err := h.Store.Q().DeviceHasItem(ctx, store.DefaultTenantID, a.Device.ID, protocol.ItemKindScript, id)
 	if err != nil {
 		h.Log.Error("check script assignment", "device_id", a.Device.ID, "script_id", id, "error", err)
 		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
@@ -431,7 +431,7 @@ func (h *Handler) scriptRun(w http.ResponseWriter, r *http.Request) {
 	// something it was never given -- but it does mean a result can be lost
 	// to a race with revocation, not just rejected outright.
 	ctx := r.Context()
-	allowed, err := h.Store.Q().DeviceHasItem(ctx, a.Device.ID, protocol.ItemKindScript, id)
+	allowed, err := h.Store.Q().DeviceHasItem(ctx, store.DefaultTenantID, a.Device.ID, protocol.ItemKindScript, id)
 	if err != nil {
 		h.Log.Error("check script assignment", "device_id", a.Device.ID, "script_id", id, "error", err)
 		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
@@ -472,7 +472,7 @@ func (h *Handler) profileVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	allowed, err := h.Store.Q().DeviceHasItem(ctx, a.Device.ID, protocol.ItemKindProfile, id)
+	allowed, err := h.Store.Q().DeviceHasItem(ctx, store.DefaultTenantID, a.Device.ID, protocol.ItemKindProfile, id)
 	if err != nil {
 		h.Log.Error("check profile assignment", "device_id", a.Device.ID, "profile_id", id, "error", err)
 		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
@@ -512,7 +512,7 @@ func (h *Handler) profileStatus(w http.ResponseWriter, r *http.Request) {
 	// history for something it was never given -- but it does mean a report
 	// can be lost to a race with revocation, not just rejected outright.
 	ctx := r.Context()
-	allowed, err := h.Store.Q().DeviceHasItem(ctx, a.Device.ID, protocol.ItemKindProfile, id)
+	allowed, err := h.Store.Q().DeviceHasItem(ctx, store.DefaultTenantID, a.Device.ID, protocol.ItemKindProfile, id)
 	if err != nil {
 		h.Log.Error("check profile assignment", "device_id", a.Device.ID, "profile_id", id, "error", err)
 		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
@@ -572,7 +572,7 @@ func (h *Handler) appVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	allowed, err := h.Store.Q().DeviceHasItem(ctx, a.Device.ID, protocol.ItemKindApp, id)
+	allowed, err := h.Store.Q().DeviceHasItem(ctx, store.DefaultTenantID, a.Device.ID, protocol.ItemKindApp, id)
 	if err != nil {
 		h.Log.Error("check app assignment", "device_id", a.Device.ID, "app_id", id, "error", err)
 		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
@@ -616,7 +616,7 @@ func (h *Handler) appResult(w http.ResponseWriter, r *http.Request) {
 	// history for something it was never given -- but it does mean a result
 	// can be lost to a race with revocation, not just rejected outright.
 	ctx := r.Context()
-	allowed, err := h.Store.Q().DeviceHasItem(ctx, a.Device.ID, protocol.ItemKindApp, id)
+	allowed, err := h.Store.Q().DeviceHasItem(ctx, store.DefaultTenantID, a.Device.ID, protocol.ItemKindApp, id)
 	if err != nil {
 		h.Log.Error("check app assignment", "device_id", a.Device.ID, "app_id", id, "error", err)
 		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
@@ -654,7 +654,7 @@ func (h *Handler) agentVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	allowed, err := h.Store.Q().DeviceHasItem(ctx, a.Device.ID, protocol.ItemKindAgent, id)
+	allowed, err := h.Store.Q().DeviceHasItem(ctx, store.DefaultTenantID, a.Device.ID, protocol.ItemKindAgent, id)
 	if err != nil {
 		h.Log.Error("check agent build assignment", "device_id", a.Device.ID, "agent_version_id", id, "error", err)
 		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
@@ -691,7 +691,7 @@ func (h *Handler) agentVersionBinary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	allowed, err := h.Store.Q().DeviceHasItem(ctx, a.Device.ID, protocol.ItemKindAgent, id)
+	allowed, err := h.Store.Q().DeviceHasItem(ctx, store.DefaultTenantID, a.Device.ID, protocol.ItemKindAgent, id)
 	if err != nil {
 		h.Log.Error("check agent build assignment", "device_id", a.Device.ID, "agent_version_id", id, "error", err)
 		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
@@ -736,7 +736,7 @@ func (h *Handler) agentVersionResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	allowed, err := h.Store.Q().DeviceHasItem(ctx, a.Device.ID, protocol.ItemKindAgent, id)
+	allowed, err := h.Store.Q().DeviceHasItem(ctx, store.DefaultTenantID, a.Device.ID, protocol.ItemKindAgent, id)
 	if err != nil {
 		h.Log.Error("check agent build assignment", "device_id", a.Device.ID, "agent_version_id", id, "error", err)
 		writeError(w, http.StatusInternalServerError, "internal", "internal server error")

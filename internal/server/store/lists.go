@@ -45,12 +45,12 @@ func (q *Queries) ListDevicesPage(ctx context.Context, f DeviceFilter) ([]Device
 	p := f.Page.Normalized()
 	rows, err := q.db.Query(ctx, `
 		SELECT `+deviceCols+`, count(*) OVER () AS total FROM devices
-		WHERE ($1 = '' OR status = $1)
+		WHERE tenant_id = $5 AND ($1 = '' OR status = $1)
 		  AND ($2 = '' OR hostname ILIKE '%' || $2 || '%' OR serial ILIKE '%' || $2 || '%'
 		       OR smbios_uuid ILIKE '%' || $2 || '%' OR manufacturer ILIKE '%' || $2 || '%'
 		       OR model ILIKE '%' || $2 || '%')
 		ORDER BY lower(hostname), enrolled_at
-		LIMIT $3 OFFSET $4`, f.Status, f.Search, p.Limit, p.Offset)
+		LIMIT $3 OFFSET $4`, f.Status, f.Search, p.Limit, p.Offset, DefaultTenantID)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -81,10 +81,10 @@ func (q *Queries) ListCommandsPage(ctx context.Context, f CommandFilter) ([]Comm
 	p := f.Page.Normalized()
 	rows, err := q.db.Query(ctx, `
 		SELECT `+commandCols+`, count(*) OVER () AS total FROM commands
-		WHERE ($1::uuid IS NULL OR device_id = $1)
+		WHERE tenant_id = $5 AND ($1::uuid IS NULL OR device_id = $1)
 		  AND ($2 = '' OR status = $2)
 		ORDER BY created_at DESC, id DESC
-		LIMIT $3 OFFSET $4`, f.DeviceID, f.Status, p.Limit, p.Offset)
+		LIMIT $3 OFFSET $4`, f.DeviceID, f.Status, p.Limit, p.Offset, DefaultTenantID)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -104,7 +104,8 @@ func (q *Queries) ListCommandsPage(ctx context.Context, f CommandFilter) ([]Comm
 
 // ListEnrollmentTokens returns every token, newest first.
 func (q *Queries) ListEnrollmentTokens(ctx context.Context) ([]EnrollmentToken, error) {
-	rows, err := q.db.Query(ctx, `SELECT `+tokenCols+` FROM enrollment_tokens ORDER BY created_at DESC, id DESC`)
+	rows, err := q.db.Query(ctx, `SELECT `+tokenCols+` FROM enrollment_tokens WHERE tenant_id = $1 ORDER BY created_at DESC, id DESC`,
+		DefaultTenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +126,7 @@ func (q *Queries) ListAuditPage(ctx context.Context, page Page) ([]AuditEntry, i
 	p := page.Normalized()
 	rows, err := q.db.Query(ctx, `
 		SELECT actor, action, target_kind, target_id, details, at, count(*) OVER () AS total
-		FROM audit_log ORDER BY at DESC, id DESC LIMIT $1 OFFSET $2`, p.Limit, p.Offset)
+		FROM audit_log WHERE tenant_id = $3 ORDER BY at DESC, id DESC LIMIT $1 OFFSET $2`, p.Limit, p.Offset, DefaultTenantID)
 	if err != nil {
 		return nil, 0, err
 	}

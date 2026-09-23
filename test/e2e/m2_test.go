@@ -155,7 +155,7 @@ func TestInventoryCommandsRenewalUnenroll(t *testing.T) {
 	if err != nil || len(sw) != 2 {
 		t.Fatalf("software rows = %d, err = %v", len(sw), err)
 	}
-	stored, err := q.GetInventory(ctx, deviceID)
+	stored, err := q.GetInventory(ctx, store.DefaultTenantID, deviceID)
 	if err != nil || stored.RAMGB != 16 || stored.DiskFreeGB != 300 {
 		t.Fatalf("stored inventory = %+v, err = %v", stored, err)
 	}
