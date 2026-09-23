@@ -786,6 +786,13 @@ enforcing it. If the assignment was set to put previous values back, it restores
 what was there before the profile first changed each setting — not what Retune
 last wrote — and leaves alone anything another profile still wants.
 
+A `file` setting won't read, write or delete through a link: if any folder
+on its path, or the file itself, is a junction or symbolic link, the setting
+reports an error and nothing is touched. The agent works as SYSTEM, and a
+link planted by someone who can write to a folder on the way would otherwise
+turn the profile's path into a write anywhere on the machine. Use the real
+path (`C:\Users\Public`, not the legacy `C:\Documents and Settings` junction).
+
 A `certificate` setting takes one public certificate as PEM — what
 Windows exports as Base-64 `.cer` — and puts it in `root` (trusted root
 authorities), `ca` (intermediates) or `trusted_publisher`, all under
