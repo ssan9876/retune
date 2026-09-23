@@ -80,6 +80,12 @@ func DataDir(getenv func(string) string) (string, error) {
 	return or(value, "data"), nil
 }
 
+// Value reads one setting by its environment name, from the environment or
+// else the config file, for commands that need only a setting or two.
+func Value(getenv func(string) string, key string) (string, error) {
+	return lookupValue(getenv, key)
+}
+
 // lookupValue reads one setting from the environment, then the config file.
 func lookupValue(getenv func(string) string, key string) (string, error) {
 	if v := getenv(key); v != "" {

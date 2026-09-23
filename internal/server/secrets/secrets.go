@@ -69,6 +69,20 @@ func LoadOrCreateFile(dir string) (*Key, error) {
 	return parse(strings.TrimSpace(string(raw)))
 }
 
+// LoadFile reads the key from dir, failing if there is none. Commands run
+// beside the server use it, so that one pointed at the wrong directory
+// reports that rather than making a key the server doesn't have.
+func LoadFile(dir string) (*Key, error) {
+	raw, err := os.ReadFile(filepath.Join(dir, FileName))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("%w: no %s in %s", ErrNoKey, FileName, dir)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return parse(strings.TrimSpace(string(raw)))
+}
+
 // FromHex builds a key from a hex string, for deployments that supply it
 // through the environment rather than a file.
 func FromHex(value string) (*Key, error) {

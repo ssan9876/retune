@@ -11,13 +11,13 @@ The working list for making Retune usable by an enterprise, started on 2026-09-2
 | API tokens for scripts and integrations (M17) | #8 |
 | Security hardening from a full review | #9 |
 | Admins limited to some device groups (M18) | #10 |
+| Audit log streaming to a SIEM, filters, CSV export | #11 |
 
 ## To do, in order
 
 | # | item | why an enterprise needs it | notes |
 |---|---|---|---|
-| 1 | **Audit streaming and export**: ship the audit log to a SIEM over syslog or HTTPS, filter it in the console, export it as CSV | security teams keep audit trails in their SIEM, not in each tool | in progress |
-| 2 | **Authenticator hardening**: refuse a replayed TOTP code, encrypt TOTP secrets at rest | leftovers from the security review | small |
+| 2 | **Authenticator hardening**: refuse a replayed TOTP code, encrypt TOTP secrets at rest | leftovers from the security review | in progress |
 | 3 | **Uploaded line-of-business apps**: MSI/EXE packages, detection rules, supersedence | most enterprise software isn't in winget | draft: `drafts/app-packages-spec.md` |
 | 4 | **Windows Update rings**: deadlines, pause, target release, patch compliance | patching on a schedule is table stakes | draft: `drafts/update-rings-spec.md`; applying needs a VM to verify |
 | 5 | **Remote actions**: lock, collect logs, local admin password rotation (LAPS-style), wipe | lost or stolen devices, helpdesk support | draft: `drafts/remote-actions-spec.md`; built against fakes, needs a VM to verify |

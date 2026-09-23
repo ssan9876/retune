@@ -138,7 +138,13 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	dev := &devices.Service{Store: st}
 	authSvc := &auth.Service{
 		Store: st, Now: time.Now, SessionTTL: cfg.SessionTTL, MaxSessionLifetime: cfg.SessionMaxLifetime,
-		Limiter: auth.NewLimiter(10, 15*time.Minute, time.Now), Issuer: "Retune",
+		Limiter: auth.NewLimiter(10, 15*time.Minute, time.Now), Issuer: "Retune", Key: secretKey,
+	}
+	if n, err := authSvc.SealTOTPSecrets(ctx); err != nil {
+		st.Close()
+		return nil, fmt.Errorf("seal authenticator secrets: %w", err)
+	} else if n > 0 {
+		log.Info("sealed authenticator secrets stored by an earlier version", "count", n)
 	}
 	agent := &agentapi.Handler{
 		Enroll: svc, Inventory: inv, Commands: cmd, Scripts: scr, Profiles: prof, Apps: appSvc, AgentVersions: agentVers, BitLocker: locker, Store: st,

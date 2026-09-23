@@ -9,7 +9,9 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"retune/internal/config"
 	"retune/internal/server/auth"
+	"retune/internal/server/secrets"
 	"retune/internal/server/store"
 )
 
@@ -24,6 +26,28 @@ flags:
 
 func authService(st *store.Store) *auth.Service {
 	return &auth.Service{Store: st, Now: time.Now, SessionTTL: 12 * time.Hour, Issuer: "Retune"}
+}
+
+// cliSecretKey loads the server's secret key the way the server does, but
+// never creates one: a key the server doesn't have would seal secrets it
+// can't read.
+func cliSecretKey(getenv func(string) string) (*secrets.Key, error) {
+	source, err := config.Value(getenv, "CA_KEY_SOURCE")
+	if err != nil {
+		return nil, err
+	}
+	if source == "env" {
+		return secrets.FromHex(getenv("SECRET_KEY"))
+	}
+	dir, err := config.DataDir(getenv)
+	if err != nil {
+		return nil, err
+	}
+	key, err := secrets.LoadFile(dir)
+	if errors.Is(err, secrets.ErrNoKey) {
+		return nil, fmt.Errorf("%w; run this where the server's DATA_DIR is, or set DATA_DIR", err)
+	}
+	return key, err
 }
 
 // bootstrapAdminCmd creates the first account.
@@ -130,6 +154,9 @@ func adminCmd(ctx context.Context, args []string, getenv func(string) string, ou
 		case *enable == *disable:
 			return errors.New("pass exactly one of --enable or --disable")
 		case *enable:
+			if svc.Key, err = cliSecretKey(getenv); err != nil {
+				return err
+			}
 			secret, url, err := svc.EnableTOTP(ctx, admin.ID, "cli")
 			if err != nil {
 				return err

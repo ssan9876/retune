@@ -136,10 +136,55 @@ func (q *Queries) UpdateAdminPassword(ctx context.Context, tenantID, id uuid.UUI
 	return err
 }
 
-// UpdateAdminTOTP stores a new TOTP secret, or "" to turn TOTP off.
+// UpdateAdminTOTP stores a new TOTP secret, or "" to turn TOTP off, and
+// forgets which codes were used with the old one.
 func (q *Queries) UpdateAdminTOTP(ctx context.Context, tenantID, id uuid.UUID, secret string) error {
 	_, err := q.db.Exec(ctx,
-		`UPDATE admins SET totp_secret = $3 WHERE tenant_id = $1 AND id = $2`, tenantID, id, secret)
+		`UPDATE admins SET totp_secret = $3, totp_last_step = 0 WHERE tenant_id = $1 AND id = $2`, tenantID, id, secret)
+	return err
+}
+
+// ClaimTOTPStep records that a TOTP code for step was used, and reports false
+// if that step or a later one already was: the code is a replay.
+func (q *Queries) ClaimTOTPStep(ctx context.Context, tenantID, id uuid.UUID, step int64) (bool, error) {
+	tag, err := q.db.Exec(ctx,
+		`UPDATE admins SET totp_last_step = $3 WHERE tenant_id = $1 AND id = $2 AND totp_last_step < $3`,
+		tenantID, id, step)
+	return tag.RowsAffected() == 1, err
+}
+
+// PlainTOTPSecret is a TOTP secret stored before secrets were sealed.
+type PlainTOTPSecret struct {
+	TenantID, AdminID uuid.UUID
+	Secret            string
+}
+
+// ListPlainTOTPSecrets returns every TOTP secret not yet sealed, in any
+// tenant; sealed ones start with "sealed:".
+func (q *Queries) ListPlainTOTPSecrets(ctx context.Context) ([]PlainTOTPSecret, error) {
+	rows, err := q.db.Query(ctx,
+		`SELECT tenant_id, id, totp_secret FROM admins WHERE totp_secret <> '' AND totp_secret NOT LIKE 'sealed:%'`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []PlainTOTPSecret
+	for rows.Next() {
+		var p PlainTOTPSecret
+		if err := rows.Scan(&p.TenantID, &p.AdminID, &p.Secret); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// ReplaceTOTPSecret swaps a stored secret for its sealed form, if it is still
+// the one that was read: a change made meanwhile wins.
+func (q *Queries) ReplaceTOTPSecret(ctx context.Context, tenantID, id uuid.UUID, old, sealed string) error {
+	_, err := q.db.Exec(ctx,
+		`UPDATE admins SET totp_secret = $4 WHERE tenant_id = $1 AND id = $2 AND totp_secret = $3`,
+		tenantID, id, old, sealed)
 	return err
 }
 

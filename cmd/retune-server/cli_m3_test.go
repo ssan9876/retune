@@ -12,6 +12,8 @@ import (
 
 	"retune/internal/pki"
 	"retune/internal/server/ca"
+	"retune/internal/server/secrets"
+	"retune/internal/server/auth"
 	"retune/internal/server/store"
 	"retune/internal/server/store/storetest"
 )
@@ -59,7 +61,8 @@ func TestCommandsReadConfigFile(t *testing.T) {
 func TestAdminCLI(t *testing.T) {
 	ctx := context.Background()
 	url := storetest.DatabaseURL(t)
-	e := env(map[string]string{"DATABASE_URL": url})
+	dataDir := t.TempDir()
+	e := env(map[string]string{"DATABASE_URL": url, "DATA_DIR": dataDir})
 	if err := run(ctx, []string{"migrate"}, e, io.Discard); err != nil {
 		t.Fatal(err)
 	}
@@ -98,11 +101,20 @@ func TestAdminCLI(t *testing.T) {
 		t.Fatal("the password hash must change")
 	}
 
+	// Turning TOTP on seals the secret with the server's key; the command
+	// won't make up a key the server doesn't have.
+	if err := run(ctx, []string{"admin", "totp", "--email", "ops@example.com", "--enable"}, e, io.Discard); err == nil ||
+		!strings.Contains(err.Error(), "DATA_DIR") {
+		t.Fatalf("totp --enable with no key = %v", err)
+	}
+	if _, err := secrets.LoadOrCreateFile(dataDir); err != nil {
+		t.Fatal(err)
+	}
 	if out := runOut(t, e, "admin", "totp", "--email", "ops@example.com", "--enable"); !strings.Contains(out, "otpauth://") {
 		t.Fatalf("admin totp --enable = %q", out)
 	}
-	if cur, _ := st.Q().GetAdminByEmail(ctx, store.DefaultTenantID, "ops@example.com"); cur.TOTPSecret == "" {
-		t.Fatal("TOTP secret must be stored")
+	if cur, _ := st.Q().GetAdminByEmail(ctx, store.DefaultTenantID, "ops@example.com"); !auth.IsSealedTOTP(cur.TOTPSecret) {
+		t.Fatalf("TOTP secret must be stored sealed, got %q", cur.TOTPSecret)
 	}
 	runOut(t, e, "admin", "totp", "--email", "ops@example.com", "--disable")
 	if cur, _ := st.Q().GetAdminByEmail(ctx, store.DefaultTenantID, "ops@example.com"); cur.TOTPSecret != "" {
