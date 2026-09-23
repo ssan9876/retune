@@ -184,7 +184,7 @@ func TestAppInstallsSurviveDeletion(t *testing.T) {
 	if err := q.DeleteApp(ctx, store.DefaultTenantID, a.ID); err != nil {
 		t.Fatal(err)
 	}
-	rows, total, err := q.ListAppInstalls(ctx, a.ID, nil, store.Page{})
+	rows, total, err := q.ListAppInstalls(ctx, a.ID, nil, store.Page{}, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,10 +228,10 @@ func TestListAppInstallsFiltersByDevice(t *testing.T) {
 		}
 	}
 
-	if _, total, err := q.ListAppInstalls(ctx, a.ID, nil, store.Page{}); err != nil || total != 2 {
+	if _, total, err := q.ListAppInstalls(ctx, a.ID, nil, store.Page{}, store.Unscoped); err != nil || total != 2 {
 		t.Fatalf("unfiltered: total %d err %v", total, err)
 	}
-	rows, total, err := q.ListAppInstalls(ctx, a.ID, &dB.ID, store.Page{})
+	rows, total, err := q.ListAppInstalls(ctx, a.ID, &dB.ID, store.Page{}, store.Unscoped)
 	if err != nil || total != 1 || rows[0].Hostname != "B" {
 		t.Fatalf("filtered by device: total %d rows %+v err %v", total, rows, err)
 	}

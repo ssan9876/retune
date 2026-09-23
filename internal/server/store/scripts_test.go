@@ -122,7 +122,7 @@ func TestScriptRunsOutliveTheScript(t *testing.T) {
 	if err := st.Q().DeleteScript(ctx, store.DefaultTenantID, s.ID); err != nil {
 		t.Fatal(err)
 	}
-	runs, total, err := st.Q().ListScriptRuns(ctx, s.ID, nil, store.Page{})
+	runs, total, err := st.Q().ListScriptRuns(ctx, s.ID, nil, store.Page{}, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,10 +153,10 @@ func TestListScriptRunsFiltersByDevice(t *testing.T) {
 		}
 	}
 
-	if _, total, err := st.Q().ListScriptRuns(ctx, s.ID, nil, store.Page{}); err != nil || total != 2 {
+	if _, total, err := st.Q().ListScriptRuns(ctx, s.ID, nil, store.Page{}, store.Unscoped); err != nil || total != 2 {
 		t.Fatalf("unfiltered: total %d err %v", total, err)
 	}
-	runs, total, err := st.Q().ListScriptRuns(ctx, s.ID, &b.ID, store.Page{})
+	runs, total, err := st.Q().ListScriptRuns(ctx, s.ID, &b.ID, store.Page{}, store.Unscoped)
 	if err != nil || total != 1 || runs[0].Hostname != "B" {
 		t.Fatalf("filtered by device: total %d runs %+v err %v", total, runs, err)
 	}

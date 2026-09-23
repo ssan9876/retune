@@ -227,14 +227,14 @@ func TestAppDeploymentEndToEnd(t *testing.T) {
 	}
 
 	// What it reports settles the console's view of that device.
-	rollup, err := a.Store.Q().ItemStatusRollup(ctx, protocol.ItemKindApp, created.ID)
+	rollup, err := a.Store.Q().ItemStatusRollup(ctx, protocol.ItemKindApp, created.ID, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if rollup[store.ItemSucceeded] != 1 {
 		t.Fatalf("want one succeeded, got %v", rollup)
 	}
-	statuses, _, err := a.Store.Q().ListItemStatus(ctx, protocol.ItemKindApp, created.ID, "", store.Page{})
+	statuses, _, err := a.Store.Q().ListItemStatus(ctx, protocol.ItemKindApp, created.ID, "", store.Page{}, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,14 +289,14 @@ func TestAppDeploymentEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rollup, err = a.Store.Q().ItemStatusRollup(ctx, protocol.ItemKindApp, created.ID)
+	rollup, err = a.Store.Q().ItemStatusRollup(ctx, protocol.ItemKindApp, created.ID, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if rollup[store.ItemSucceeded] != 1 {
 		t.Fatalf("want one succeeded after removal, got %v", rollup)
 	}
-	statuses, _, err = a.Store.Q().ListItemStatus(ctx, protocol.ItemKindApp, created.ID, "", store.Page{})
+	statuses, _, err = a.Store.Q().ListItemStatus(ctx, protocol.ItemKindApp, created.ID, "", store.Page{}, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -520,7 +520,7 @@ func TestAgentSelfUpdateEndToEnd(t *testing.T) {
 	}
 
 	// What it reports settles the console's rollup.
-	rollup, err := a.Store.Q().ItemStatusRollup(ctx, protocol.ItemKindAgent, versionID)
+	rollup, err := a.Store.Q().ItemStatusRollup(ctx, protocol.ItemKindAgent, versionID, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -536,7 +536,7 @@ func TestAgentSelfUpdateEndToEnd(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("checkin: %d %s", status, body)
 	}
-	rollup, err = a.Store.Q().ItemStatusRollup(ctx, protocol.ItemKindAgent, versionID)
+	rollup, err = a.Store.Q().ItemStatusRollup(ctx, protocol.ItemKindAgent, versionID, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -625,7 +625,7 @@ func TestComplianceEndToEnd(t *testing.T) {
 	if !strings.Contains(string(results[0].Failures), "BitLocker") {
 		t.Errorf("failure detail should name BitLocker, got %s", results[0].Failures)
 	}
-	rollup, err := a.Store.Q().ItemStatusRollup(ctx, compliance.ItemKindCompliance, policy.ID)
+	rollup, err := a.Store.Q().ItemStatusRollup(ctx, compliance.ItemKindCompliance, policy.ID, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -649,7 +649,7 @@ func TestComplianceEndToEnd(t *testing.T) {
 	if len(results) != 1 || results[0].State != store.ComplianceCompliant {
 		t.Fatalf("device compliance after BitLocker on = %+v", results)
 	}
-	rollup, err = a.Store.Q().ItemStatusRollup(ctx, compliance.ItemKindCompliance, policy.ID)
+	rollup, err = a.Store.Q().ItemStatusRollup(ctx, compliance.ItemKindCompliance, policy.ID, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}

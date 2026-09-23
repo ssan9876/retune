@@ -345,7 +345,7 @@ func TestADeviceRunningTheAssignedBuildIsRecordedAsSucceeded(t *testing.T) {
 // agentItemStatus returns the one device's status row for an agent build.
 func agentItemStatus(t *testing.T, a *app.App, id uuid.UUID) store.ItemStatus {
 	t.Helper()
-	rows, _, err := a.Store.Q().ListItemStatus(context.Background(), protocol.ItemKindAgent, id, "", store.Page{})
+	rows, _, err := a.Store.Q().ListItemStatus(context.Background(), protocol.ItemKindAgent, id, "", store.Page{}, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}

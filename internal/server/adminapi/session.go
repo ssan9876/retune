@@ -22,6 +22,9 @@ type adminJSON struct {
 	// AuthSource is "local" or "oidc": whether the account signs in with a
 	// password here or through the identity provider.
 	AuthSource string `json:"auth_source"`
+	// Scope is the device groups the admin is limited to, or null for the
+	// whole fleet. An empty list is limited to nothing.
+	Scope []string `json:"scope"`
 }
 
 func newAdminJSON(a store.Admin) adminJSON {
@@ -34,6 +37,17 @@ func newAdminJSON(a store.Admin) adminJSON {
 		TOTPEnabled: a.TOTPSecret != "", Disabled: a.DisabledAt != nil,
 		CreatedAt: a.CreatedAt, LastLoginAt: a.LastLoginAt, AuthSource: source,
 	}
+}
+
+// withScope fills in an admin's scope for the API.
+func (j adminJSON) withScope(scope store.DeviceScope) adminJSON {
+	if scope.Limited() {
+		j.Scope = make([]string, 0, len(scope))
+		for _, g := range scope {
+			j.Scope = append(j.Scope, g.String())
+		}
+	}
+	return j
 }
 
 type sessionResponse struct {
@@ -127,7 +141,7 @@ func (h *Handler) setSessionCookie(w http.ResponseWriter, info auth.SessionInfo)
 func (h *Handler) currentSession(w http.ResponseWriter, r *http.Request) {
 	c := caller(r)
 	writeJSON(w, http.StatusOK, sessionResponse{
-		Admin: newAdminJSON(c.Admin), CSRFToken: c.Session.CSRFToken, ExpiresAt: c.Session.ExpiresAt,
+		Admin: newAdminJSON(c.Admin).withScope(c.Scope), CSRFToken: c.Session.CSRFToken, ExpiresAt: c.Session.ExpiresAt,
 	})
 }
 

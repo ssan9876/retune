@@ -92,6 +92,7 @@ async function postBinary<T>(
 export const api = {
   get: <T>(path: string) => request<T>("GET", path),
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
+  put: <T>(path: string, body?: unknown) => request<T>("PUT", path, body),
   postBinary: <T>(path: string, body: Blob | ArrayBuffer, headers?: Record<string, string>) =>
     postBinary<T>(path, body, headers),
   del: <T>(path: string) => request<T>("DELETE", path),

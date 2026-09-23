@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/google/uuid"
+
 	"retune/internal/server/auth"
 	"retune/internal/server/store"
 )
@@ -16,7 +18,12 @@ func (h *Handler) listAdmins(w http.ResponseWriter, r *http.Request) {
 	}
 	items := make([]adminJSON, 0, len(rows))
 	for _, a := range rows {
-		items = append(items, newAdminJSON(a))
+		scope, err := h.Store.Q().AdminScope(r.Context(), store.DefaultTenantID, a.ID)
+		if err != nil {
+			h.internal(w, "admin scope", err)
+			return
+		}
+		items = append(items, newAdminJSON(a).withScope(scope))
 	}
 	writeJSON(w, http.StatusOK, newListResponse(items, len(items), store.Page{Limit: len(items)}))
 }
@@ -124,5 +131,45 @@ func (h *Handler) setAdminDisabled(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "last_admin", err.Error())
 	default:
 		h.internal(w, "set admin disabled", err, "admin_id", id)
+	}
+}
+
+// setAdminScope limits an admin to device groups ({"group_ids": [...]}) or
+// lifts the limit ({"group_ids": null}).
+func (h *Handler) setAdminScope(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathUUID(w, r, "no such admin")
+	if !ok {
+		return
+	}
+	var req struct {
+		GroupIDs *[]string `json:"group_ids"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	var groups []uuid.UUID
+	if req.GroupIDs != nil {
+		groups = make([]uuid.UUID, 0, len(*req.GroupIDs))
+		for _, raw := range *req.GroupIDs {
+			g, err := uuid.Parse(raw)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "bad_request", "group_ids must be group IDs")
+				return
+			}
+			groups = append(groups, g)
+		}
+	}
+	err := h.Auth.SetScope(r.Context(), id, groups, caller(r).Admin.Email)
+	switch {
+	case err == nil:
+		writeNoContent(w)
+	case errors.Is(err, auth.ErrNotFound):
+		writeError(w, http.StatusNotFound, "not_found", "no such admin")
+	case errors.Is(err, auth.ErrBadRequest):
+		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
+	case errors.Is(err, auth.ErrLastAdmin):
+		writeError(w, http.StatusConflict, "last_admin", err.Error())
+	default:
+		h.internal(w, "set admin scope", err)
 	}
 }

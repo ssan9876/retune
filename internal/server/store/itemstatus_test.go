@@ -23,7 +23,7 @@ func TestMarkItemSucceededOnceDoesNotOverwriteAnExistingVerdict(t *testing.T) {
 	if err := st.Q().MarkItemSucceededOnce(ctx, s); err != nil {
 		t.Fatal(err)
 	}
-	rollup, _ := st.Q().ItemStatusRollup(ctx, "agent", item)
+	rollup, _ := st.Q().ItemStatusRollup(ctx, "agent", item, store.Unscoped)
 	if rollup[store.ItemSucceeded] != 1 {
 		t.Fatalf("rollup %v", rollup)
 	}
@@ -32,7 +32,7 @@ func TestMarkItemSucceededOnceDoesNotOverwriteAnExistingVerdict(t *testing.T) {
 	if err := st.Q().MarkItemSucceededOnce(ctx, s); err != nil {
 		t.Fatal(err)
 	}
-	rows, _, _ := st.Q().ListItemStatus(ctx, "agent", item, "", store.Page{})
+	rows, _, _ := st.Q().ListItemStatus(ctx, "agent", item, "", store.Page{}, store.Unscoped)
 	if len(rows) != 1 || !rows[0].UpdatedAt.Before(now.Add(time.Minute)) {
 		t.Fatalf("rows %+v", rows)
 	}
@@ -46,7 +46,7 @@ func TestMarkItemSucceededOnceDoesNotOverwriteAnExistingVerdict(t *testing.T) {
 	if err := st.Q().MarkItemSucceededOnce(ctx, s); err != nil {
 		t.Fatal(err)
 	}
-	rollup, _ = st.Q().ItemStatusRollup(ctx, "agent", item)
+	rollup, _ = st.Q().ItemStatusRollup(ctx, "agent", item, store.Unscoped)
 	if rollup[store.ItemSucceeded] != 1 || rollup[store.ItemFailed] != 0 {
 		t.Fatalf("rollup %v", rollup)
 	}

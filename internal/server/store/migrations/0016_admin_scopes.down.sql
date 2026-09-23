@@ -1,0 +1,2 @@
+ALTER TABLE admins DROP COLUMN IF EXISTS scoped;
+DROP TABLE IF EXISTS admin_scopes;

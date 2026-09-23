@@ -195,18 +195,18 @@ func scanRun(rows pgx.Rows, r *ScriptRun, extra ...any) error {
 
 // ListScriptRuns returns one page of a script's runs, newest first, optionally
 // for one device.
-func (q *Queries) ListScriptRuns(ctx context.Context, scriptID uuid.UUID, deviceID *uuid.UUID, page Page) ([]ScriptRun, int, error) {
+func (q *Queries) ListScriptRuns(ctx context.Context, scriptID uuid.UUID, deviceID *uuid.UUID, page Page, scope DeviceScope) ([]ScriptRun, int, error) {
 	p := page.Normalized()
 	rows, err := q.db.Query(ctx, `
 		SELECT `+runCols+`, d.hostname, count(*) OVER () AS total
 		FROM script_runs r
 		JOIN devices d ON d.id = r.device_id
 		WHERE r.tenant_id = $1 AND r.script_id = $2
-		  AND ($3::uuid IS NULL OR r.device_id = $3)
+		  AND ($3::uuid IS NULL OR r.device_id = $3) AND `+scopeSQL("r.device_id", 6)+`
 		-- The id breaks ties: two runs can share a timestamp, and UUIDv7 sorts
 		-- by creation time, so the newer row still comes first.
 		ORDER BY r.started_at DESC, r.id DESC
-		LIMIT $4 OFFSET $5`, DefaultTenantID, scriptID, deviceID, p.Limit, p.Offset)
+		LIMIT $4 OFFSET $5`, DefaultTenantID, scriptID, deviceID, p.Limit, p.Offset, scope.arg())
 	if err != nil {
 		return nil, 0, err
 	}

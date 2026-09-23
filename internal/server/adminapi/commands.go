@@ -58,7 +58,7 @@ type queueRequest struct {
 
 func (h *Handler) listCommands(w http.ResponseWriter, r *http.Request) {
 	page := pageFrom(r)
-	filter := store.CommandFilter{Status: r.URL.Query().Get("status"), Page: page}
+	filter := store.CommandFilter{Status: r.URL.Query().Get("status"), Page: page, Scope: caller(r).Scope}
 	if raw := r.URL.Query().Get("device_id"); raw != "" {
 		id, err := uuid.Parse(raw)
 		if err != nil {
@@ -98,13 +98,23 @@ func (h *Handler) queueCommand(w http.ResponseWriter, r *http.Request) {
 		ID       string `json:"id"`
 		DeviceID string `json:"device_id"`
 	}
-	out := make([]queued, 0, len(req.DeviceIDs))
+	// Every device is parsed and checked against the caller's scope before
+	// any command is queued, so a request that names one device out of reach
+	// queues nothing rather than half of what it asked for.
+	ids := make([]uuid.UUID, 0, len(req.DeviceIDs))
 	for _, raw := range req.DeviceIDs {
 		deviceID, err := uuid.Parse(raw)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "bad_request", "device_ids must contain device IDs")
 			return
 		}
+		if !h.deviceVisible(w, r, deviceID) {
+			return
+		}
+		ids = append(ids, deviceID)
+	}
+	out := make([]queued, 0, len(ids))
+	for _, deviceID := range ids {
 		c, err := h.Commands.Queue(r.Context(), commands.QueueOptions{
 			DeviceID: deviceID, Type: req.Type, Payload: payload, CreatedBy: actor,
 			TTL: time.Duration(req.TTLHours) * time.Hour,
@@ -156,6 +166,15 @@ func (h *Handler) getCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	default:
 		h.internal(w, "get command", err)
+		return
+	}
+	// A command for a device outside the caller's scope is one they cannot
+	// know about: the answer is the same as for no command at all.
+	if visible, err := h.Store.Q().DeviceInScope(r.Context(), store.DefaultTenantID, c.DeviceID, caller(r).Scope); err != nil {
+		h.internal(w, "check device scope", err)
+		return
+	} else if !visible {
+		writeError(w, http.StatusNotFound, "not_found", "no such command")
 		return
 	}
 	body := map[string]any{"command": newCommandJSON(c)}

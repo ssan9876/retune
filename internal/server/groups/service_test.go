@@ -370,7 +370,7 @@ func TestItemStatusRollup(t *testing.T) {
 		}
 	}
 
-	rollup, err := st.Q().ItemStatusRollup(ctx, "script", item)
+	rollup, err := st.Q().ItemStatusRollup(ctx, "script", item, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -378,7 +378,7 @@ func TestItemStatusRollup(t *testing.T) {
 		t.Fatalf("rollup = %v", rollup)
 	}
 
-	failed, total, err := st.Q().ListItemStatus(ctx, "script", item, store.ItemFailed, store.Page{})
+	failed, total, err := st.Q().ListItemStatus(ctx, "script", item, store.ItemFailed, store.Page{}, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,7 +393,7 @@ func TestItemStatusRollup(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	rollup, err = st.Q().ItemStatusRollup(ctx, "script", item)
+	rollup, err = st.Q().ItemStatusRollup(ctx, "script", item, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}

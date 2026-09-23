@@ -399,7 +399,7 @@ func TestRecordResultSetsItemStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rows, _, err := st.Q().ListItemStatus(ctx, protocol.ItemKindAgent, v.ID, "", store.Page{})
+	rows, _, err := st.Q().ListItemStatus(ctx, protocol.ItemKindAgent, v.ID, "", store.Page{}, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}

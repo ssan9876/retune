@@ -193,18 +193,18 @@ func scanAppInstall(rows pgx.Rows, in *AppInstall, extra ...any) error {
 
 // ListAppInstalls returns one page of an app's install history, newest first,
 // optionally for one device.
-func (q *Queries) ListAppInstalls(ctx context.Context, appID uuid.UUID, deviceID *uuid.UUID, page Page) ([]AppInstall, int, error) {
+func (q *Queries) ListAppInstalls(ctx context.Context, appID uuid.UUID, deviceID *uuid.UUID, page Page, scope DeviceScope) ([]AppInstall, int, error) {
 	p := page.Normalized()
 	rows, err := q.db.Query(ctx, `
 		SELECT `+appInstallCols+`, d.hostname, count(*) OVER () AS total
 		FROM app_installs i
 		JOIN devices d ON d.id = i.device_id
 		WHERE i.tenant_id = $1 AND i.app_id = $2
-		  AND ($3::uuid IS NULL OR i.device_id = $3)
+		  AND ($3::uuid IS NULL OR i.device_id = $3) AND `+scopeSQL("i.device_id", 6)+`
 		-- The id breaks ties: two installs can share a timestamp, and UUIDv7
 		-- sorts by creation time, so the newer row still comes first.
 		ORDER BY i.started_at DESC, i.id DESC
-		LIMIT $4 OFFSET $5`, DefaultTenantID, appID, deviceID, p.Limit, p.Offset)
+		LIMIT $4 OFFSET $5`, DefaultTenantID, appID, deviceID, p.Limit, p.Offset, scope.arg())
 	if err != nil {
 		return nil, 0, err
 	}

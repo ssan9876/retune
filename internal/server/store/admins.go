@@ -36,6 +36,11 @@ type Admin struct {
 	AuthSource  string
 	OIDCIssuer  string
 	OIDCSubject string
+	// Scoped says the admin is limited to some device groups (AdminScope
+	// says which). Its own column rather than "has rows in admin_scopes", so
+	// deleting the last of an admin's groups narrows them to nothing instead
+	// of widening them to everything.
+	Scoped bool
 }
 
 // Session is one signed-in browser. Only the hash of the token is stored.
@@ -51,12 +56,12 @@ type Session struct {
 }
 
 const adminCols = `id, email, password_hash, totp_secret, role, created_at, last_login_at, disabled_at,
-	auth_source, coalesce(oidc_issuer, ''), coalesce(oidc_subject, '')`
+	auth_source, coalesce(oidc_issuer, ''), coalesce(oidc_subject, ''), scoped`
 
 func scanAdmin(row pgx.Row) (Admin, error) {
 	var a Admin
 	err := row.Scan(&a.ID, &a.Email, &a.PasswordHash, &a.TOTPSecret, &a.Role, &a.CreatedAt, &a.LastLoginAt, &a.DisabledAt,
-		&a.AuthSource, &a.OIDCIssuer, &a.OIDCSubject)
+		&a.AuthSource, &a.OIDCIssuer, &a.OIDCSubject, &a.Scoped)
 	return a, notFound(err)
 }
 
@@ -166,12 +171,12 @@ func (q *Queries) GetSessionWithAdmin(ctx context.Context, tokenHash []byte) (Se
 	err := q.db.QueryRow(ctx, `
 		SELECT s.token_hash, s.admin_id, s.csrf_token, s.created_at, s.expires_at, s.last_seen_at, s.user_agent, s.ip,
 		       a.id, a.email, a.password_hash, a.totp_secret, a.role, a.created_at, a.last_login_at, a.disabled_at,
-		       a.auth_source, coalesce(a.oidc_issuer, ''), coalesce(a.oidc_subject, '')
+		       a.auth_source, coalesce(a.oidc_issuer, ''), coalesce(a.oidc_subject, ''), a.scoped
 		FROM sessions s JOIN admins a ON a.id = s.admin_id
 		WHERE s.token_hash = $1`, tokenHash).
 		Scan(&s.TokenHash, &s.AdminID, &s.CSRFToken, &s.CreatedAt, &s.ExpiresAt, &s.LastSeenAt, &s.UserAgent, &s.IP,
 			&a.ID, &a.Email, &a.PasswordHash, &a.TOTPSecret, &a.Role, &a.CreatedAt, &a.LastLoginAt, &a.DisabledAt,
-			&a.AuthSource, &a.OIDCIssuer, &a.OIDCSubject)
+			&a.AuthSource, &a.OIDCIssuer, &a.OIDCSubject, &a.Scoped)
 	if err != nil {
 		return Session{}, Admin{}, notFound(err)
 	}

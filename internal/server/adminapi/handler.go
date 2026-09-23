@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"retune/internal/server/agentversions"
 	"retune/internal/server/alerts"
 	"retune/internal/server/apps"
@@ -51,6 +53,8 @@ type Handler struct {
 	// SSOName is the sign-in button's text.
 	SSOName string
 	Now     func() time.Time
+
+	routes map[string]guarded
 	Log     *slog.Logger
 }
 
@@ -64,6 +68,9 @@ type authContext struct {
 	Admin   store.Admin
 	Session store.Session
 	Token   *store.APIToken
+	// Scope limits which devices this request may see or touch; nil is the
+	// whole fleet.
+	Scope store.DeviceScope
 }
 
 // authSourceAPIToken marks the stand-in Admin of a token-authenticated
@@ -77,43 +84,103 @@ func (h *Handler) Routes() *http.ServeMux {
 	mux := http.NewServeMux()
 	const base = "/api/admin/v1"
 
-	mux.HandleFunc("GET "+base+"/setup", h.setup)
-	mux.HandleFunc("POST "+base+"/session", h.login)
-	mux.HandleFunc("GET "+base+"/oidc/start", h.oidcStart)
-	mux.HandleFunc("GET "+base+"/oidc/callback", h.oidcCallback)
-	mux.Handle("GET "+base+"/session", h.readSession(h.currentSession))
-	mux.Handle("DELETE "+base+"/session", h.readSession(h.logout))
+	h.handle(mux, "GET "+base+"/setup", public(h.setup))
+	h.handle(mux, "POST "+base+"/session", public(h.login))
+	h.handle(mux, "GET "+base+"/oidc/start", public(h.oidcStart))
+	h.handle(mux, "GET "+base+"/oidc/callback", public(h.oidcCallback))
+	h.handle(mux, "GET "+base+"/session", h.readSession(h.currentSession))
+	h.handle(mux, "DELETE "+base+"/session", h.readSession(h.logout))
 
 	h.mountResources(mux, base)
 	return mux
 }
 
-// read allows both roles; write requires the admin role. Both accept a
-// session or an API token.
-func (h *Handler) read(next http.HandlerFunc) http.Handler  { return h.protect(next, false, true) }
-func (h *Handler) write(next http.HandlerFunc) http.Handler { return h.protect(next, true, true) }
+// access says who may call a route. Every route is registered through one of
+// the wrappers below, each of which fixes all three; routes_test.go lists the
+// class every route is expected to have, so a new route has to be placed in
+// one on purpose.
+type access struct {
+	// admin requires the admin role rather than read-only.
+	admin bool
+	// session refuses API tokens: what only a person at a console should do.
+	session bool
+	// fleet refuses scoped admins: what concerns the whole fleet rather than
+	// devices, so has no scoped form.
+	fleet bool
+}
 
-// readSession and writeSession are read and write for what only a person at
-// a console should do: manage admins and API tokens, reveal a recovery key,
-// look at their own session. An API token is refused here, so one that leaks
-// cannot make more tokens or accounts to outlive its own revocation, or read
-// out secrets in bulk.
+// guarded is a route's handler together with its access class, so the class
+// can be read back by the route-enumeration test.
+type guarded struct {
+	http.Handler
+	access access
+	// open marks the routes that need no sign-in at all.
+	open bool
+}
+
+// public is a route anyone may call: setup, sign-in and the SSO redirects.
+func public(next http.HandlerFunc) http.Handler { return guarded{Handler: next, open: true} }
+
+// handle registers a route and remembers its class. Every route must come
+// through here as a guarded handler; one that does not fails at startup, so a
+// route cannot be added without deciding who may call it.
+func (h *Handler) handle(mux *http.ServeMux, pattern string, handler http.Handler) {
+	g, ok := handler.(guarded)
+	if !ok {
+		panic("adminapi: route " + pattern + " was registered without an access class")
+	}
+	if h.routes == nil {
+		h.routes = map[string]guarded{}
+	}
+	h.routes[pattern] = g
+	mux.Handle(pattern, g)
+}
+
+// read allows both roles and write requires admin; both accept a session or
+// an API token, and a scoped admin, whose view the handler limits to their
+// devices.
+func (h *Handler) read(next http.HandlerFunc) http.Handler  { return h.protect(next, access{}) }
+func (h *Handler) write(next http.HandlerFunc) http.Handler { return h.protect(next, access{admin: true}) }
+
+// readFleet and writeFleet are for what concerns the whole fleet rather than
+// particular devices - item definitions, groups, alerting, the audit log - and
+// refuse a scoped admin.
+func (h *Handler) readFleet(next http.HandlerFunc) http.Handler {
+	return h.protect(next, access{fleet: true})
+}
+func (h *Handler) writeFleet(next http.HandlerFunc) http.Handler {
+	return h.protect(next, access{admin: true, fleet: true})
+}
+
+// readSession and writeSession refuse API tokens, for what only a person at
+// a console should do: reveal a recovery key, look at their own session. A
+// scoped admin may, within their devices.
 func (h *Handler) readSession(next http.HandlerFunc) http.Handler {
-	return h.protect(next, false, false)
+	return h.protect(next, access{session: true})
 }
 func (h *Handler) writeSession(next http.HandlerFunc) http.Handler {
-	return h.protect(next, true, false)
+	return h.protect(next, access{admin: true, session: true})
+}
+
+// readAdmin and writeAdmin manage admins and API tokens: a person, unscoped.
+// A leaked token cannot make its own replacements to outlive revocation, and
+// a scoped admin cannot widen their own scope or make an unscoped account.
+func (h *Handler) readAdmin(next http.HandlerFunc) http.Handler {
+	return h.protect(next, access{session: true, fleet: true})
+}
+func (h *Handler) writeAdmin(next http.HandlerFunc) http.Handler {
+	return h.protect(next, access{admin: true, session: true, fleet: true})
 }
 
 // protect authenticates the caller - an API token in the Authorization
 // header, else the session cookie - enforces CSRF on a session's unsafe
-// methods, and checks the role.
-func (h *Handler) protect(next http.HandlerFunc, needsAdmin, allowToken bool) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// methods, checks the role, and loads the caller's scope.
+func (h *Handler) protect(next http.HandlerFunc, a access) http.Handler {
+	return guarded{access: a, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// A request that sends an Authorization header is judged on it alone,
 		// never on a cookie that happens to ride along with it.
 		if header := r.Header.Get("Authorization"); header != "" {
-			h.withToken(w, r, header, next, needsAdmin, allowToken)
+			h.withToken(w, r, header, next, a)
 			return
 		}
 		cookie, err := r.Cookie(SessionCookie)
@@ -142,18 +209,18 @@ func (h *Handler) protect(next http.HandlerFunc, needsAdmin, allowToken bool) ht
 				return
 			}
 		}
-		if needsAdmin && admin.Role != store.RoleAdmin {
+		if a.admin && admin.Role != store.RoleAdmin {
 			writeError(w, http.StatusForbidden, "forbidden", "this account may only read")
 			return
 		}
-		next(w, r.WithContext(context.WithValue(r.Context(), authKey{}, authContext{Admin: admin, Session: session})))
-	})
+		h.withScope(w, r, next, a, authContext{Admin: admin, Session: session}, admin.ID)
+	})}
 }
 
 // withToken authenticates an API token. It needs no CSRF check: the header
 // is something a script sets on purpose, never something a browser attaches
 // to a request another site made it send.
-func (h *Handler) withToken(w http.ResponseWriter, r *http.Request, header string, next http.HandlerFunc, needsAdmin, allowToken bool) {
+func (h *Handler) withToken(w http.ResponseWriter, r *http.Request, header string, next http.HandlerFunc, a access) {
 	plain, ok := strings.CutPrefix(header, "Bearer ")
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthenticated", "use Authorization: Bearer <API token>")
@@ -168,16 +235,34 @@ func (h *Handler) withToken(w http.ResponseWriter, r *http.Request, header strin
 		h.internal(w, "authenticate API token", err)
 		return
 	}
-	if !allowToken {
+	if a.session {
 		writeError(w, http.StatusForbidden, "session_required", "this needs an admin signed in to the console; an API token cannot do it")
 		return
 	}
-	if needsAdmin && tok.Role != store.RoleAdmin {
+	if a.admin && tok.Role != store.RoleAdmin {
 		writeError(w, http.StatusForbidden, "forbidden", "this token may only read")
 		return
 	}
 	admin := store.Admin{ID: tok.ID, Email: "api-token:" + tok.Name, Role: tok.Role, AuthSource: authSourceAPIToken}
-	next(w, r.WithContext(context.WithValue(r.Context(), authKey{}, authContext{Admin: admin, Token: &tok})))
+	// A token sees what its maker sees now, not what they saw when they made
+	// it: narrowing an admin narrows every token they hold.
+	h.withScope(w, r, next, a, authContext{Admin: admin, Token: &tok}, tok.CreatedByID)
+}
+
+// withScope loads the scope of the admin a request acts for and refuses a
+// scoped caller a fleet route.
+func (h *Handler) withScope(w http.ResponseWriter, r *http.Request, next http.HandlerFunc, a access, ac authContext, adminID uuid.UUID) {
+	scope, err := h.Store.Q().AdminScope(r.Context(), store.DefaultTenantID, adminID)
+	if err != nil {
+		h.internal(w, "load admin scope", err)
+		return
+	}
+	if a.fleet && scope.Limited() {
+		writeError(w, http.StatusForbidden, "scoped", "this concerns the whole fleet, and this account is limited to some device groups")
+		return
+	}
+	ac.Scope = scope
+	next(w, r.WithContext(context.WithValue(r.Context(), authKey{}, ac)))
 }
 
 func (h *Handler) clearCookie(w http.ResponseWriter) {

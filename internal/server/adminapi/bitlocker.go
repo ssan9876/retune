@@ -34,6 +34,9 @@ func (h *Handler) listBitLockerKeys(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if !h.deviceVisible(w, r, id) {
+		return
+	}
 	keys, err := h.BitLocker.List(r.Context(), id)
 	if err != nil {
 		h.internal(w, "list recovery keys", err)
@@ -68,6 +71,25 @@ func (h *Handler) revealBitLockerKey(w http.ResponseWriter, r *http.Request) {
 	}
 	var req revealRequest
 	if !decode(w, r, &req) {
+		return
+	}
+	// The key's device must be one the caller may see, checked before
+	// anything is decrypted or written to the audit log; outside the scope
+	// the key answers exactly as a key that does not exist.
+	stored, err := h.Store.Q().GetBitLockerKey(r.Context(), store.DefaultTenantID, id)
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "no such recovery key")
+		return
+	}
+	if err != nil {
+		h.internal(w, "get recovery key", err)
+		return
+	}
+	if visible, err := h.Store.Q().DeviceInScope(r.Context(), store.DefaultTenantID, stored.DeviceID, caller(r).Scope); err != nil {
+		h.internal(w, "check device scope", err)
+		return
+	} else if !visible {
+		writeError(w, http.StatusNotFound, "not_found", "no such recovery key")
 		return
 	}
 	key, password, err := h.BitLocker.Reveal(r.Context(), id, caller(r).Admin.Email, req.Reason)

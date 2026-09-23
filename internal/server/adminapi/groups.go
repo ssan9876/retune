@@ -69,8 +69,12 @@ func (h *Handler) listGroups(w http.ResponseWriter, r *http.Request) {
 		h.internal(w, "list groups", err)
 		return
 	}
+	scope := caller(r).Scope
 	items := make([]groupJSON, 0, len(rows))
 	for _, g := range rows {
+		if !groupVisible(scope, g.ID) {
+			continue
+		}
 		items = append(items, newGroupJSON(g.Group, g.MemberCount))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
@@ -95,6 +99,10 @@ func (h *Handler) createGroup(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) getGroup(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathUUID(w, r, "no such group")
 	if !ok {
+		return
+	}
+	if !groupVisible(caller(r).Scope, id) {
+		writeError(w, http.StatusNotFound, "not_found", "no such group")
 		return
 	}
 	g, err := h.Groups.Get(r.Context(), id)
@@ -140,6 +148,12 @@ func (h *Handler) deleteGroup(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) listGroupMembers(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathUUID(w, r, "no such group")
 	if !ok {
+		return
+	}
+	// A group in scope is wholly in scope: its members are the devices the
+	// scope is made of.
+	if !groupVisible(caller(r).Scope, id) {
+		writeError(w, http.StatusNotFound, "not_found", "no such group")
 		return
 	}
 	page := pageFrom(r)
@@ -281,8 +295,14 @@ func (h *Handler) listAssignments(w http.ResponseWriter, r *http.Request) {
 		h.internal(w, "list assignments", err)
 		return
 	}
+	scope := caller(r).Scope
 	items := make([]assignmentJSON, 0, len(rows))
 	for _, a := range rows {
+		// A scoped admin sees an item's assignments to their own groups, not
+		// where else in the fleet it goes.
+		if !groupVisible(scope, a.GroupID) {
+			continue
+		}
 		name := ""
 		if g, err := h.Store.Q().GetGroup(ctx, store.DefaultTenantID, a.GroupID); err == nil {
 			name = g.Name
@@ -314,6 +334,12 @@ func (h *Handler) createAssignment(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Mode != store.ModeInclude && req.Mode != store.ModeExclude {
 		writeError(w, http.StatusBadRequest, "bad_request", "mode must be include or exclude")
+		return
+	}
+	// A scoped admin assigns only to their own groups; any other is, to them,
+	// no group at all.
+	if !groupVisible(caller(r).Scope, groupID) {
+		writeError(w, http.StatusNotFound, "not_found", "no such group")
 		return
 	}
 
@@ -399,6 +425,9 @@ func (h *Handler) deleteAssignment(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
+		if !groupVisible(caller(r).Scope, a.GroupID) {
+			return store.ErrNotFound
+		}
 		if err := q.DeleteAssignment(ctx, store.DefaultTenantID, id); err != nil {
 			return err
 		}
@@ -429,13 +458,14 @@ func (h *Handler) itemStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	rollup, err := h.Store.Q().ItemStatusRollup(ctx, kind, itemID)
+	scope := caller(r).Scope
+	rollup, err := h.Store.Q().ItemStatusRollup(ctx, kind, itemID, scope)
 	if err != nil {
 		h.internal(w, "item status rollup", err)
 		return
 	}
 	page := pageFrom(r)
-	rows, total, err := h.Store.Q().ListItemStatus(ctx, kind, itemID, r.URL.Query().Get("status"), page)
+	rows, total, err := h.Store.Q().ListItemStatus(ctx, kind, itemID, r.URL.Query().Get("status"), page, scope)
 	if err != nil {
 		h.internal(w, "list item status", err)
 		return

@@ -79,7 +79,7 @@ func (h *Handler) listDevices(w http.ResponseWriter, r *http.Request) {
 	page := pageFrom(r)
 	q := r.URL.Query()
 	rows, total, err := h.Store.Q().ListDevicesPage(r.Context(), store.DeviceFilter{
-		Search: q.Get("search"), Status: q.Get("status"), Page: page,
+		Search: q.Get("search"), Status: q.Get("status"), Page: page, Scope: caller(r).Scope,
 	})
 	if err != nil {
 		h.internal(w, "list devices", err)
@@ -106,6 +106,9 @@ func (h *Handler) listDevices(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) getDevice(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathUUID(w, r, "no such device")
 	if !ok {
+		return
+	}
+	if !h.deviceVisible(w, r, id) {
 		return
 	}
 	ctx := r.Context()
@@ -165,6 +168,9 @@ func (h *Handler) listDeviceSoftware(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if !h.deviceVisible(w, r, id) {
+		return
+	}
 	sw, err := h.Store.Q().ListSoftware(r.Context(), id)
 	if err != nil {
 		h.internal(w, "list software", err)
@@ -188,6 +194,9 @@ func (h *Handler) unenrollDevice(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) changeDeviceStatus(w http.ResponseWriter, r *http.Request, unenroll bool) {
 	id, ok := pathUUID(w, r, "no such device")
 	if !ok {
+		return
+	}
+	if !h.deviceVisible(w, r, id) {
 		return
 	}
 	actor := caller(r).Admin.Email

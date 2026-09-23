@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import Admins from "./Admins";
@@ -75,5 +76,40 @@ describe("Admins", () => {
     expect(within(row).queryByRole("button", { name: "Change password" })).not.toBeInTheDocument();
     expect(within(row).queryByRole("button", { name: /authenticator/ })).not.toBeInTheDocument();
     expect(within(row).getByRole("button", { name: "Disable account" })).toBeInTheDocument();
+  });
+
+  it("limits an admin to groups", async () => {
+    canWrite = true;
+    const put: { url: string; body: unknown }[] = [];
+    fetchMock.mockImplementation((url: string, init?: { method?: string; body?: string }) => {
+      if (init?.method === "PUT") {
+        put.push({ url: String(url), body: JSON.parse(init.body ?? "{}") });
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
+      if (String(url).includes("/groups")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ items: [{ id: "g1", name: "Site A" }, { id: "g2", name: "Site B" }] }), {
+            headers: { "Content-Type": "application/json" },
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            items: [{ id: "a1", email: "ops@example.com", role: "admin", totp_enabled: false, disabled: false,
+              created_at: "2026-09-12T12:00:00Z", auth_source: "local", scope: null }],
+            total: 1, limit: 50, offset: 0,
+          }),
+          { headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    });
+    render(<Admins />);
+    expect(await screen.findByText("All devices")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Limit devices" }));
+    await userEvent.click(screen.getByLabelText(/Only devices in these groups/));
+    await userEvent.click(await screen.findByLabelText("Site B"));
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(put).toEqual([{ url: "/api/admin/v1/admins/a1/scope", body: { group_ids: ["g2"] } }]);
   });
 });

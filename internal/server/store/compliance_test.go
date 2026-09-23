@@ -292,7 +292,7 @@ func TestListPolicyCompliance(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	list, total, err := q.ListPolicyCompliance(ctx, pol.ID, "", store.Page{})
+	list, total, err := q.ListPolicyCompliance(ctx, pol.ID, "", store.Page{}, store.Unscoped)
 	if err != nil || total != 2 || len(list) != 2 {
 		t.Fatalf("list: %v total=%d %+v", err, total, list)
 	}
@@ -301,7 +301,7 @@ func TestListPolicyCompliance(t *testing.T) {
 		t.Fatalf("order: %+v", list)
 	}
 
-	filtered, total, err := q.ListPolicyCompliance(ctx, pol.ID, store.ComplianceNonCompliant, store.Page{})
+	filtered, total, err := q.ListPolicyCompliance(ctx, pol.ID, store.ComplianceNonCompliant, store.Page{}, store.Unscoped)
 	if err != nil || total != 1 || len(filtered) != 1 || filtered[0].Hostname != "zeta" {
 		t.Fatalf("filtered: %v total=%d %+v", err, total, filtered)
 	}
@@ -374,7 +374,7 @@ func TestComplianceCounts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	counts, err := q.ComplianceCounts(ctx)
+	counts, err := q.ComplianceCounts(ctx, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -407,7 +407,7 @@ func TestPolicyStateCounts(t *testing.T) {
 		}
 	}
 
-	counts, err := q.PolicyStateCounts(ctx, []uuid.UUID{scored.ID, empty.ID})
+	counts, err := q.PolicyStateCounts(ctx, []uuid.UUID{scored.ID, empty.ID}, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -429,7 +429,7 @@ func TestPolicyStateCounts(t *testing.T) {
 	// own) is scoped out by the tenant filter, the same as every other
 	// compliance query, and never picks up a stray row.
 	other := uuid.Must(uuid.NewV7())
-	otherCounts, err := q.PolicyStateCounts(ctx, []uuid.UUID{other})
+	otherCounts, err := q.PolicyStateCounts(ctx, []uuid.UUID{other}, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -439,7 +439,7 @@ func TestPolicyStateCounts(t *testing.T) {
 		}
 	}
 
-	if empty, err := q.PolicyStateCounts(ctx, nil); err != nil || len(empty) != 0 {
+	if empty, err := q.PolicyStateCounts(ctx, nil, store.Unscoped); err != nil || len(empty) != 0 {
 		t.Errorf("nil ids: %v %+v", err, empty)
 	}
 }

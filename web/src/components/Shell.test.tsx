@@ -7,9 +7,10 @@ import { Shell } from "./Shell";
 
 const signOut = vi.fn();
 let role = "admin";
+let scope: string[] | null = null;
 
 vi.mock("../session/SessionContext", () => ({
-  useSession: () => ({ admin: { email: "ops@example.com", role }, canWrite: role === "admin", signOut }),
+  useSession: () => ({ admin: { email: "ops@example.com", role, scope }, canWrite: role === "admin", signOut }),
 }));
 
 function renderShell(path = "/devices") {
@@ -85,5 +86,19 @@ describe("Shell", () => {
     renderShell();
     expect(screen.getByText("Read-only")).toBeInTheDocument();
     role = "admin";
+  });
+
+  it("leaves out the fleet pages for an admin limited to some groups", () => {
+    scope = ["g1"];
+    try {
+      renderShell("/devices");
+      const nav = screen.getByRole("navigation", { name: "Main" });
+      expect(within(nav).getByRole("link", { name: "All devices" })).toBeInTheDocument();
+      for (const name of ["Enrollment", "Alerts", "Admins", "API tokens", "Audit log"]) {
+        expect(within(nav).queryByRole("link", { name })).not.toBeInTheDocument();
+      }
+    } finally {
+      scope = null;
+    }
   });
 });

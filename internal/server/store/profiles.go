@@ -182,11 +182,11 @@ func (q *Queries) ClearDeviceProfileStatus(ctx context.Context, deviceID, profil
 }
 
 // SettingStatusRollup counts settings by status for one profile.
-func (q *Queries) SettingStatusRollup(ctx context.Context, profileID uuid.UUID) (map[string]int, error) {
+func (q *Queries) SettingStatusRollup(ctx context.Context, profileID uuid.UUID, scope DeviceScope) (map[string]int, error) {
 	rows, err := q.db.Query(ctx, `
 		SELECT status, count(*) FROM profile_setting_status
-		WHERE tenant_id = $1 AND profile_id = $2
-		GROUP BY status`, DefaultTenantID, profileID)
+		WHERE tenant_id = $1 AND profile_id = $2 AND `+scopeSQL("device_id", 3)+`
+		GROUP BY status`, DefaultTenantID, profileID, scope.arg())
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +206,7 @@ func (q *Queries) SettingStatusRollup(ctx context.Context, profileID uuid.UUID) 
 // ListSettingStatus returns one page of per-setting results for a profile,
 // optionally narrowed to one status, so an administrator can go straight to
 // what is failing.
-func (q *Queries) ListSettingStatus(ctx context.Context, profileID uuid.UUID, status string, page Page) ([]SettingStatus, int, error) {
+func (q *Queries) ListSettingStatus(ctx context.Context, profileID uuid.UUID, status string, page Page, scope DeviceScope) ([]SettingStatus, int, error) {
 	p := page.Normalized()
 	rows, err := q.db.Query(ctx, `
 		SELECT s.device_id, d.hostname, s.profile_id, s.identity, s.version, s.status, s.detail, s.updated_at,
@@ -214,9 +214,9 @@ func (q *Queries) ListSettingStatus(ctx context.Context, profileID uuid.UUID, st
 		FROM profile_setting_status s
 		JOIN devices d ON d.id = s.device_id
 		WHERE s.tenant_id = $1 AND s.profile_id = $2
-		  AND ($3 = '' OR s.status = $3)
+		  AND ($3 = '' OR s.status = $3) AND `+scopeSQL("s.device_id", 6)+`
 		ORDER BY lower(d.hostname), s.identity
-		LIMIT $4 OFFSET $5`, DefaultTenantID, profileID, status, p.Limit, p.Offset)
+		LIMIT $4 OFFSET $5`, DefaultTenantID, profileID, status, p.Limit, p.Offset, scope.arg())
 	if err != nil {
 		return nil, 0, err
 	}

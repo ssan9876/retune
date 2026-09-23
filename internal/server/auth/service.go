@@ -25,7 +25,7 @@ var (
 	ErrInvalidSession     = errors.New("session is invalid or expired")
 	ErrNotFound           = errors.New("admin not found")
 	ErrBadRequest         = errors.New("bad request")
-	ErrLastAdmin          = errors.New("the last enabled admin cannot be disabled")
+	ErrLastAdmin          = errors.New("the last enabled, unscoped admin cannot be disabled or scoped")
 	// ErrLocalLoginDisabled is password sign-in refused because SSO is the
 	// only way in.
 	ErrLocalLoginDisabled = errors.New("password sign-in is turned off; sign in with SSO")
@@ -260,6 +260,69 @@ func (s *Service) DeleteSession(ctx context.Context, token string) error {
 	return s.Store.Q().DeleteSession(ctx, hashToken(token))
 }
 
+// isFleetAdmin is an admin who can manage the whole fleet: the admin role,
+// enabled, and not limited to some device groups. There must always be one,
+// or nobody could manage admins, groups or anything else fleet-wide again.
+func isFleetAdmin(a store.Admin) bool {
+	return a.Role == store.RoleAdmin && a.DisabledAt == nil && !a.Scoped
+}
+
+func fleetAdminsBesides(admins []store.Admin, id uuid.UUID) int {
+	n := 0
+	for _, a := range admins {
+		if a.ID != id && isFleetAdmin(a) {
+			n++
+		}
+	}
+	return n
+}
+
+// SetScope limits an admin to device groups, or with nil lifts the limit. An
+// empty, non-nil list limits them to nothing at all. It refuses to scope the
+// last admin who can manage the whole fleet.
+func (s *Service) SetScope(ctx context.Context, id uuid.UUID, groups []uuid.UUID, actor string) error {
+	return s.Store.InTx(ctx, func(q *store.Queries) error {
+		admin, err := q.GetAdmin(ctx, store.DefaultTenantID, id)
+		if errors.Is(err, store.ErrNotFound) {
+			return fmt.Errorf("%w: %s", ErrNotFound, id)
+		}
+		if err != nil {
+			return err
+		}
+		if groups != nil && isFleetAdmin(admin) {
+			all, err := q.ListAdmins(ctx)
+			if err != nil {
+				return err
+			}
+			if fleetAdminsBesides(all, id) == 0 {
+				return ErrLastAdmin
+			}
+		}
+		names := make([]string, 0, len(groups))
+		for _, g := range groups {
+			group, err := q.GetGroup(ctx, store.DefaultTenantID, g)
+			if errors.Is(err, store.ErrNotFound) {
+				return fmt.Errorf("%w: there is no group %s", ErrBadRequest, g)
+			}
+			if err != nil {
+				return err
+			}
+			names = append(names, group.Name)
+		}
+		if err := q.SetAdminScope(ctx, store.DefaultTenantID, id, store.DeviceScope(groups)); err != nil {
+			return err
+		}
+		details := map[string]any{"email": admin.Email, "scoped": groups != nil}
+		if groups != nil {
+			details["groups"] = names
+		}
+		return q.InsertAudit(ctx, store.AuditEntry{
+			Actor: actor, Action: "admin.scope_changed", TargetKind: "admin", TargetID: id.String(),
+			Details: details,
+		})
+	})
+}
+
 // CreateAdmin adds an account.
 func (s *Service) CreateAdmin(ctx context.Context, o CreateAdminOptions) (store.Admin, error) {
 	email := strings.TrimSpace(o.Email)
@@ -391,13 +454,7 @@ func (s *Service) SetDisabled(ctx context.Context, id uuid.UUID, disabled bool, 
 			if err != nil {
 				return err
 			}
-			enabled := 0
-			for _, a := range others {
-				if a.Role == store.RoleAdmin && a.DisabledAt == nil && a.ID != id {
-					enabled++
-				}
-			}
-			if admin.Role == store.RoleAdmin && enabled == 0 {
+			if isFleetAdmin(admin) && fleetAdminsBesides(others, id) == 0 {
 				return ErrLastAdmin
 			}
 		}

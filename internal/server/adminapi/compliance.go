@@ -70,7 +70,7 @@ func (h *Handler) listCompliancePolicies(w http.ResponseWriter, r *http.Request)
 	// One query for the whole page's rollup, not one per policy: the same
 	// shape as exportDevices batching ComplianceOverall over its page of
 	// devices, so listing policies never fans out into N extra round trips.
-	counts, err := h.Store.Q().PolicyStateCounts(ctx, ids)
+	counts, err := h.Store.Q().PolicyStateCounts(ctx, ids, caller(r).Scope)
 	if err != nil {
 		h.internal(w, "policy state counts", err)
 		return
@@ -202,7 +202,7 @@ func (h *Handler) listPolicyDevices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page := pageFrom(r)
-	rows, total, err := h.Store.Q().ListPolicyCompliance(r.Context(), id, r.URL.Query().Get("state"), page)
+	rows, total, err := h.Store.Q().ListPolicyCompliance(r.Context(), id, r.URL.Query().Get("state"), page, caller(r).Scope)
 	if err != nil {
 		h.internal(w, "list policy compliance", err)
 		return
@@ -244,6 +244,9 @@ type deviceComplianceJSON struct {
 func (h *Handler) deviceCompliance(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathUUID(w, r, "no such device")
 	if !ok {
+		return
+	}
+	if !h.deviceVisible(w, r, id) {
 		return
 	}
 	ctx := r.Context()

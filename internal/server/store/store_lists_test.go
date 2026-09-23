@@ -187,7 +187,7 @@ func TestCheckInRecencyAndEnrollmentTrend(t *testing.T) {
 	// some day, so they count towards the trend.
 	mk("GONE", store.DeviceRetired, at(-2*time.Hour), now.AddDate(0, 0, -2))
 
-	hour, day, week, older, never, err := q.CheckInRecency(ctx, now)
+	hour, day, week, older, never, err := q.CheckInRecency(ctx, now, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestCheckInRecencyAndEnrollmentTrend(t *testing.T) {
 		t.Fatalf("buckets = %d/%d/%d/%d/%d, want one device in each", hour, day, week, older, never)
 	}
 
-	trend, err := q.EnrollmentTrend(ctx, now.AddDate(0, 0, -3))
+	trend, err := q.EnrollmentTrend(ctx, now.AddDate(0, 0, -3), store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
