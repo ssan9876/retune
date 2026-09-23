@@ -39,6 +39,35 @@ const ssoOwned = "this account signs in through SSO; its password and MFA belong
 // updated, so a busy console does not write on every request.
 const touchInterval = time.Minute
 
+// maxEmailLength is the longest address sign-in will even look at (RFC 5321's
+// limit). Anything longer is refused before it costs a hash or a limiter slot.
+const maxEmailLength = 320
+
+// hashSlots bounds how many password checks run at once. Each Argon2id check
+// takes 64 MiB, and sign-in is reachable without an account, so without a
+// bound a burst of requests - for unknown addresses too, which cost a dummy
+// check to keep the timing honest - could take the server's memory with it.
+// Four at a time is 256 MiB at most; a check that cannot get a slot within
+// hashWait is refused as too many attempts.
+var hashSlots = make(chan struct{}, 4)
+
+const hashWait = 5 * time.Second
+
+// verifyPassword is VerifyPassword under the hashSlots bound.
+func verifyPassword(ctx context.Context, encoded, password string) (bool, error) {
+	timer := time.NewTimer(hashWait)
+	defer timer.Stop()
+	select {
+	case hashSlots <- struct{}{}:
+	case <-timer.C:
+		return false, ErrTooManyAttempts
+	case <-ctx.Done():
+		return false, ctx.Err()
+	}
+	defer func() { <-hashSlots }()
+	return VerifyPassword(encoded, password), nil
+}
+
 // Service authenticates admins and manages their sessions.
 type Service struct {
 	Store      *store.Store
@@ -80,12 +109,17 @@ func (s *Service) Authenticate(ctx context.Context, email, password, totpCode st
 		return store.Admin{}, ErrLocalLoginDisabled
 	}
 	key := strings.ToLower(strings.TrimSpace(email))
+	if len(key) > maxEmailLength || len(password) > maxPasswordLength {
+		return store.Admin{}, ErrInvalidCredentials
+	}
 	if s.Limiter != nil && !s.Limiter.Allowed(key) {
 		return store.Admin{}, ErrTooManyAttempts
 	}
 	admin, err := s.Store.Q().GetAdminByEmail(ctx, store.DefaultTenantID, key)
 	if errors.Is(err, store.ErrNotFound) {
-		VerifyPassword(dummyHash(), password) // keep the timing similar
+		if _, err := verifyPassword(ctx, dummyHash(), password); err != nil { // keep the timing similar
+			return store.Admin{}, err
+		}
 		s.fail(key)
 		return store.Admin{}, ErrInvalidCredentials
 	}
@@ -96,11 +130,17 @@ func (s *Service) Authenticate(ctx context.Context, email, password, totpCode st
 		// An SSO account has no password, and checking against an empty
 		// hash returns at once: without the dummy check, the timing alone
 		// would say which addresses belong to SSO accounts.
-		VerifyPassword(dummyHash(), password)
+		if _, err := verifyPassword(ctx, dummyHash(), password); err != nil {
+			return store.Admin{}, err
+		}
 		s.fail(key)
 		return store.Admin{}, ErrInvalidCredentials
 	}
-	if !VerifyPassword(admin.PasswordHash, password) {
+	ok, err := verifyPassword(ctx, admin.PasswordHash, password)
+	if err != nil {
+		return store.Admin{}, err
+	}
+	if !ok {
 		s.fail(key)
 		return store.Admin{}, ErrInvalidCredentials
 	}
