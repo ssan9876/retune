@@ -9,7 +9,8 @@ Go agent runs on each machine.
 - **Enrollment.** A one-time token enrolls a machine; the server issues it a
   client certificate and the agent checks in over mutual TLS.
 - **Inventory.** Hardware, operating system, disks, network adapters, installed
-  software and local accounts, refreshed daily or on demand.
+  software, local accounts, Microsoft Defender's status and the firewall's,
+  refreshed daily or on demand.
 - **Commands.** Run a PowerShell script, restart a machine, or refresh its
   inventory, with results (exit code and output) reported back.
 - **Lifecycle.** Certificates renew before expiry; retiring a device stops its
@@ -507,6 +508,7 @@ scripts and assigned to groups the same way.
 | `firewall_rule` | a named inbound or outbound rule |
 | `windows_update` | update deferrals, active hours and restart behaviour |
 | `bitlocker` | requiring the system drive to be encrypted, and escrowing its recovery key |
+| `defender` | Microsoft Defender's real-time monitoring, cloud protection, sample submission, PUA protection and cloud block level |
 
 Each setting is applied as: test, then set only if needed, then **test again**.
 That second test is what separates fixing something from merely running
@@ -524,6 +526,15 @@ exactly the same thing is not a conflict.
 enforcing it. If the assignment was set to put previous values back, it restores
 what was there before the profile first changed each setting — not what Retune
 last wrote — and leaves alone anything another profile still wants.
+
+A `defender` setting enforces only the preferences it names and leaves every
+other one as it is. Two profiles that both configure Defender are a conflict
+even when they name different preferences, the same as two Windows Update
+policies: merging them would apply a configuration nobody wrote. Where
+Tamper Protection is on, Defender accepts the change and quietly ignores it;
+the agent reads the preferences back, and reports which ones did not take
+rather than claiming success. Turn Tamper Protection off for those devices,
+or manage those preferences through Intune or Group Policy instead.
 
 `HKCU` registry values are written to the signed-in user's hive, reached by SID
 under `HKEY_USERS`. On a machine with nobody signed in the setting reports that
@@ -572,6 +583,18 @@ than holding the request open for a fleet's worth of work.
 | `max_local_admins` | a ceiling on local administrator accounts |
 | `forbidden_software`, `required_software` | a package name absent, or present |
 | `profile_applied` | a configuration profile currently `succeeded` on the device |
+| `defender_realtime` | Microsoft Defender on, with real-time protection |
+| `defender_signatures_within` | Defender's signatures updated within 1–30 days |
+| `firewall_enabled` | the firewall on for every profile, or the ones named |
+
+The Defender and firewall rules read what the agent reports. A device where
+another antivirus is primary puts Defender in passive mode, and
+`defender_realtime` then reports unknown rather than non-compliant: Defender's
+own switch says nothing about whether that machine is protected. Signature
+age is measured from when the signatures were last updated to the moment the
+rule is evaluated, so a device that stops reporting drifts out of compliance on
+its own. The firewall state is the one in effect after Group Policy, not the
+locally stored setting a policy may be overriding.
 
 A policy scores each rule as compliant, non-compliant or unknown (a rule with
 nothing to evaluate — no inventory yet, say — is unknown rather than a guess

@@ -30,7 +30,12 @@ const RULE_TYPES = [
   { value: "forbidden_software", label: "Forbidden software" },
   { value: "required_software", label: "Required software" },
   { value: "profile_applied", label: "Profile applied" },
+  { value: "defender_realtime", label: "Defender real-time protection on" },
+  { value: "defender_signatures_within", label: "Defender signatures updated within" },
+  { value: "firewall_enabled", label: "Firewall on" },
 ];
+
+const FIREWALL_PROFILES = ["domain", "private", "public"];
 
 function blankRule(type: string): ComplianceRule {
   switch (type) {
@@ -58,6 +63,12 @@ function blankRule(type: string): ComplianceRule {
       return { type, name: "" };
     case "profile_applied":
       return { type, profile_id: "" };
+    case "defender_realtime":
+      return { type };
+    case "defender_signatures_within":
+      return { type, days: 3 };
+    case "firewall_enabled":
+      return { type };
     default:
       return { type: "os_build_min", build: "" };
   }
@@ -102,6 +113,15 @@ function ruleError(rule: ComplianceRule): string | undefined {
     }
     case "profile_applied":
       return rule.profile_id ? undefined : "Choose a profile.";
+    case "defender_realtime":
+      return undefined;
+    case "defender_signatures_within": {
+      const d = rule.days;
+      return d !== undefined && Number.isInteger(d) && d >= 1 && d <= 30 ? undefined : "Between 1 and 30 days.";
+    }
+    case "firewall_enabled":
+      // Absent means all three; a list, when given, must name at least one.
+      return rule.profiles === undefined || rule.profiles.length > 0 ? undefined : "Choose at least one profile.";
     default:
       return "Unsupported rule type.";
   }
@@ -240,6 +260,48 @@ function RuleFields({
           </select>
         </Field>
       );
+    case "defender_realtime":
+      return (
+        <p className="hint">
+          No parameters: Defender must be on with real-time protection. A device where another antivirus is primary
+          reports unknown, not non-compliant.
+        </p>
+      );
+    case "defender_signatures_within":
+      return (
+        <Field label="Signatures updated within (days)" error={err}>
+          <input
+            type="number"
+            min={1}
+            max={30}
+            value={rule.days ?? ""}
+            onChange={(e) => set({ days: e.target.value === "" ? undefined : Number(e.target.value) })}
+          />
+        </Field>
+      );
+    case "firewall_enabled": {
+      // No list stored means "all three", so every box starts ticked; a
+      // list is only written once somebody unticks one.
+      const chosen = rule.profiles ?? FIREWALL_PROFILES;
+      const toggle = (name: string, on: boolean) => {
+        const next = FIREWALL_PROFILES.filter((p) => (p === name ? on : chosen.includes(p)));
+        set({ profiles: next.length === FIREWALL_PROFILES.length ? undefined : next });
+      };
+      // A fieldset rather than Field: Field wraps its content in a <label>,
+      // and a label cannot hold three more.
+      return (
+        <fieldset className="field check-group">
+          <legend>Profiles that must be on</legend>
+          {FIREWALL_PROFILES.map((name) => (
+            <label key={name}>
+              <input type="checkbox" checked={chosen.includes(name)} onChange={(e) => toggle(name, e.target.checked)} />
+              {name}
+            </label>
+          ))}
+          {err ? <p className="error">{err}</p> : null}
+        </fieldset>
+      );
+    }
     default:
       return null;
   }

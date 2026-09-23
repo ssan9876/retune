@@ -22,6 +22,40 @@ type Inventory struct {
 	LocalAdmins           []string         `json:"local_admins"`
 	PendingReboot         bool             `json:"pending_reboot"`
 	LastUpdateInstalledAt *time.Time       `json:"last_update_installed_at,omitempty"`
+	// Defender is nil when Microsoft Defender Antivirus reports nothing: not
+	// installed, or removed by another antivirus. Nil is "not reported",
+	// never "off".
+	Defender *DefenderStatus `json:"defender,omitempty"`
+	// Firewall is the effective state of each firewall profile, after Group
+	// Policy. Nil when it could not be read.
+	Firewall []FirewallProfileState `json:"firewall,omitempty"`
+}
+
+// DefenderStatus is what Microsoft Defender Antivirus says about itself.
+type DefenderStatus struct {
+	// RunningMode is Defender's AMRunningMode: "Normal" when it is the
+	// machine's antivirus, "Passive Mode" or "EDR Block Mode" when another
+	// product is.
+	RunningMode        string     `json:"running_mode"`
+	AntivirusEnabled   bool       `json:"antivirus_enabled"`
+	RealtimeEnabled    bool       `json:"realtime_enabled"`
+	TamperProtected    bool       `json:"tamper_protected"`
+	SignatureVersion   string     `json:"signature_version"`
+	SignatureUpdatedAt *time.Time `json:"signature_updated_at,omitempty"`
+	LastQuickScanAt    *time.Time `json:"last_quick_scan_at,omitempty"`
+	LastFullScanAt     *time.Time `json:"last_full_scan_at,omitempty"`
+}
+
+// DefenderNormalMode is the RunningMode in which Defender is the machine's
+// own antivirus, and so the only mode in which its real-time state means
+// anything about whether the machine is protected.
+const DefenderNormalMode = "Normal"
+
+// FirewallProfileState is one firewall profile's effective state. Profile is
+// FirewallDomain, FirewallPrivate or FirewallPublic.
+type FirewallProfileState struct {
+	Profile string `json:"profile"`
+	Enabled bool   `json:"enabled"`
 }
 
 // OSInfo describes the operating system.
@@ -118,6 +152,9 @@ func canonicalInventory(inv Inventory) Inventory {
 
 	c.LocalAdmins = slices.Clone(inv.LocalAdmins)
 	slices.Sort(c.LocalAdmins)
+
+	c.Firewall = slices.Clone(inv.Firewall)
+	slices.SortFunc(c.Firewall, func(a, b FirewallProfileState) int { return cmp.Compare(a.Profile, b.Profile) })
 	return c
 }
 

@@ -656,6 +656,108 @@ func TestComplianceEndToEnd(t *testing.T) {
 	}
 }
 
+// TestSecurityComplianceEndToEnd carries the M15 blocks the whole way: an
+// agent's inventory with Defender real-time protection off and the public
+// firewall off is stored, read back into the rule engine's facts and scored
+// non-compliant on both counts; the same device reporting both on is then
+// compliant, with nothing reassigned in between.
+func TestSecurityComplianceEndToEnd(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.Server{
+		DatabaseURL: storetest.DatabaseURL(t), PublicURL: "https://127.0.0.1",
+		TLSMode: "self-signed", DataDir: t.TempDir(), CheckinInterval: 2 * time.Minute,
+	}
+	a, err := app.New(ctx, cfg, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	srv := httptest.NewUnstartedServer(a.Handler)
+	srv.TLS = a.TLSConfig
+	srv.StartTLS()
+	defer srv.Close()
+
+	maxUses := 1
+	token, _, err := a.Enroll.CreateToken(ctx, enroll.TokenOptions{Label: "security-e2e", MaxUses: &maxUses, CreatedBy: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := enrollment.Enroll(ctx, enrollment.Options{
+		ServerURL: srv.URL, Token: token, Pin: pki.Fingerprint(a.CA.Cert().Raw),
+		Facts: protocol.DeviceFacts{Hostname: "PC-SECURITY", Serial: "SN-SECURITY", SMBIOSUUID: "UUID-SECURITY"},
+		Store: identity.Store{Dir: t.TempDir(), Keys: identity.PlainKeys{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deviceID := uuid.MustParse(id.DeviceID)
+	dev, err := enrollment.Connect(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	policy, err := a.Compliance.Create(ctx, compliance.NewPolicy{
+		Name:  "Protected",
+		Rules: json.RawMessage(`[{"type":"defender_realtime"},{"type":"defender_signatures_within","days":3},{"type":"firewall_enabled"}]`),
+		Actor: "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Store.Q().CreateAssignment(ctx, store.Assignment{
+		ID: uuid.Must(uuid.NewV7()), ItemKind: compliance.ItemKindCompliance, ItemID: policy.ID,
+		GroupID: store.BuiltinGroupID, Mode: store.ModeInclude, CreatedAt: time.Now().UTC(), CreatedBy: "test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	updated := time.Now().UTC().Add(-2 * time.Hour)
+	report := func(realtime, public bool) {
+		t.Helper()
+		if _, err := dev.PutInventory(ctx, protocol.Inventory{
+			Hostname: "PC-SECURITY",
+			Defender: &protocol.DefenderStatus{
+				RunningMode: protocol.DefenderNormalMode, AntivirusEnabled: true, RealtimeEnabled: realtime,
+				SignatureVersion: "1.459.335.0", SignatureUpdatedAt: &updated,
+			},
+			Firewall: []protocol.FirewallProfileState{
+				{Profile: protocol.FirewallDomain, Enabled: true},
+				{Profile: protocol.FirewallPrivate, Enabled: true},
+				{Profile: protocol.FirewallPublic, Enabled: public},
+			},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	report(false, false)
+	results, err := a.Store.Q().ListDeviceCompliance(ctx, deviceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].State != store.ComplianceNonCompliant {
+		t.Fatalf("with real-time and the public firewall off = %+v", results)
+	}
+	failures := string(results[0].Failures)
+	for _, want := range []string{"real-time protection is off", "the firewall is off for: public"} {
+		if !strings.Contains(failures, want) {
+			t.Errorf("failures should say %q, got %s", want, failures)
+		}
+	}
+	if strings.Contains(failures, "signatures") {
+		t.Errorf("signatures two hours old are within three days: %s", failures)
+	}
+
+	report(true, true)
+	results, err = a.Store.Q().ListDeviceCompliance(ctx, deviceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].State != store.ComplianceCompliant {
+		t.Fatalf("with both on = %+v", results)
+	}
+}
+
 // send performs a JSON request and returns the status and raw body.
 func send(t *testing.T, c *http.Client, method, url string, body any) (int, []byte) {
 	t.Helper()

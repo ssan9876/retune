@@ -43,3 +43,23 @@ func TestHardwareIdentityOnThisMachine(t *testing.T) {
 		t.Fatal("identity values must be trimmed")
 	}
 }
+
+// Reading Defender and the firewall is read-only, so it is checked against
+// the real machine. Whether either is on is this machine's business; the test
+// only asserts that the answers came back in the shape the server expects.
+func TestSecurityStateOnThisMachine(t *testing.T) {
+	if d := collectDefender(); d != nil && d.RunningMode == "" {
+		t.Errorf("Defender answered without a running mode: %+v", d)
+	}
+	fw := collectFirewall()
+	if len(fw) != 3 {
+		t.Fatalf("expected all three firewall profiles, got %+v", fw)
+	}
+	for _, p := range fw {
+		switch p.Profile {
+		case "domain", "private", "public":
+		default:
+			t.Errorf("unexpected profile %q", p.Profile)
+		}
+	}
+}

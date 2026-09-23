@@ -288,3 +288,39 @@ func TestFirewallRuleIdentityIgnoresCase(t *testing.T) {
 		t.Fatalf("%q and %q should be the same rule", a.Identity(), b.Identity())
 	}
 }
+
+func TestValidateDefender(t *testing.T) {
+	for _, s := range []protocol.Setting{
+		{Kind: protocol.KindDefender, RealtimeMonitoring: boolp(true)},
+		{Kind: protocol.KindDefender, RealtimeMonitoring: boolp(false)},
+		{Kind: protocol.KindDefender, CloudProtection: "advanced", SampleSubmission: "safe"},
+		{Kind: protocol.KindDefender, PUAProtection: "audit", CloudBlockLevel: "zero_tolerance"},
+	} {
+		if err := s.Validate(); err != nil {
+			t.Errorf("Validate(%+v) = %v", s, err)
+		}
+	}
+	for name, tc := range map[string]struct {
+		setting protocol.Setting
+		mention string
+	}{
+		"nothing named":       {protocol.Setting{Kind: protocol.KindDefender}, "nothing set"},
+		"unknown cloud level": {protocol.Setting{Kind: protocol.KindDefender, CloudBlockLevel: "extreme"}, "default, moderate, high, high_plus, zero_tolerance"},
+		"unknown pua":         {protocol.Setting{Kind: protocol.KindDefender, PUAProtection: "yes"}, "pua_protection"},
+	} {
+		err := tc.setting.Validate()
+		if !errors.Is(err, protocol.ErrBadSetting) || !strings.Contains(err.Error(), tc.mention) {
+			t.Errorf("%s: want ErrBadSetting mentioning %q, got %v", name, tc.mention, err)
+		}
+	}
+}
+
+// Two profiles naming different Defender fields still set the same thing:
+// the machine's one set of preferences.
+func TestDefenderHasOneIdentity(t *testing.T) {
+	a := protocol.Setting{Kind: protocol.KindDefender, RealtimeMonitoring: boolp(true)}
+	b := protocol.Setting{Kind: protocol.KindDefender, CloudProtection: "basic"}
+	if a.Identity() != b.Identity() || a.Identity() != "defender:preferences" {
+		t.Errorf("identities = %q, %q", a.Identity(), b.Identity())
+	}
+}

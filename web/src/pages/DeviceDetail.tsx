@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import type { DeviceCompliance, DeviceDetail as Detail } from "../api/types";
 import { RecoveryKeys } from "../components/RecoveryKeys";
 import { RunScriptDialog } from "../components/RunScriptDialog";
+import { SecurityStatus } from "../components/SecurityStatus";
 import { StatusDot } from "../components/StatusDot";
 import { Button, ErrorNote, Spinner } from "../components/ui";
 import { useSession } from "../session/SessionContext";
@@ -144,6 +145,8 @@ export default function DeviceDetail() {
           </>
         ) : null}
       </section>
+
+      <SecurityStatus document={inventory?.document} />
 
       {canWrite && device.status === "active" ? (
         <div className="actions" style={{ marginBottom: "var(--space-6)" }}>

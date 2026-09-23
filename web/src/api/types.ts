@@ -44,6 +44,24 @@ export interface Inventory {
   document: unknown;
 }
 
+/** DefenderStatus is Microsoft Defender's own report, inside an inventory
+ * document (internal/protocol/inventory.go). */
+export interface DefenderStatus {
+  running_mode: string;
+  antivirus_enabled: boolean;
+  realtime_enabled: boolean;
+  tamper_protected: boolean;
+  signature_version: string;
+  signature_updated_at?: string;
+  last_quick_scan_at?: string;
+  last_full_scan_at?: string;
+}
+
+export interface FirewallProfileState {
+  profile: string;
+  enabled: boolean;
+}
+
 export interface Command {
   id: string;
   device_id: string;
@@ -221,6 +239,11 @@ export interface Setting {
   require_encryption?: boolean;
   method?: string;
   escrow_recovery_key?: boolean;
+  realtime_monitoring?: boolean;
+  cloud_protection?: string;
+  sample_submission?: string;
+  pua_protection?: string;
+  cloud_block_level?: string;
 }
 
 export interface BitLockerKey {
@@ -340,6 +363,8 @@ export interface ComplianceRule {
   count?: number;
   name?: string;
   profile_id?: string;
+  /** firewall_enabled: the profiles to check; absent means all three. */
+  profiles?: string[];
 }
 
 export interface CompliancePolicy {

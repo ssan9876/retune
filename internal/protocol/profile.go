@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -23,7 +24,47 @@ const (
 	KindFirewallRule    = "firewall_rule"
 	KindWindowsUpdate   = "windows_update"
 	KindBitLocker       = "bitlocker"
+
+	// KindDefender sets Microsoft Defender Antivirus preferences (M15).
+	KindDefender = "defender"
 )
+
+// DefenderPreference is one Defender field a setting can name: its JSON name,
+// the Set-MpPreference parameter it becomes, and the words it accepts with
+// the number Defender stores for each. Validation and the agent's handler
+// both read this one table, so the two cannot disagree about what "high"
+// means.
+type DefenderPreference struct {
+	Field     string
+	Parameter string
+	Values    map[string]int
+}
+
+// DefenderPreferences are the fields of a defender setting, in the order the
+// agent applies them. realtime_monitoring is a bool and so is not here; it is
+// handled beside these.
+var DefenderPreferences = []DefenderPreference{
+	{"cloud_protection", "MAPSReporting", map[string]int{"off": 0, "basic": 1, "advanced": 2}},
+	{"sample_submission", "SubmitSamplesConsent", map[string]int{"prompt": 0, "safe": 1, "never": 2, "all": 3}},
+	{"pua_protection", "PUAProtection", map[string]int{"off": 0, "on": 1, "audit": 2}},
+	{"cloud_block_level", "CloudBlockLevel", map[string]int{"default": 0, "moderate": 1, "high": 2, "high_plus": 4, "zero_tolerance": 6}},
+}
+
+// DefenderValue returns the word a setting gives for one of the preferences
+// above, or "" when it does not name it.
+func (s Setting) DefenderValue(field string) string {
+	switch field {
+	case "cloud_protection":
+		return s.CloudProtection
+	case "sample_submission":
+		return s.SampleSubmission
+	case "pua_protection":
+		return s.PUAProtection
+	case "cloud_block_level":
+		return s.CloudBlockLevel
+	}
+	return ""
+}
 
 // Firewall profiles, directions and actions.
 const (
@@ -157,6 +198,15 @@ type Setting struct {
 	RequireEncryption bool   `json:"require_encryption,omitempty"`
 	Method            string `json:"method,omitempty"`
 	EscrowRecoveryKey bool   `json:"escrow_recovery_key,omitempty"`
+
+	// Defender. Each is optional, and only the ones named are enforced.
+	// RealtimeMonitoring is a pointer so that false - turn it off - is
+	// distinct from not mentioning it.
+	RealtimeMonitoring *bool  `json:"realtime_monitoring,omitempty"`
+	CloudProtection    string `json:"cloud_protection,omitempty"`
+	SampleSubmission   string `json:"sample_submission,omitempty"`
+	PUAProtection      string `json:"pua_protection,omitempty"`
+	CloudBlockLevel    string `json:"cloud_block_level,omitempty"`
 }
 
 // Identity is the key two profiles must agree on to be setting the same thing.
@@ -183,6 +233,12 @@ func (s Setting) Identity() string {
 		return "windows_update:policy"
 	case KindBitLocker:
 		return "bitlocker:os"
+	case KindDefender:
+		// One machine has one set of Defender preferences. Two profiles that
+		// each name a different field are still a conflict: splitting the
+		// identity per field would let two half-policies combine into a
+		// configuration nobody wrote.
+		return "defender:preferences"
 	}
 	return s.Kind + ":"
 }
@@ -234,6 +290,8 @@ func (s Setting) Validate() error {
 		return s.validateWindowsUpdate()
 	case KindBitLocker:
 		return s.validateBitLocker()
+	case KindDefender:
+		return s.validateDefender()
 	case "":
 		return fmt.Errorf("%w: every setting needs a kind", ErrBadSetting)
 	}
@@ -508,6 +566,35 @@ func (s Setting) validateBitLocker() error {
 		return fmt.Errorf("%w: a bitlocker setting that requires nothing does nothing", ErrBadSetting)
 	}
 	return nil
+}
+
+func (s Setting) validateDefender() error {
+	named := s.RealtimeMonitoring != nil
+	for _, p := range DefenderPreferences {
+		v := s.DefenderValue(p.Field)
+		if v == "" {
+			continue
+		}
+		named = true
+		if _, ok := p.Values[v]; !ok {
+			return fmt.Errorf("%w: %s must be one of %s, not %q", ErrBadSetting, p.Field, strings.Join(sortedWords(p.Values), ", "), v)
+		}
+	}
+	if !named {
+		return fmt.Errorf("%w: a defender setting with nothing set does nothing", ErrBadSetting)
+	}
+	return nil
+}
+
+// sortedWords lists a preference's accepted words by the number Defender
+// stores, so an error message reads in the order Defender's own docs do.
+func sortedWords(values map[string]int) []string {
+	words := make([]string, 0, len(values))
+	for w := range values {
+		words = append(words, w)
+	}
+	sort.Slice(words, func(i, j int) bool { return values[words[i]] < values[words[j]] })
+	return words
 }
 
 // BitLockerEscrowRequest is POSTed to /api/agent/v1/bitlocker when a device

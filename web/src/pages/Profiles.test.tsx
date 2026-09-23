@@ -211,4 +211,27 @@ describe("Profiles: the M8 setting kinds", () => {
     expect((restart as HTMLSelectElement).value).toBe("");
     expect(screen.getByText(/Leave empty to leave this alone/)).toBeInTheDocument();
   });
+
+  it("sends only the Defender preferences that were chosen", async () => {
+    const posted: Record<string, unknown>[] = [];
+    fetchMock.mockImplementation((_url: string, init?: { method?: string; body?: string }) => {
+      if (init?.method === "POST") {
+        posted.push(JSON.parse(init.body ?? "{}"));
+        return Promise.resolve(json({ ...profile, id: "p3" }, 201));
+      }
+      return Promise.resolve(json({ items: [], total: 0, limit: 50, offset: 0 }));
+    });
+    render(<Profiles />);
+    await screen.findByText("No profiles yet.");
+
+    await userEvent.click(screen.getByRole("button", { name: "New profile" }));
+    await userEvent.type(screen.getByLabelText("Name"), "Defender baseline");
+    await userEvent.click(screen.getByRole("button", { name: "Add a setting" }));
+    await userEvent.selectOptions(screen.getByLabelText("Setting 1 kind"), "defender");
+    expect(screen.getByText(/Tamper Protection is on/)).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Cloud block level"), "high");
+    await userEvent.click(screen.getByRole("button", { name: "Create profile" }));
+
+    expect(posted[0].settings).toEqual([{ kind: "defender", realtime_monitoring: true, cloud_block_level: "high" }]);
+  });
 });

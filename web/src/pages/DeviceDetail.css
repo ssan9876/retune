@@ -30,7 +30,9 @@
   font-size: var(--text-sm);
 }
 
-.compliance {
+/* Security sits on the same kind of pane as Compliance, directly under it. */
+.compliance,
+.security {
   margin-bottom: var(--space-6);
   padding: var(--pane-padding);
   border: 1px solid var(--rule);
@@ -39,7 +41,8 @@
   background: var(--surface);
 }
 
-.compliance h2 {
+.compliance h2,
+.security h2 {
   font-size: var(--text-lg);
   margin: 0 0 var(--space-4);
 }
@@ -127,4 +130,13 @@
   border-radius: var(--radius);
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+/* The grid already sits on the Security pane; it must not draw a second one. */
+.security .detail__grid {
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: none;
+  margin-bottom: 0;
 }

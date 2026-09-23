@@ -1,7 +1,9 @@
 package protocol
 
 import (
+	"encoding/json"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -76,5 +78,35 @@ func TestSoftwareHash(t *testing.T) {
 	c[0].Publisher = "Igor Pavlov"
 	if SoftwareHash(c) == SoftwareHash(a) {
 		t.Fatal("software hash must cover publisher")
+	}
+}
+
+// An agent or server from before M15 neither sends nor expects the new
+// blocks, so an inventory without them must encode exactly as it always did:
+// otherwise every stored hash would change on upgrade and every device would
+// re-upload at once.
+func TestInventoryWithoutSecurityBlocksIsUnchanged(t *testing.T) {
+	b, err := json.Marshal(Inventory{Hostname: "PC"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "defender") || strings.Contains(string(b), "firewall") {
+		t.Fatalf("absent blocks must be omitted, got %s", b)
+	}
+	var back Inventory
+	if err := json.Unmarshal([]byte(`{"hostname":"PC"}`), &back); err != nil || back.Defender != nil || back.Firewall != nil {
+		t.Fatalf("an old document should parse with no security blocks: %+v %v", back, err)
+	}
+}
+
+func TestInventoryHashIgnoresFirewallOrder(t *testing.T) {
+	a := Inventory{Firewall: []FirewallProfileState{{Profile: FirewallDomain, Enabled: true}, {Profile: FirewallPublic}}}
+	b := Inventory{Firewall: []FirewallProfileState{{Profile: FirewallPublic}, {Profile: FirewallDomain, Enabled: true}}}
+	if InventoryHash(a) != InventoryHash(b) {
+		t.Error("profile order must not change the hash")
+	}
+	b.Firewall[0].Enabled = true
+	if InventoryHash(a) == InventoryHash(b) {
+		t.Error("a profile turning on must change the hash")
 	}
 }

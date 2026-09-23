@@ -20,6 +20,44 @@ const KINDS = [
   { value: "firewall_rule", label: "Firewall rule" },
   { value: "windows_update", label: "Windows Update" },
   { value: "bitlocker", label: "BitLocker" },
+  { value: "defender", label: "Microsoft Defender" },
+];
+
+/** The Defender preferences a setting can name, with the words the server
+ * accepts for each (internal/protocol/profile.go, DefenderPreferences). */
+type DefenderChoice = {
+  field: "cloud_protection" | "sample_submission" | "pua_protection" | "cloud_block_level";
+  label: string;
+  options: [string, string][];
+};
+
+const DEFENDER_CHOICES: DefenderChoice[] = [
+  {
+    field: "cloud_protection",
+    label: "Cloud-delivered protection",
+    options: [["off", "Off"], ["basic", "Basic"], ["advanced", "Advanced"]],
+  },
+  {
+    field: "sample_submission",
+    label: "Sample submission",
+    options: [["prompt", "Always ask"], ["safe", "Safe samples"], ["never", "Never send"], ["all", "Send all samples"]],
+  },
+  {
+    field: "pua_protection",
+    label: "Potentially unwanted apps",
+    options: [["off", "Off"], ["on", "Block"], ["audit", "Audit only"]],
+  },
+  {
+    field: "cloud_block_level",
+    label: "Cloud block level",
+    options: [
+      ["default", "Default"],
+      ["moderate", "Moderate"],
+      ["high", "High"],
+      ["high_plus", "High+"],
+      ["zero_tolerance", "Zero tolerance"],
+    ],
+  },
 ];
 
 function blankSetting(kind: string): Setting {
@@ -38,6 +76,8 @@ function blankSetting(kind: string): Setting {
       return { kind, quality_deferral_days: 7 };
     case "bitlocker":
       return { kind, require_encryption: true, method: "XtsAes256", escrow_recovery_key: true };
+    case "defender":
+      return { kind, realtime_monitoring: true };
     default:
       return { kind: "registry", hive: "HKLM", key: "", name: "", type: "REG_SZ", data: "" };
   }
@@ -72,6 +112,8 @@ function describe(s: Setting): string {
       return "Windows Update policy";
     case "bitlocker":
       return s.require_encryption ? "Require BitLocker on the system drive" : "BitLocker";
+    case "defender":
+      return "Microsoft Defender preferences";
     default:
       return s.kind;
   }
@@ -314,6 +356,41 @@ function SettingFields({
             <option value="true">Allowed</option>
           </select>
         </Field>
+      </>
+    );
+  }
+
+  if (setting.kind === "defender") {
+    return (
+      <>
+        <p className="hint">
+          Only what you choose is enforced; everything left alone stays as it is on each machine. Where
+          Tamper Protection is on, Defender refuses these changes and the device says so.
+        </p>
+        <Field label="Real-time protection">
+          <select
+            value={setting.realtime_monitoring === undefined ? "" : String(setting.realtime_monitoring)}
+            onChange={(e) =>
+              set({ realtime_monitoring: e.target.value === "" ? undefined : e.target.value === "true" })
+            }
+          >
+            <option value="">Leave alone</option>
+            <option value="true">On</option>
+            <option value="false">Off</option>
+          </select>
+        </Field>
+        {DEFENDER_CHOICES.map((c) => (
+          <Field key={c.field} label={c.label}>
+            <select value={setting[c.field] ?? ""} onChange={(e) => set({ [c.field]: e.target.value || undefined })}>
+              <option value="">Leave alone</option>
+              {c.options.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </Field>
+        ))}
       </>
     );
   }

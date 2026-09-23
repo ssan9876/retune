@@ -20,5 +20,6 @@ func Handlers(opts Options) []Handler {
 		FirewallProfileHandler{Run: opts.PowerShell},
 		FirewallRuleHandler{Run: opts.PowerShell},
 		BitLockerHandler{Run: opts.PowerShell, Escrow: opts.Escrow},
+		DefenderHandler{Run: opts.PowerShell},
 	}
 }
