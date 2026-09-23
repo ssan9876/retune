@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -32,13 +33,40 @@ type channelJSON struct {
 
 // newChannelJSON never serialises the secret itself - only whether one is
 // set. A shared signing key that the console can read back is a key that
-// every read-only account has.
-func newChannelJSON(c store.NotificationChannel) channelJSON {
+// every read-only account has. For the same reason a read-only caller sees a
+// webhook's scheme and host but not its path: for Slack, Teams and many other
+// receivers the URL is the credential, and anyone holding it can post into
+// the channel.
+func newChannelJSON(c store.NotificationChannel, full bool) channelJSON {
+	config := json.RawMessage(c.Config)
+	if !full && c.Kind == store.ChannelWebhook {
+		config = redactWebhook(c.Config)
+	}
 	return channelJSON{
-		ID: c.ID.String(), Name: c.Name, Kind: c.Kind, Config: json.RawMessage(c.Config),
+		ID: c.ID.String(), Name: c.Name, Kind: c.Kind, Config: config,
 		Enabled: c.Enabled, HasSecret: len(c.SecretCiphertext) > 0,
 		CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, CreatedBy: c.CreatedBy,
 	}
+}
+
+// redactWebhook replaces a webhook config's URL with its scheme and host.
+func redactWebhook(raw []byte) json.RawMessage {
+	var cfg map[string]any
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		return json.RawMessage(`{}`)
+	}
+	if s, ok := cfg["url"].(string); ok {
+		if u, err := url.Parse(s); err == nil && u.Host != "" {
+			cfg["url"] = u.Scheme + "://" + u.Host + "/…"
+		} else {
+			cfg["url"] = "…"
+		}
+	}
+	out, err := json.Marshal(cfg)
+	if err != nil {
+		return json.RawMessage(`{}`)
+	}
+	return out
 }
 
 type channelRequest struct {
@@ -137,7 +165,7 @@ func (h *Handler) listNotificationChannels(w http.ResponseWriter, r *http.Reques
 	}
 	items := make([]channelJSON, 0, len(rows))
 	for _, c := range rows {
-		items = append(items, newChannelJSON(c))
+		items = append(items, newChannelJSON(c, caller(r).Admin.Role == store.RoleAdmin))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
@@ -182,7 +210,7 @@ func (h *Handler) createNotificationChannel(w http.ResponseWriter, r *http.Reque
 	}
 	h.auditAlert(ctx, ch.CreatedBy, "notification_channel.created", "notification_channel", ch.ID,
 		map[string]any{"name": ch.Name, "kind": ch.Kind})
-	writeJSON(w, http.StatusCreated, newChannelJSON(ch))
+	writeJSON(w, http.StatusCreated, newChannelJSON(ch, true))
 }
 
 func (h *Handler) getNotificationChannel(w http.ResponseWriter, r *http.Request) {
@@ -195,7 +223,7 @@ func (h *Handler) getNotificationChannel(w http.ResponseWriter, r *http.Request)
 		h.writeAlertError(w, "notification channel", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, newChannelJSON(ch))
+	writeJSON(w, http.StatusOK, newChannelJSON(ch, caller(r).Admin.Role == store.RoleAdmin))
 }
 
 func (h *Handler) updateNotificationChannel(w http.ResponseWriter, r *http.Request) {
@@ -245,7 +273,7 @@ func (h *Handler) updateNotificationChannel(w http.ResponseWriter, r *http.Reque
 	}
 	h.auditAlert(ctx, caller(r).Admin.Email, "notification_channel.updated", "notification_channel", ch.ID,
 		map[string]any{"name": ch.Name, "enabled": ch.Enabled})
-	writeJSON(w, http.StatusOK, newChannelJSON(ch))
+	writeJSON(w, http.StatusOK, newChannelJSON(ch, caller(r).Admin.Role == store.RoleAdmin))
 }
 
 func (h *Handler) deleteNotificationChannel(w http.ResponseWriter, r *http.Request) {

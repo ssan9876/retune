@@ -144,7 +144,7 @@ func postWebhook(ctx context.Context, client *http.Client, cfg ChannelConfig, se
 	}
 	res, err := client.Do(req)
 	if err != nil {
-		return err
+		return deliveryError(cfg.URL, err)
 	}
 	defer res.Body.Close()
 	// Read and discard a little of the body so the connection can be reused,
