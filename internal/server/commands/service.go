@@ -11,7 +11,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"retune/internal/opsign"
 	"retune/internal/protocol"
+	"retune/internal/release"
 	"retune/internal/server/store"
 )
 
@@ -36,6 +38,10 @@ type Service struct {
 	// ArtifactDir holds files commands produce, such as collect_logs'
 	// archives. Left empty, uploads are refused.
 	ArtifactDir string
+	// OperationsKeys, when set, are what run_powershell scripts and wipe
+	// orders must be signed by. Agents built to require signatures enforce
+	// it; the server checks early so a bad one is refused at once.
+	OperationsKeys []release.PublicKey
 	// OnComplete, if set, runs in the transaction that records a command's
 	// result, for whatever depends on how a command ended.
 	OnComplete func(ctx context.Context, q *store.Queries, c store.Command, status string, at time.Time) error
@@ -86,6 +92,16 @@ func (s *Service) Queue(ctx context.Context, o QueueOptions) (store.Command, err
 			ttl = WipeTTL
 		}
 	}
+	if len(s.OperationsKeys) > 0 {
+		signedTTL, err := s.checkSignature(o.Type, o.DeviceID, payload, now)
+		if err != nil {
+			return store.Command{}, err
+		}
+		if signedTTL > 0 && signedTTL < ttl {
+			// A signed order lapses when its signature says, not later.
+			ttl = signedTTL
+		}
+	}
 	id, err := uuid.NewV7()
 	if err != nil {
 		return store.Command{}, err
@@ -128,6 +144,37 @@ func (s *Service) Queue(ctx context.Context, o QueueOptions) (store.Command, err
 		return store.Command{}, err
 	}
 	return c, nil
+}
+
+// checkSignature verifies a command's operations signature, returning how
+// long a signed order has left to run.
+func (s *Service) checkSignature(typ string, deviceID uuid.UUID, payload []byte, now time.Time) (time.Duration, error) {
+	switch typ {
+	case protocol.CommandRunPowerShell:
+		var p protocol.RunPowerShellPayload
+		if err := json.Unmarshal(payload, &p); err != nil {
+			return 0, err
+		}
+		if err := opsign.Verify(s.OperationsKeys, opsign.ScriptManifest(p.Script, ""), p.Signature); err != nil {
+			return 0, fmt.Errorf("%w: %v; sign the script with retune-sign sign-script", ErrBadRequest, err)
+		}
+	case protocol.CommandWipe:
+		var p protocol.WipePayload
+		if err := json.Unmarshal(payload, &p); err != nil {
+			return 0, err
+		}
+		if p.Expires == nil {
+			return 0, fmt.Errorf("%w: a wipe needs a signed order; make one with retune-sign sign-wipe", ErrBadRequest)
+		}
+		if p.Expires.After(now.Add(opsign.MaxWipeValidity)) {
+			return 0, fmt.Errorf("%w: a signed wipe order can be valid for at most 24 hours", ErrBadRequest)
+		}
+		if err := opsign.VerifyWipe(s.OperationsKeys, deviceID.String(), p.Protected, *p.Expires, now, p.Signature); err != nil {
+			return 0, fmt.Errorf("%w: %v", ErrBadRequest, err)
+		}
+		return p.Expires.Sub(now), nil
+	}
+	return 0, nil
 }
 
 // normalizePayload validates a payload and returns its canonical JSON.

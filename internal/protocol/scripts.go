@@ -1,6 +1,10 @@
 package protocol
 
-import "time"
+import (
+	"time"
+
+	"retune/internal/opsign"
+)
 
 // ItemKindScript is the assignment kind for script deployments.
 const ItemKindScript = "script"
@@ -20,6 +24,8 @@ type ScriptVersionResponse struct {
 	// DetectionBody, when set, decides whether Body needs to run at all.
 	DetectionBody string `json:"detection_body"`
 	Hash          string `json:"hash"`
+	// Signature, by an operations key, over Body and DetectionBody.
+	Signature *opsign.Signature `json:"signature,omitempty"`
 }
 
 // ScriptRun is POSTed to /api/agent/v1/scripts/{id}/runs to report one

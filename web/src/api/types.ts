@@ -150,6 +150,8 @@ export interface SessionResponse {
   admin: Admin;
   csrf_token: string;
   expires_at: string;
+  /** signing_required: scripts and wipes need an operations signature. */
+  signing_required?: boolean;
 }
 
 export interface Group {
@@ -171,6 +173,8 @@ export interface Script {
   current_version: number;
   body?: string;
   detection_body?: string;
+  /** signed: the current version has an operations signature. */
+  signed?: boolean;
   created_at: string;
   updated_at: string;
   created_by: string;

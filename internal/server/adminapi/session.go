@@ -54,6 +54,8 @@ type sessionResponse struct {
 	Admin     adminJSON `json:"admin"`
 	CSRFToken string    `json:"csrf_token"`
 	ExpiresAt time.Time `json:"expires_at"`
+	// SigningRequired says scripts and wipes need an operations signature.
+	SigningRequired bool `json:"signing_required"`
 }
 
 type ssoSetup struct {
@@ -126,6 +128,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	h.setSessionCookie(w, info)
 	writeJSON(w, http.StatusOK, sessionResponse{
 		Admin: newAdminJSON(admin), CSRFToken: info.CSRFToken, ExpiresAt: info.ExpiresAt,
+		SigningRequired: h.SigningRequired,
 	})
 }
 
@@ -142,6 +145,7 @@ func (h *Handler) currentSession(w http.ResponseWriter, r *http.Request) {
 	c := caller(r)
 	writeJSON(w, http.StatusOK, sessionResponse{
 		Admin: newAdminJSON(c.Admin).withScope(c.Scope), CSRFToken: c.Session.CSRFToken, ExpiresAt: c.Session.ExpiresAt,
+		SigningRequired: h.SigningRequired,
 	})
 }
 

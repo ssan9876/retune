@@ -26,6 +26,7 @@ services:
       DATA_DIR: /var/lib/retune
       SWEEP_INTERVAL_SECONDS: ${SWEEP_INTERVAL_SECONDS:-300}
       AGENT_RELEASE_KEYS: ${AGENT_RELEASE_KEYS:-}
+      OPERATIONS_KEYS: ${OPERATIONS_KEYS:-}
       # Mail relay for alert email; see the README's settings table.
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-}

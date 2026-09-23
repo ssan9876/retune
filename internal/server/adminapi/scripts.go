@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"retune/internal/opsign"
 	"retune/internal/protocol"
 	"retune/internal/server/scripts"
 	"retune/internal/server/store"
@@ -19,6 +20,7 @@ type scriptJSON struct {
 	CurrentVersion int       `json:"current_version"`
 	Body           string    `json:"body,omitempty"`
 	DetectionBody  string    `json:"detection_body,omitempty"`
+	Signed         bool      `json:"signed"` // the current version has an operations signature
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 	CreatedBy      string    `json:"created_by"`
@@ -37,6 +39,8 @@ type scriptRequest struct {
 	Description   string `json:"description"`
 	Body          string `json:"body"`
 	DetectionBody string `json:"detection_body"`
+	// Signature is the operations signature from retune-sign sign-script.
+	Signature *opsign.Signature `json:"signature,omitempty"`
 }
 
 func (h *Handler) writeScriptError(w http.ResponseWriter, what string, err error) {
@@ -73,7 +77,7 @@ func (h *Handler) createScript(w http.ResponseWriter, r *http.Request) {
 	}
 	s, err := h.Scripts.Create(r.Context(), scripts.NewScript{
 		Name: req.Name, Description: req.Description, Body: req.Body,
-		DetectionBody: req.DetectionBody, Actor: caller(r).Admin.Email,
+		DetectionBody: req.DetectionBody, Actor: caller(r).Admin.Email, Signature: req.Signature,
 	})
 	if err != nil {
 		h.writeScriptError(w, "create script", err)
@@ -99,7 +103,7 @@ func (h *Handler) getScript(w http.ResponseWriter, r *http.Request) {
 	}
 	out := newScriptJSON(s)
 	if v, err := h.Scripts.Version(ctx, id, s.CurrentVersion); err == nil {
-		out.Body, out.DetectionBody = v.Body, v.DetectionBody
+		out.Body, out.DetectionBody, out.Signed = v.Body, v.DetectionBody, len(v.Signature) > 0
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -115,7 +119,7 @@ func (h *Handler) updateScript(w http.ResponseWriter, r *http.Request) {
 	}
 	s, err := h.Scripts.Update(r.Context(), id, scripts.NewScript{
 		Name: req.Name, Description: req.Description, Body: req.Body,
-		DetectionBody: req.DetectionBody, Actor: caller(r).Admin.Email,
+		DetectionBody: req.DetectionBody, Actor: caller(r).Admin.Email, Signature: req.Signature,
 	})
 	if err != nil {
 		h.writeScriptError(w, "update script", err)

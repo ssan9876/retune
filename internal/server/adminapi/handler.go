@@ -54,7 +54,9 @@ type Handler struct {
 	SSO *auth.OIDC
 	// SSOName is the sign-in button's text.
 	SSOName string
-	Now     func() time.Time
+	// SigningRequired is whether OPERATIONS_KEYS is set.
+	SigningRequired bool
+	Now             func() time.Time
 
 	routes map[string]guarded
 	Log     *slog.Logger

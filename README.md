@@ -88,6 +88,7 @@ session_ttl_hours: 12
 | `session_max_hours` | `24` | how long any session lasts, however busy, from sign-in (1–720; never shorter than `session_ttl_hours`) |
 | `sweep_interval_seconds` | `300` | how often expired commands and sessions are cleared (minimum 10) |
 | `agent_release_keys` | — | comma-separated public keys that sign agent builds; uploads are refused until set |
+| `operations_keys` | — | comma-separated operations keys; when set, scripts and wipes without a valid signature are refused at once (see [Signed scripts and wipes](#signed-scripts-and-wipes)) |
 | `smtp_host`, `smtp_port` | — / `587` | the relay alert email is sent through |
 | `smtp_from` | — | the address alert email comes from; required with `smtp_host` |
 | `smtp_username`, `smtp_password` | — | credentials for that relay, if it wants them |
@@ -653,6 +654,42 @@ Uploaded files no app version uses any more are deleted after a day. Include
 `DATA_DIR/app-packages` in backups, or re-upload after a restore: a version
 whose file is missing fails to install with "the server no longer has this
 package".
+
+## Signed scripts and wipes
+
+Release signing means the server can't push an agent build nobody signed. It
+can still run code on every machine, though, through a script or an ad-hoc
+PowerShell command, and it can order a wipe. An organisation that wants those
+to need a second, offline approval can build agents that **require an
+operations signature**:
+
+1. Make an operations key, on a machine the server can't reach:
+   `retune-sign keygen --out ops --name operations`.
+2. Build the agent with its public key:
+   `make agent … OPERATIONS_PUBKEYS=<the text of ops/operations.pub>` (or
+   `build.ps1 -OperationsKeys …`). This is a build setting on purpose: nothing
+   the server sends can turn it off. A key list that doesn't parse makes the
+   agent refuse everything, not nothing.
+3. Set `OPERATIONS_KEYS` on the server to the same public key. The server
+   then refuses unsigned scripts and wipes at once, rather than letting every
+   device refuse them later, and the console asks for signatures.
+
+Then:
+
+- **A script** (deployed or ad hoc) runs only if
+  `retune-sign sign-script --key operations.key [--detection detect.ps1] script.ps1`
+  signed exactly its code, detection script included. Paste the output into the
+  script editor or the Run script dialog. Renaming a signed script keeps its
+  signature; changing its code needs a new one. Line endings don't matter, so
+  a file saved in Notepad matches the same text pasted into the console.
+- **A wipe** needs an order signed for that one device:
+  `retune-sign sign-wipe --key operations.key --device <id> [--protected] --valid-for 4h`
+  (at most 24 hours). Paste it into the Wipe dialog. The agent refuses an order
+  for another device, one whose protected setting was changed, and one that
+  has expired, by its own clock.
+
+Everything else — profiles, apps, lock, logs, password rotation — works as
+before: those run through fixed, bounded handlers rather than arbitrary code.
 
 ## Updating the agent
 

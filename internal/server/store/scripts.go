@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -42,6 +43,8 @@ type ScriptVersion struct {
 	Hash          string
 	CreatedAt     time.Time
 	CreatedBy     string
+	// Signature is the operations signature, as JSON, or nil.
+	Signature json.RawMessage
 }
 
 // ScriptRun is one execution on one device.
@@ -134,18 +137,18 @@ func (q *Queries) DeleteScript(ctx context.Context, tenantID, id uuid.UUID) erro
 
 func (q *Queries) CreateScriptVersion(ctx context.Context, v ScriptVersion) error {
 	_, err := q.db.Exec(ctx, `
-		INSERT INTO script_versions (script_id, version, tenant_id, body, detection_body, hash, created_at, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		v.ScriptID, v.Version, DefaultTenantID, v.Body, v.DetectionBody, v.Hash, v.CreatedAt, v.CreatedBy)
+		INSERT INTO script_versions (script_id, version, tenant_id, body, detection_body, hash, created_at, created_by, signature)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		v.ScriptID, v.Version, DefaultTenantID, v.Body, v.DetectionBody, v.Hash, v.CreatedAt, v.CreatedBy, nullJSON(v.Signature))
 	return err
 }
 
 func (q *Queries) GetScriptVersion(ctx context.Context, tenantID, scriptID uuid.UUID, version int) (ScriptVersion, error) {
 	var v ScriptVersion
 	err := q.db.QueryRow(ctx, `
-		SELECT script_id, version, body, detection_body, hash, created_at, created_by
+		SELECT script_id, version, body, detection_body, hash, created_at, created_by, signature
 		FROM script_versions WHERE tenant_id = $1 AND script_id = $2 AND version = $3`, tenantID, scriptID, version).
-		Scan(&v.ScriptID, &v.Version, &v.Body, &v.DetectionBody, &v.Hash, &v.CreatedAt, &v.CreatedBy)
+		Scan(&v.ScriptID, &v.Version, &v.Body, &v.DetectionBody, &v.Hash, &v.CreatedAt, &v.CreatedBy, &v.Signature)
 	return v, notFound(err)
 }
 
@@ -238,4 +241,12 @@ func (q *Queries) DeviceHasItem(ctx context.Context, tenantID, deviceID uuid.UUI
 		          WHERE x.tenant_id = $1 AND x.mode = 'exclude' AND x.item_kind = $3 AND x.item_id = $4))`,
 		tenantID, deviceID, kind, itemID).Scan(&ok)
 	return ok, err
+}
+
+// nullJSON stores empty JSON as SQL NULL.
+func nullJSON(b json.RawMessage) any {
+	if len(b) == 0 {
+		return nil
+	}
+	return []byte(b)
 }

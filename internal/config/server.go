@@ -37,6 +37,10 @@ type Server struct {
 	// AgentReleaseKeys are the public keys agent builds must be signed by.
 	// Optional at startup; an upload with none configured is refused.
 	AgentReleaseKeys []release.PublicKey
+	// OperationsKeys are the keys scripts and wipe orders are signed with,
+	// when agents are built to require them. The server only checks early
+	// and tells the console to ask for signatures; the agent enforces.
+	OperationsKeys []release.PublicKey
 	// SMTP is the relay alert email is sent through. Optional: without it,
 	// creating an email notification channel is refused rather than accepted
 	// and quietly never delivered.
@@ -177,6 +181,13 @@ func LoadServer(getenv func(string) string) (Server, error) {
 			return Server{}, errors.New("SWEEP_INTERVAL_SECONDS must be an integer >= 10")
 		}
 		c.SweepInterval = time.Duration(n) * time.Second
+	}
+	if v := lookup("OPERATIONS_KEYS"); v != "" {
+		keys, err := release.ParseTrustList(v)
+		if err != nil {
+			return Server{}, fmt.Errorf("OPERATIONS_KEYS: %w", err)
+		}
+		c.OperationsKeys = keys
 	}
 	if v := lookup("AGENT_RELEASE_KEYS"); v != "" {
 		keys, err := release.ParseTrustList(v)

@@ -1,6 +1,6 @@
 # M18 — Signed command payloads
 
-Status: self-approved overnight under the user's standing directive; decisions ledgered for morning review. Builds on M1–M17 (reuses M11's `internal/release` and `retune-sign`).
+Status: built in the signed-commands PR; see "As built" below. Originally self-approved overnight under the user's standing directive; decisions ledgered for morning review. Builds on M1–M17 (reuses M11's `internal/release` and `retune-sign`).
 
 ## 1. What and why
 
@@ -34,3 +34,12 @@ Signing profiles, app deployments and agent-side policy settings (they also make
 ## 6. Testing
 
 Manifest bytes golden tests; `retune-sign sign-script` / `sign-command` round-trips; agent refuses unsigned, wrong-key, tampered-content, wrong-device, wrong-command and expired wipe orders, and accepts valid ones, in enforcing mode, and behaves exactly as before with no operations keys; server early-rejection and the `awaiting_signature` state machine; console flows. Nothing is executed on this machine beyond unit tests with fake runners.
+
+## As built
+
+- **A wipe order isn't bound to a command, so there is no `awaiting_signature` state.** The manifest is `type=wipe`, `device`, `protected` and `expires`, and is signed before queueing with `retune-sign sign-wipe --device … --valid-for …` (at most 24 hours). Replaying an order within its window can only re-wipe the same device ID, and a wiped device comes back under a new ID when it re-enrols. The command's TTL is cut to the order's expiry.
+- **The script manifest covers the detection script too** (`body=<sha256>`, `detection=<sha256 or empty>`), because detection is code the agent runs. It is checked before detection runs, on every run, cached or not. Line endings are normalised to LF before hashing, so a CRLF `.ps1` signed as a file matches the LF text a browser sends.
+- **Fail closed.** A stamped `OperationsKeysRaw` that doesn't parse enforces with no trusted keys and refuses everything (`opsign.ParsePolicy`). An empty one enforces nothing.
+- **Signatures travel as `{key_id, signature}`**, the JSON `retune-sign sign-script` prints. Script versions store theirs in `script_versions.signature` (migration 0022). A new signature makes a new version, and hashes of unsigned versions are unchanged. Renaming a signed script keeps its signature when the code is unchanged.
+- **Early rejection.** With `OPERATIONS_KEYS` set, the server refuses unsigned or badly signed scripts, `run_powershell` commands and wipes with a 400 naming the `retune-sign` command to use, and the session reports `signing_required` so the console asks for signatures. Without it, signatures are passed through to agents unchecked.
+- **Key names.** `retune-sign keygen --name operations` writes `operations.key` and `operations.pub`.

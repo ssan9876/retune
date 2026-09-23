@@ -1,12 +1,18 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CollectLogsDialog, WipeDialog } from "./RemoteActionDialogs";
 
 const fetchMock = vi.fn();
+const session = { signingRequired: false };
+
+vi.mock("../session/SessionContext", () => ({
+  useSession: () => ({ admin: { role: "admin" }, canWrite: true, signingRequired: session.signingRequired }),
+}));
 
 beforeEach(() => {
+  session.signingRequired = false;
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
   fetchMock.mockResolvedValue(
@@ -72,3 +78,37 @@ describe("CollectLogsDialog", () => {
     expect(screen.getByRole("button", { name: "Collect logs" })).toBeDisabled();
   });
 });
+
+describe("WipeDialog with signing required", () => {
+  it("needs a signed order for this device, and sends it", async () => {
+    session.signingRequired = true;
+    render(<WipeDialog deviceId="d1" hostname="PC-1" open onClose={() => {}} onQueued={() => {}} />);
+    await userEvent.type(screen.getByLabelText("Confirm hostname"), "PC-1");
+    await userEvent.type(screen.getByLabelText("Reason"), "lost");
+    const button = screen.getByRole("button", { name: "Wipe PC-1" });
+    expect(button).toBeDisabled();
+    expect(screen.getByText(/retune-sign sign-wipe --key operations.key --device d1/)).toBeInTheDocument();
+
+    const field = screen.getByLabelText("Signed wipe order");
+    const paste = (text: string) => {
+      fireEvent.change(field, { target: { value: text } });
+    };
+    // Another device's order doesn't fit.
+    paste(JSON.stringify({ device: "d2", protected: false, expires: "2026-09-23T14:00:00Z", key_id: "k", signature: "s" }));
+    expect(button).toBeDisabled();
+
+    paste(JSON.stringify({ device: "d1", protected: true, expires: "2026-09-23T14:00:00Z", key_id: "k", signature: "s" }));
+    expect(button).toBeEnabled();
+    await userEvent.click(button);
+    expect(posted()).toEqual({
+      device_ids: ["d1"],
+      type: "wipe",
+      protected: true,
+      confirm_hostname: "PC-1",
+      reason: "lost",
+      expires: "2026-09-23T14:00:00Z",
+      signature: { key_id: "k", signature: "s" },
+    });
+  });
+});
+
