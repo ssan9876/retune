@@ -4,11 +4,15 @@ package inventory
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
+	"github.com/go-ole/go-ole"
+	"github.com/go-ole/go-ole/oleutil"
 	"github.com/yusufpapurcu/wmi"
 	"golang.org/x/sys/windows/registry"
 
@@ -140,8 +144,79 @@ func (WindowsCollector) Collect(_ context.Context) (protocol.Inventory, error) {
 	inv.LocalAdmins = collectLocalAdmins()
 	inv.PendingReboot = pendingReboot()
 	inv.LastUpdateInstalledAt = lastUpdateInstalled()
+	inv.Defender = collectDefender()
+	inv.Firewall = collectFirewall()
 	return inv, nil
 }
+
+// collectDefender reads Microsoft Defender Antivirus's own status. A machine
+// without Defender has no such namespace or class; that is nil, not an error.
+func collectDefender() *protocol.DefenderStatus {
+	var rows []DefenderRow
+	if err := wmi.QueryNamespace(`SELECT AMRunningMode, AntivirusEnabled, RealTimeProtectionEnabled,
+		IsTamperProtected, AntivirusSignatureVersion, AntivirusSignatureLastUpdated,
+		QuickScanEndTime, FullScanEndTime FROM MSFT_MpComputerStatus`,
+		&rows, `root\Microsoft\Windows\Defender`); err != nil {
+		return nil
+	}
+	return DefenderFromRows(rows)
+}
+
+// collectFirewall asks the firewall API whether each profile is on. The API
+// answers with the state in effect, after Group Policy; the WMI class
+// MSFT_NetFirewallProfile reads the locally stored settings by default, which
+// a policy can override in either direction.
+func collectFirewall() []protocol.FirewallProfileState {
+	// COM wants the calling thread initialised, and a goroutine can move
+	// between threads, so the whole conversation happens on one locked
+	// thread of its own.
+	result := make(chan map[int]bool, 1)
+	go func() {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		result <- firewallStates()
+	}()
+	return FirewallFromStates(<-result)
+}
+
+func firewallStates() map[int]bool {
+	if err := ole.CoInitializeEx(0, ole.COINIT_MULTITHREADED); err != nil {
+		// S_FALSE means this thread was already initialised, which is fine
+		// but still owes an uninitialise; anything else means no COM.
+		var oleErr *ole.OleError
+		if !errors.As(err, &oleErr) || oleErr.Code() != sFalse {
+			return nil
+		}
+	}
+	defer ole.CoUninitialize()
+
+	unknown, err := oleutil.CreateObject("HNetCfg.FwPolicy2")
+	if err != nil {
+		return nil
+	}
+	defer unknown.Release()
+	policy, err := unknown.QueryInterface(ole.IID_IDispatch)
+	if err != nil {
+		return nil
+	}
+	defer policy.Release()
+
+	out := map[int]bool{}
+	for _, p := range firewallProfiles {
+		v, err := oleutil.GetProperty(policy, "FirewallEnabled", p.Type)
+		if err != nil {
+			continue
+		}
+		if on, ok := v.Value().(bool); ok {
+			out[p.Type] = on
+		}
+		_ = v.Clear()
+	}
+	return out
+}
+
+// sFalse is COM's "already done" success code.
+const sFalse = 1
 
 // HardwareIdentity returns the firmware serial and SMBIOS UUID, with
 // placeholder values dropped.
