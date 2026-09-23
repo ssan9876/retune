@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -10,9 +11,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"retune/internal/protocol"
 	"retune/internal/release"
 	"retune/internal/server/adminapi"
+	"retune/internal/server/app"
 	"retune/internal/server/store"
 )
 
@@ -322,18 +326,31 @@ func TestADeviceRunningTheAssignedBuildIsRecordedAsSucceeded(t *testing.T) {
 		t.Fatalf("want one succeeded, got %v", resp.Rollup)
 	}
 
-	// A second check-in reporting the same version leaves the rollup as is.
+	// A second check-in reporting the same version leaves the row as is: its
+	// updated_at still says when success was learned, not when the device
+	// last checked in.
+	itemID := uuid.MustParse(v.ID)
+	before := agentItemStatus(t, a, itemID)
 	status, body = send(t, agent, http.MethodPost, srv.URL+"/api/agent/v1/checkin",
 		protocol.CheckinRequest{AgentVersion: "9.0.0"})
 	if status != http.StatusOK {
 		t.Fatalf("checkin: %d %s", status, body)
 	}
-	status, body = admin.do(http.MethodGet, "/items/agent/"+v.ID+"/status", nil)
-	if status != http.StatusOK {
-		t.Fatalf("status: %d %s", status, body)
+	after := agentItemStatus(t, a, itemID)
+	if after.Status != store.ItemSucceeded || !after.UpdatedAt.Equal(before.UpdatedAt) {
+		t.Fatalf("a repeat check-in must not rewrite the row: before %+v, after %+v", before, after)
 	}
-	resp = decodeJSON[itemStatusResp](t, body)
-	if resp.Rollup[store.ItemSucceeded] != 1 {
-		t.Fatalf("want still one succeeded, got %v", resp.Rollup)
+}
+
+// agentItemStatus returns the one device's status row for an agent build.
+func agentItemStatus(t *testing.T, a *app.App, id uuid.UUID) store.ItemStatus {
+	t.Helper()
+	rows, _, err := a.Store.Q().ListItemStatus(context.Background(), protocol.ItemKindAgent, id, "", store.Page{})
+	if err != nil {
+		t.Fatal(err)
 	}
+	if len(rows) != 1 {
+		t.Fatalf("want one status row, got %+v", rows)
+	}
+	return rows[0]
 }

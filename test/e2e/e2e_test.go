@@ -508,10 +508,10 @@ func TestAgentSelfUpdateEndToEnd(t *testing.T) {
 		t.Errorf("an unassigned device must not download a build, got %d", status)
 	}
 
-	// The device reports how the update went, as if it had swapped itself in
-	// and checked in cleanly on the new build.
+	// The device reports how the update went. It reports a failure here, so
+	// the check-in below is the only thing that can turn it into a success.
 	status, body = send(t, device, http.MethodPost, defURL+"/result", protocol.AgentUpdateResult{
-		Version: "1.2.3", Status: protocol.ResultSucceeded, Detail: "updated cleanly", ReportedAt: time.Now().UTC(),
+		Version: "1.2.3", Status: protocol.ResultFailed, Detail: "rolled back", ReportedAt: time.Now().UTC(),
 	})
 	if status != http.StatusNoContent {
 		t.Fatalf("report result: %d %s", status, body)
@@ -522,12 +522,13 @@ func TestAgentSelfUpdateEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rollup[store.ItemSucceeded] != 1 {
-		t.Fatalf("want one succeeded, got %v", rollup)
+	if rollup[store.ItemFailed] != 1 {
+		t.Fatalf("want one failed, got %v", rollup)
 	}
 
 	// A later check-in reporting the assigned version is itself proof of
-	// success, with no separate result report required.
+	// success, with no separate result report required: it overrides the
+	// failure reported above.
 	status, body = send(t, device, http.MethodPost, srv.URL+"/api/agent/v1/checkin",
 		protocol.CheckinRequest{AgentVersion: "1.2.3"})
 	if status != http.StatusOK {
