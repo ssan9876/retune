@@ -276,6 +276,14 @@ var routeDocs = map[string]routeDoc{
 	"GET /api/admin/v1/alerts":                           {Tag: "Alerts", Summary: "Alerts firing now", Response: itemsResponse[firingAlertJSON]{}},
 	"GET /api/admin/v1/alert-deliveries":                 {Tag: "Alerts", Summary: "Recent alert deliveries", Response: itemsResponse[deliveryJSON]{}},
 
+	// Reports
+	"GET /api/admin/v1/reports":            {Tag: "Reports", Summary: "List scheduled reports", Response: itemsResponse[reportJSON]{}},
+	"POST /api/admin/v1/reports":           {Tag: "Reports", Summary: "Schedule a report: a CSV emailed daily or weekly", Request: reportRequest{}, Status: 201, Response: reportJSON{}, Description: "Needs SMTP configured. weekday is 0 (Sunday) to 6, for a weekly report; hour and timezone say when."},
+	"GET /api/admin/v1/reports/{id}":       {Tag: "Reports", Summary: "A scheduled report", Response: reportJSON{}},
+	"POST /api/admin/v1/reports/{id}":      {Tag: "Reports", Summary: "Update a scheduled report", Request: reportRequest{}, Response: reportJSON{}},
+	"DELETE /api/admin/v1/reports/{id}":    {Tag: "Reports", Summary: "Delete a scheduled report", Status: 204},
+	"POST /api/admin/v1/reports/{id}/send": {Tag: "Reports", Summary: "Send a report now, off its schedule", Response: reportJSON{}, Description: "A failed send answers 502 and is recorded on the report."},
+
 	// Overview
 	"GET /api/admin/v1/dashboard":    {Tag: "Overview", Summary: "Fleet-wide counts for the overview page", Response: dashboardJSON{}},
 	"GET /api/admin/v1/openapi.json": {Tag: "Overview", Summary: "This document", Description: "OpenAPI 3.1.", Response: map[string]any{}},

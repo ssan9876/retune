@@ -18,6 +18,7 @@ import Login from "./pages/Login";
 import MaintenanceWindows from "./pages/MaintenanceWindows";
 import Overview from "./pages/Overview";
 import Profiles from "./pages/Profiles";
+import Reports from "./pages/Reports";
 import Scripts from "./pages/Scripts";
 import Tokens from "./pages/Tokens";
 import { useSession } from "./session/SessionContext";
@@ -43,6 +44,7 @@ export default function App() {
         <Route path="/tokens" element={<Tokens />} />
         <Route path="/approvals" element={<Approvals />} />
         <Route path="/alerts" element={<Alerts />} />
+        <Route path="/reports" element={<Reports />} />
         <Route path="/audit" element={<Audit />} />
         <Route path="/admins" element={<Admins />} />
         <Route path="/api-tokens" element={<ApiTokens />} />

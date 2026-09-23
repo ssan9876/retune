@@ -1433,6 +1433,17 @@
         },
         "type": "object"
       },
+      "ItemsOfReport": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Report"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
       "ItemsOfScriptVersion": {
         "properties": {
           "items": {
@@ -1992,6 +2003,103 @@
               "$ref": "#/components/schemas/Queued"
             },
             "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "Report": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "frequency": {
+            "type": "string"
+          },
+          "hour": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "last_error": {
+            "type": "string"
+          },
+          "last_sent_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "next_run_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "policy_id": {
+            "type": "string"
+          },
+          "recipients": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "state": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "weekday": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ReportRequest": {
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "frequency": {
+            "type": "string"
+          },
+          "hour": {
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "policy_id": {
+            "type": "string"
+          },
+          "recipients": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "state": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "weekday": {
+            "type": "integer"
           }
         },
         "type": "object"
@@ -6949,6 +7057,257 @@
           "Profiles"
         ],
         "x-retune-access": "scoped"
+      }
+    },
+    "/reports": {
+      "get": {
+        "description": "Any signed-in admin or API token, not limited to some devices.",
+        "operationId": "getReports",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemsOfReport"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "List scheduled reports",
+        "tags": [
+          "Reports"
+        ],
+        "x-retune-access": "fleet"
+      },
+      "post": {
+        "description": "Needs SMTP configured. weekday is 0 (Sunday) to 6, for a weekly report; hour and timezone say when.\n\nThe admin role, not limited to some devices.",
+        "operationId": "postReports",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Report"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Schedule a report: a CSV emailed daily or weekly",
+        "tags": [
+          "Reports"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/reports/{id}": {
+      "delete": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "deleteReportsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Delete a scheduled report",
+        "tags": [
+          "Reports"
+        ],
+        "x-retune-access": "fleet+write"
+      },
+      "get": {
+        "description": "Any signed-in admin or API token, not limited to some devices.",
+        "operationId": "getReportsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Report"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "A scheduled report",
+        "tags": [
+          "Reports"
+        ],
+        "x-retune-access": "fleet"
+      },
+      "post": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "postReportsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Report"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Update a scheduled report",
+        "tags": [
+          "Reports"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/reports/{id}/send": {
+      "post": {
+        "description": "A failed send answers 502 and is recorded on the report.\n\nThe admin role, not limited to some devices.",
+        "operationId": "postReportsIdSend",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Report"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Send a report now, off its schedule",
+        "tags": [
+          "Reports"
+        ],
+        "x-retune-access": "fleet+write"
       }
     },
     "/scripts": {

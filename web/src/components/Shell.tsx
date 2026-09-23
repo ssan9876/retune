@@ -48,6 +48,7 @@ const SECTIONS: Section[] = [
       { to: "/alerts", label: "Alerts", icon: "bell", fleet: true },
       { to: "/admins", label: "Admins", icon: "person", fleet: true },
       { to: "/api-tokens", label: "API tokens", icon: "key", fleet: true },
+      { to: "/reports", label: "Scheduled reports", icon: "mail", fleet: true },
       { to: "/audit", label: "Audit log", icon: "list", fleet: true },
     ],
   },

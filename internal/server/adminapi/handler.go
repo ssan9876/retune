@@ -24,6 +24,7 @@ import (
 	"retune/internal/server/groups"
 	"retune/internal/server/laps"
 	"retune/internal/server/profiles"
+	"retune/internal/server/reports"
 	"retune/internal/server/scripts"
 	"retune/internal/server/store"
 )
@@ -49,6 +50,7 @@ type Handler struct {
 	AgentVersions *agentversions.Service
 	BitLocker     *bitlocker.Service
 	LAPS          *laps.Service
+	Reports       *reports.Service
 	Enroll        *enroll.Service
 	// SSO is nil when single sign-on is not configured.
 	SSO *auth.OIDC
