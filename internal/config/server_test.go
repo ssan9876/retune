@@ -283,7 +283,7 @@ func TestOIDC(t *testing.T) {
 	}{
 		"half configured": {map[string]string{"OIDC_ISSUER": "https://idp"}, "all of OIDC_ISSUER"},
 		"no groups": {map[string]string{"OIDC_ISSUER": "https://idp", "OIDC_CLIENT_ID": "a", "OIDC_CLIENT_SECRET": "b"},
-			"OIDC_ADMIN_GROUPS or OIDC_READONLY_GROUPS"},
+			"OIDC_HELPDESK_GROUPS or OIDC_READONLY_GROUPS"},
 		"plain http": {map[string]string{"OIDC_ISSUER": "http://idp.example.com", "OIDC_CLIENT_ID": "a",
 			"OIDC_CLIENT_SECRET": "b", "OIDC_ADMIN_GROUPS": "x"}, "must be https"},
 		"local login off without SSO": {map[string]string{"OIDC_DISABLE_LOCAL_LOGIN": "true"}, "nobody could sign in"},

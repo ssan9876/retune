@@ -22,12 +22,23 @@ The working list for making Retune usable by an enterprise, started on 2026-09-2
 | SSO groups decide which devices an admin manages | #19 |
 | File settings refuse to go through a junction or symlink | #20 |
 | Wi-Fi networks and VPN connections, passphrases sealed | #21 |
+| A fleet simulator and a sizing guide | #22 |
 
-## To do, in order
+## To do, in order (round two)
+
+The first list is done. These are the gaps an enterprise would still hit, limited to what can be built and verified from here.
 
 | # | item | why an enterprise needs it | notes |
 |---|---|---|---|
-| 10 | **Scale**: a fleet simulator for load testing, plus a documented sizing guide | knowing how many devices one server handles | in progress; measured without a target fleet size — docs/sizing.md gives the curve |
+| 11 | **Roles beyond admin and read-only**: a helpdesk role | helpdesk staff unlock and troubleshoot, but shouldn't run code or change policy | in progress |
+| 12 | **Two-person approval** for wipes, and for scripts or apps assigned to large groups | one compromised or careless account can't hit the whole fleet | |
+| 13 | **Maintenance windows**: scripts, apps and updates run only inside them | changes land out of hours | agent-side scheduling |
+| 14 | **Phased rollouts**: an assignment reaches a percentage of its group first, then widens | a bad deployment hits a few machines, not all | |
+| 15 | **An OpenAPI document for the admin API**, checked against the routes | integrations are built from a contract | |
+| 16 | **Server key rotation**: re-seal every stored secret under a new `secret.key` | a key suspected of exposure can be retired | |
+| 17 | **Scheduled reports by email**: compliance and inventory CSVs | auditors and managers get the numbers without a console account | |
+| 18 | **High availability guide**: two replicas, shared storage, what is already safe | no single point of failure | docs, plus a check that shared state is |
+| 19 | **Enterprise (802.1X) Wi-Fi** | most corporate networks | needs a VM and a RADIUS server to verify |
 
 ## Can't be done from here
 

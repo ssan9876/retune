@@ -106,6 +106,9 @@ func (h *Handler) Routes() *http.ServeMux {
 type access struct {
 	// admin requires the admin role rather than read-only.
 	admin bool
+	// operate requires the admin or helpdesk role: the day-to-day device
+	// actions a helpdesk takes.
+	operate bool
 	// session refuses API tokens: what only a person at a console should do.
 	session bool
 	// fleet refuses scoped admins: what concerns the whole fleet rather than
@@ -145,6 +148,16 @@ func (h *Handler) handle(mux *http.ServeMux, pattern string, handler http.Handle
 // devices.
 func (h *Handler) read(next http.HandlerFunc) http.Handler  { return h.protect(next, access{}) }
 func (h *Handler) write(next http.HandlerFunc) http.Handler { return h.protect(next, access{admin: true}) }
+
+// operate and operateSession allow admins and helpdesk: device actions that
+// run no code and change no policy. The handler narrows what helpdesk may
+// do where a route does more than that.
+func (h *Handler) operate(next http.HandlerFunc) http.Handler {
+	return h.protect(next, access{operate: true})
+}
+func (h *Handler) operateSession(next http.HandlerFunc) http.Handler {
+	return h.protect(next, access{operate: true, session: true})
+}
 
 // readFleet and writeFleet are for what concerns the whole fleet rather than
 // particular devices - item definitions, groups, alerting, the audit log - and
@@ -214,6 +227,10 @@ func (h *Handler) protect(next http.HandlerFunc, a access) http.Handler {
 			}
 		}
 		if a.admin && admin.Role != store.RoleAdmin {
+			writeError(w, http.StatusForbidden, "forbidden", "this needs the admin role")
+			return
+		}
+		if a.operate && store.RoleRank(admin.Role) < store.RoleRank(store.RoleHelpdesk) {
 			writeError(w, http.StatusForbidden, "forbidden", "this account may only read")
 			return
 		}
@@ -244,6 +261,10 @@ func (h *Handler) withToken(w http.ResponseWriter, r *http.Request, header strin
 		return
 	}
 	if a.admin && tok.Role != store.RoleAdmin {
+		writeError(w, http.StatusForbidden, "forbidden", "this needs a token with the admin role")
+		return
+	}
+	if a.operate && store.RoleRank(tok.Role) < store.RoleRank(store.RoleHelpdesk) {
 		writeError(w, http.StatusForbidden, "forbidden", "this token may only read")
 		return
 	}

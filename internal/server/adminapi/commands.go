@@ -110,6 +110,11 @@ func (h *Handler) queueCommand(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
 		return
 	}
+	// Helpdesk takes device actions that run no code and destroy nothing.
+	if caller(r).Admin.Role != store.RoleAdmin && !helpdeskCommands[req.Type] {
+		writeError(w, http.StatusForbidden, "forbidden", "a "+req.Type+" command needs the admin role")
+		return
+	}
 	if req.Type == protocol.CommandWipe {
 		// A wipe is one device at a time, confirmed by name, by a person:
 		// not something a script with a token does.
@@ -284,4 +289,10 @@ func safeFileName(s string) string {
 		}
 	}
 	return string(b)
+}
+
+// helpdeskCommands are the command types the helpdesk role may queue.
+var helpdeskCommands = map[string]bool{
+	protocol.CommandLock: true, protocol.CommandRestart: true, protocol.CommandRefreshInventory: true,
+	protocol.CommandCollectLogs: true, protocol.CommandRotateAdminPassword: true,
 }

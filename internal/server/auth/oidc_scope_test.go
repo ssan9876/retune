@@ -140,3 +140,22 @@ func TestSSOScopesUntouchedWithoutAMapping(t *testing.T) {
 		t.Fatalf("scope = %v, want what the console set", s)
 	}
 }
+
+// Admin outranks helpdesk, which outranks read-only.
+func TestSSOHelpdeskGroup(t *testing.T) {
+	f := newSSO(t)
+	f.sso.Config.HelpdeskGroups = []string{"service-desk"}
+	for subject, c := range map[string]struct {
+		groups []string
+		role   string
+	}{
+		"u-1": {[]string{"service-desk"}, store.RoleHelpdesk},
+		"u-2": {[]string{"service-desk", "helpdesk"}, store.RoleHelpdesk},
+		"u-3": {[]string{"service-desk", "it-admins"}, store.RoleAdmin},
+	} {
+		admin, err := f.signIn(t, oidctest.Person{Subject: subject, Email: subject + "@example.com", Groups: c.groups}, nil)
+		if err != nil || admin.Role != c.role {
+			t.Errorf("%v: role %q, %v; want %q", c.groups, admin.Role, err, c.role)
+		}
+	}
+}

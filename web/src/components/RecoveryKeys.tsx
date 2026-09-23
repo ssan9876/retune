@@ -15,7 +15,7 @@ interface Revealed extends BitLockerKey {
  * fetched only when someone deliberately asks, and every reveal is recorded.
  */
 export function RecoveryKeys({ deviceId }: { deviceId: string }) {
-  const { canWrite } = useSession();
+  const { canOperate } = useSession();
   const [keys, setKeys] = useState<BitLockerKey[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [revealing, setRevealing] = useState<BitLockerKey | null>(null);
@@ -77,7 +77,7 @@ export function RecoveryKeys({ deviceId }: { deviceId: string }) {
                 <td>{key.method}</td>
                 <td>{new Date(key.updated_at).toLocaleDateString()}</td>
                 <td style={{ textAlign: "right" }}>
-                  {canWrite ? (
+                  {canOperate ? (
                     <Button
                       variant="quiet"
                       onClick={() => {

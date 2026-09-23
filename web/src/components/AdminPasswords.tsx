@@ -18,7 +18,7 @@ const STATE_LABELS: Record<AdminPassword["state"], string> = {
  * password; every reveal is recorded against whoever asked.
  */
 export function AdminPasswords({ deviceId, reloadToken = 0 }: { deviceId: string; reloadToken?: number }) {
-  const { canWrite } = useSession();
+  const { canOperate } = useSession();
   const [items, setItems] = useState<AdminPassword[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [revealing, setRevealing] = useState<AdminPassword | null>(null);
@@ -83,7 +83,7 @@ export function AdminPasswords({ deviceId, reloadToken = 0 }: { deviceId: string
                 <td>{STATE_LABELS[item.state] ?? item.state}</td>
                 <td>{new Date(item.activated_at ?? item.created_at).toLocaleString()}</td>
                 <td style={{ textAlign: "right" }}>
-                  {canWrite ? (
+                  {canOperate ? (
                     <Button
                       variant="quiet"
                       onClick={() => {

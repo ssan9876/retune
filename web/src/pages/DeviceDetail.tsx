@@ -16,7 +16,7 @@ import "./DeviceDetail.css";
 
 export default function DeviceDetail() {
   const { id = "" } = useParams();
-  const { canWrite } = useSession();
+  const { canWrite, canOperate } = useSession();
   const [detail, setDetail] = useState<Detail | null>(null);
   const [compliance, setCompliance] = useState<DeviceCompliance | null>(null);
   const [complianceError, setComplianceError] = useState<unknown>(null);
@@ -154,11 +154,13 @@ export default function DeviceDetail() {
 
       <SecurityStatus document={inventory?.document} />
 
-      {canWrite && device.status === "active" ? (
+      {(canWrite || canOperate) && device.status === "active" ? (
         <div className="actions" style={{ marginBottom: "var(--space-6)" }}>
-          <Button variant="primary" onClick={() => setScriptOpen(true)}>
-            Run script
-          </Button>
+          {canWrite ? (
+            <Button variant="primary" onClick={() => setScriptOpen(true)}>
+              Run script
+            </Button>
+          ) : null}
           <Button onClick={() => void queueSimple("refresh_inventory")}>Refresh inventory</Button>
           <Button onClick={() => void queueSimple("restart")}>Restart</Button>
           <Button
@@ -179,23 +181,27 @@ export default function DeviceDetail() {
           >
             Rotate admin password
           </Button>
-          <Button variant="danger" onClick={() => setWipeOpen(true)}>
-            Wipe…
-          </Button>
-          <Button
-            variant="danger"
-            onClick={() => void act("retire", `Stop accepting check-ins from ${device.hostname}?`)}
-          >
-            Retire device
-          </Button>
-          <Button
-            variant="danger"
-            onClick={() =>
-              void act("unenroll", `Tell ${device.hostname} to delete its identity and stop managing it?`)
-            }
-          >
-            Unenroll device
-          </Button>
+          {canWrite ? (
+            <>
+              <Button variant="danger" onClick={() => setWipeOpen(true)}>
+                Wipe…
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => void act("retire", `Stop accepting check-ins from ${device.hostname}?`)}
+              >
+                Retire device
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() =>
+                  void act("unenroll", `Tell ${device.hostname} to delete its identity and stop managing it?`)
+                }
+              >
+                Unenroll device
+              </Button>
+            </>
+          ) : null}
         </div>
       ) : null}
 

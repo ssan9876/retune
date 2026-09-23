@@ -52,10 +52,11 @@ func (s *Service) CreateAPIToken(ctx context.Context, n NewAPIToken) (string, st
 	if name == "" || len(name) > maxAPITokenName {
 		return "", store.APIToken{}, fmt.Errorf("%w: a token needs a name of at most %d characters", ErrBadRequest, maxAPITokenName)
 	}
-	if n.Role != store.RoleAdmin && n.Role != store.RoleReadOnly {
-		return "", store.APIToken{}, fmt.Errorf("%w: role must be %s or %s", ErrBadRequest, store.RoleAdmin, store.RoleReadOnly)
+	if !store.ValidRole(n.Role) {
+		return "", store.APIToken{}, fmt.Errorf("%w: role must be %s, %s or %s", ErrBadRequest,
+			store.RoleAdmin, store.RoleHelpdesk, store.RoleReadOnly)
 	}
-	if n.Role == store.RoleAdmin && n.Creator.Role != store.RoleAdmin {
+	if store.RoleRank(n.Role) > store.RoleRank(n.Creator.Role) {
 		return "", store.APIToken{}, fmt.Errorf("%w: a token cannot have more access than the admin who makes it", ErrBadRequest)
 	}
 	days := n.Days

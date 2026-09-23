@@ -354,8 +354,9 @@ func (s *Service) CreateAdmin(ctx context.Context, o CreateAdminOptions) (store.
 	if !validEmail(email) {
 		return store.Admin{}, fmt.Errorf("%w: %q is not a valid email address", ErrBadRequest, o.Email)
 	}
-	if o.Role != store.RoleAdmin && o.Role != store.RoleReadOnly {
-		return store.Admin{}, fmt.Errorf("%w: role must be %s or %s", ErrBadRequest, store.RoleAdmin, store.RoleReadOnly)
+	if !store.ValidRole(o.Role) {
+		return store.Admin{}, fmt.Errorf("%w: role must be %s, %s or %s", ErrBadRequest,
+			store.RoleAdmin, store.RoleHelpdesk, store.RoleReadOnly)
 	}
 	hash, err := HashPassword(o.Password)
 	if err != nil {

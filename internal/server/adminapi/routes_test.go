@@ -44,7 +44,7 @@ var expectedRoutes = map[string]string{
 	"GET /api/admin/v1/audit":                                       "fleet",
 	"GET /api/admin/v1/commands":                                    "scoped",
 	"GET /api/admin/v1/commands/{id}":                               "scoped",
-	"GET /api/admin/v1/commands/{id}/artifact":                      "scoped+write",
+	"GET /api/admin/v1/commands/{id}/artifact": "scoped+operate",
 	"GET /api/admin/v1/compliance-policies":                         "scoped",
 	"GET /api/admin/v1/compliance-policies/{id}":                    "scoped",
 	"GET /api/admin/v1/compliance-policies/{id}/devices":            "scoped",
@@ -89,9 +89,9 @@ var expectedRoutes = map[string]string{
 	"POST /api/admin/v1/app-packages":                               "fleet+write",
 	"POST /api/admin/v1/apps/{id}":                                  "fleet+write",
 	"POST /api/admin/v1/assignments":                                "scoped+write",
-	"POST /api/admin/v1/bitlocker-keys/{id}/reveal":                 "session+write",
-	"POST /api/admin/v1/admin-passwords/{id}/reveal":                "session+write",
-	"POST /api/admin/v1/commands":                                   "scoped+write",
+	"POST /api/admin/v1/bitlocker-keys/{id}/reveal": "session+operate",
+	"POST /api/admin/v1/admin-passwords/{id}/reveal": "session+operate",
+	"POST /api/admin/v1/commands": "scoped+operate",
 	"POST /api/admin/v1/compliance-policies":                        "fleet+write",
 	"POST /api/admin/v1/compliance-policies/{id}":                   "fleet+write",
 	"POST /api/admin/v1/compliance-policies/{id}/evaluate":          "fleet+write",
@@ -130,6 +130,9 @@ func routeClass(g guarded) string {
 	}
 	if g.access.admin {
 		c += "+write"
+	}
+	if g.access.operate {
+		c += "+operate"
 	}
 	return c
 }

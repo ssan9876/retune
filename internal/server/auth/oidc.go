@@ -282,6 +282,11 @@ func (o *OIDC) role(groups []string) string {
 		}
 	}
 	for _, g := range groups {
+		if slices.Contains(o.Config.HelpdeskGroups, g) {
+			return store.RoleHelpdesk
+		}
+	}
+	for _, g := range groups {
 		if slices.Contains(o.Config.ReadOnlyGroups, g) {
 			return store.RoleReadOnly
 		}

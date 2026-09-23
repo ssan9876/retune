@@ -15,9 +15,9 @@ func (h *Handler) mountResources(mux *http.ServeMux, base string) {
 	h.handle(mux, "POST "+base+"/devices/{id}/unenroll", h.write(h.unenrollDevice))
 
 	h.handle(mux, "GET "+base+"/commands", h.read(h.listCommands))
-	h.handle(mux, "POST "+base+"/commands", h.write(h.queueCommand))
+	h.handle(mux, "POST "+base+"/commands", h.operate(h.queueCommand))
 	h.handle(mux, "GET "+base+"/commands/{id}", h.read(h.getCommand))
-	h.handle(mux, "GET "+base+"/commands/{id}/artifact", h.write(h.downloadCommandArtifact))
+	h.handle(mux, "GET "+base+"/commands/{id}/artifact", h.operate(h.downloadCommandArtifact))
 
 	h.handle(mux, "GET "+base+"/tokens", h.readFleet(h.listTokens))
 	h.handle(mux, "POST "+base+"/tokens", h.writeFleet(h.createToken))
@@ -58,9 +58,9 @@ func (h *Handler) mountResources(mux *http.ServeMux, base string) {
 	h.handle(mux, "GET "+base+"/devices/{id}/bitlocker-keys", h.read(h.listBitLockerKeys))
 	// Revealing a recovery key is a write: it is a deliberate act, restricted
 	// to the admin role, and audited every time.
-	h.handle(mux, "POST "+base+"/bitlocker-keys/{id}/reveal", h.writeSession(h.revealBitLockerKey))
+	h.handle(mux, "POST "+base+"/bitlocker-keys/{id}/reveal", h.operateSession(h.revealBitLockerKey))
 	h.handle(mux, "GET "+base+"/devices/{id}/admin-passwords", h.read(h.listAdminPasswords))
-	h.handle(mux, "POST "+base+"/admin-passwords/{id}/reveal", h.writeSession(h.revealAdminPassword))
+	h.handle(mux, "POST "+base+"/admin-passwords/{id}/reveal", h.operateSession(h.revealAdminPassword))
 
 	h.handle(mux, "GET "+base+"/profiles", h.read(h.listProfiles))
 	h.handle(mux, "POST "+base+"/profiles", h.writeFleet(h.createProfile))

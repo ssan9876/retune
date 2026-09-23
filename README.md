@@ -17,7 +17,7 @@ Go agent runs on each machine.
   check-ins; unenrolling makes the agent delete its own identity and state.
 - **Console and admin API.** Sign-in with single sign-on (OpenID Connect), or a
   password and optional authenticator
-  codes, roles (admin and read-only), enrollment tokens, and an audit log.
+  codes, roles (admin, helpdesk and read-only), enrollment tokens, and an audit log.
 - **Groups and assignments.** Static groups, or dynamic groups defined by a
   rule over inventory; items assigned to groups with include and exclude.
 - **Script deployments.** A versioned PowerShell library assigned to groups,
@@ -197,6 +197,7 @@ oidc_issuer: https://login.microsoftonline.com/<tenant-id>/v2.0
 oidc_client_id: <application id>
 oidc_client_secret: <client secret>
 oidc_admin_groups: <group id or name>          # full control
+oidc_helpdesk_groups: <group id or name>       # device actions, no code or policy
 oidc_readonly_groups: <group id or name>       # may look, not change
 ```
 
@@ -204,7 +205,8 @@ The provider must put the person's groups in the ID token, in the claim
 `oidc_groups_claim` names — in Entra ID that is "Add groups claim" on the
 app registration, which sends group object IDs; in Keycloak, a group
 membership mapper. Someone in an admin group is an admin, else someone in a
-read-only group is read-only, else they are refused and nothing is created.
+helpdesk group is helpdesk, else someone in a read-only group is read-only,
+else they are refused and nothing is created.
 
 **Accounts are created on first sign-in**, and the role is worked out again
 every time someone signs in: move a person between groups at the provider
@@ -225,6 +227,20 @@ Password accounts keep working beside SSO, which is the way in if the
 provider is ever down. `oidc_disable_local_login: true` turns them off;
 `retune-server bootstrap-admin` still works from the command line, and unsetting
 the option is the way back in.
+
+## Roles
+
+| Role | Can |
+|---|---|
+| **admin** | everything |
+| **helpdesk** | read everything an admin can; lock, restart and refresh a device, collect its logs, rotate its local admin password; reveal a BitLocker recovery key or a local admin password (signed in, with a reason) |
+| **read-only** | read |
+
+Helpdesk runs no code and changes no policy: no scripts or ad-hoc PowerShell,
+no wipes, no retiring or unenrolling, and nothing that decides what devices
+run — scripts, profiles, apps, policies, assignments, groups — nor enrollment
+tokens, alerting, admins or API tokens. Any role can also be limited to some
+device groups (below).
 
 ## Limiting an admin to some devices
 
@@ -272,7 +288,8 @@ provider takes effect at the person's next sign-in.
 
 Scripts and other systems — a ticketing system, a SIEM, a nightly report —
 call the admin API with a token rather than a browser session. Create one under
-**API tokens** (admins only), choose read-only or admin access and a lifetime of
+**API tokens** (admins only), choose read-only, helpdesk or admin access — never
+more than your own — and a lifetime of
 up to a year, and copy it: only a hash is kept, so it is shown once.
 
 ```bash
@@ -869,8 +886,9 @@ every escrowed recovery key is unreadable.**
 
 A device's escrowed volumes appear on its page in the console. The key itself is
 never part of that listing: showing one is a separate, deliberate action that
-requires the admin role and is written to the audit log every time, with who
-asked and why. A read-only account can see that a key exists and cannot have it.
+requires the admin or helpdesk role and a signed-in session, and is written to
+the audit log every time, with who asked and why. A read-only account can see
+that a key exists and cannot have it.
 
 ### Update rings
 

@@ -264,6 +264,7 @@ export default function Admins() {
         <Field label="Role">
           <select value={role} onChange={(event) => setRole(event.target.value)}>
             <option value="admin">Admin — can read and change everything</option>
+            <option value="helpdesk">Helpdesk — can look, lock, restart, collect logs and reveal keys</option>
             <option value="read_only">Read-only — can look, not change</option>
           </select>
         </Field>
