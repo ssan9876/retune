@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 
+import { heldForApproval } from "../api/approvals";
 import { api } from "../api/client";
 import type { Group, Profile, Setting, SettingStatus } from "../api/types";
 import { StatusDot } from "../components/StatusDot";
-import { Button, Dialog, EmptyState, ErrorNote, Field, Spinner } from "../components/ui";
+import { Button, Dialog, EmptyState, ErrorNote, Field, HeldNote, Spinner } from "../components/ui";
 import { useList } from "../hooks/useList";
 import { useSession } from "../session/SessionContext";
 import { relative } from "./Devices";
@@ -905,8 +906,10 @@ function AssignDialog({
   const [mode, setMode] = useState("include");
   const [revert, setRevert] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  const [held, setHeld] = useState(false);
 
   useEffect(() => {
+    if (open) setHeld(false);
     if (!open) return;
     api
       .get<{ items: Group[] }>("/groups")
@@ -921,7 +924,7 @@ function AssignDialog({
     if (!profile) return;
     setError(null);
     try {
-      await api.post("/assignments", {
+      const res = await api.post("/assignments", {
         item_kind: ITEM_KIND,
         item_id: profile.id,
         group_id: groupID,
@@ -929,6 +932,10 @@ function AssignDialog({
         options: mode === "include" ? { revert_on_removal: revert } : undefined,
       });
       onAssigned();
+      if (heldForApproval(res)) {
+        setHeld(true);
+        return;
+      }
       onClose();
     } catch (err) {
       setError(err);
@@ -964,6 +971,7 @@ function AssignDialog({
         </Field>
       ) : null}
       <ErrorNote error={error} />
+      {held ? <HeldNote /> : null}
       <div className="actions">
         <Button onClick={() => void assign()} disabled={groupID === ""}>
           Assign to group

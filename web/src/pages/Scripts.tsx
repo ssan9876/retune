@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { heldForApproval } from "../api/approvals";
 import { api } from "../api/client";
 import type { Group, Script, ScriptRun } from "../api/types";
 import { SignatureField, parseSignature } from "../components/SignatureField";
 import { StatusDot } from "../components/StatusDot";
-import { Button, Dialog, EmptyState, ErrorNote, Field, Spinner } from "../components/ui";
+import { Button, Dialog, EmptyState, ErrorNote, Field, HeldNote, Spinner } from "../components/ui";
 import { useList } from "../hooks/useList";
 import { useSession } from "../session/SessionContext";
 import { relative } from "./Devices";
@@ -142,9 +143,11 @@ function AssignDialog({
   const [runAs, setRunAs] = useState("system");
   const [timeoutSeconds, setTimeoutSeconds] = useState(600);
   const [error, setError] = useState<unknown>(null);
+  const [held, setHeld] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
+    if (open) setHeld(false);
     if (!open) return;
     api
       .get<{ items: Group[] }>("/groups")
@@ -160,7 +163,7 @@ function AssignDialog({
     setBusy(true);
     setError(null);
     try {
-      await api.post("/assignments", {
+      const res = await api.post("/assignments", {
         item_kind: ITEM_KIND,
         item_id: script.id,
         group_id: groupID,
@@ -176,6 +179,10 @@ function AssignDialog({
             : undefined,
       });
       onAssigned();
+      if (heldForApproval(res)) {
+        setHeld(true);
+        return;
+      }
       onClose();
     } catch (err) {
       setError(err);
@@ -246,6 +253,7 @@ function AssignDialog({
       ) : null}
 
       <ErrorNote error={error} />
+      {held ? <HeldNote /> : null}
       <div className="actions">
         <Button onClick={() => void assign()} disabled={busy || groupID === ""}>
           Assign to group

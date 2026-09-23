@@ -1,6 +1,7 @@
 package adminapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"retune/internal/server/compliance"
 	"retune/internal/server/groups"
 	"retune/internal/server/store"
 )
@@ -322,25 +324,63 @@ func (h *Handler) createAssignment(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	itemID, err := uuid.Parse(req.ItemID)
-	if err != nil || req.ItemKind == "" {
-		writeError(w, http.StatusBadRequest, "bad_request", "item_kind and a UUID item_id are required")
-		return
-	}
-	groupID, err := uuid.Parse(req.GroupID)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "bad_request", "group_id must be a UUID")
-		return
-	}
-	if req.Mode != store.ModeInclude && req.Mode != store.ModeExclude {
-		writeError(w, http.StatusBadRequest, "bad_request", "mode must be include or exclude")
+	a, rerr := parseAssignment(req, caller(r).Admin.Email, h.Now())
+	if rerr != nil {
+		writeError(w, rerr.status, rerr.code, rerr.message)
 		return
 	}
 	// A scoped admin assigns only to their own groups; any other is, to them,
 	// no group at all.
-	if !groupVisible(caller(r).Scope, groupID) {
+	if !groupVisible(caller(r).Scope, a.GroupID) {
 		writeError(w, http.StatusNotFound, "not_found", "no such group")
 		return
+	}
+	if held, err := h.assignmentNeedsApproval(r.Context(), a); errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "no such group")
+		return
+	} else if err != nil {
+		h.internal(w, "check group size", err)
+		return
+	} else if held {
+		h.holdForApproval(w, r, store.ApprovalAssignment, req,
+			fmt.Sprintf("assign %s %s to group %s", a.ItemKind, a.ItemID, a.GroupID))
+		return
+	}
+	out, err := h.saveAssignment(r.Context(), a)
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "no such group")
+		return
+	}
+	if err != nil {
+		h.internal(w, "create assignment", err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, out)
+}
+
+// requestError is a request refused for what it says, with the response to
+// refuse it with.
+type requestError struct {
+	status        int
+	code, message string
+}
+
+func badRequest(code, message string) *requestError {
+	return &requestError{status: http.StatusBadRequest, code: code, message: message}
+}
+
+// parseAssignment checks an assignment request and builds the assignment.
+func parseAssignment(req assignmentRequest, actor string, now time.Time) (store.Assignment, *requestError) {
+	itemID, err := uuid.Parse(req.ItemID)
+	if err != nil || req.ItemKind == "" {
+		return store.Assignment{}, badRequest("bad_request", "item_kind and a UUID item_id are required")
+	}
+	groupID, err := uuid.Parse(req.GroupID)
+	if err != nil {
+		return store.Assignment{}, badRequest("bad_request", "group_id must be a UUID")
+	}
+	if req.Mode != store.ModeInclude && req.Mode != store.ModeExclude {
+		return store.Assignment{}, badRequest("bad_request", "mode must be include or exclude")
 	}
 
 	// Options are validated here so an agent never has to defend itself
@@ -350,23 +390,44 @@ func (h *Handler) createAssignment(w http.ResponseWriter, r *http.Request) {
 	if req.Mode == store.ModeInclude {
 		parse, known := optionsParsers[req.ItemKind]
 		if !known {
-			writeError(w, http.StatusBadRequest, "bad_request",
-				fmt.Sprintf("there is no such item kind as %q", req.ItemKind))
-			return
+			return store.Assignment{}, badRequest("bad_request", fmt.Sprintf("there is no such item kind as %q", req.ItemKind))
 		}
 		encoded, err := parse(req.Options)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "bad_options", err.Error())
-			return
+			return store.Assignment{}, badRequest("bad_options", err.Error())
 		}
 		options = encoded
 	}
-
-	a := store.Assignment{
+	return store.Assignment{
 		ID: uuid.Must(uuid.NewV7()), ItemKind: req.ItemKind, ItemID: itemID,
-		GroupID: groupID, Mode: req.Mode, CreatedAt: h.Now(), CreatedBy: caller(r).Admin.Email,
+		GroupID: groupID, Mode: req.Mode, CreatedAt: now, CreatedBy: actor,
 		Options: options,
+	}, nil
+}
+
+// assignmentNeedsApproval: with approvals on, including something in a group
+// of more devices than the threshold waits for a second administrator - as
+// does including it in a dynamic group or All devices, which can grow to any
+// size after it is approved. An exclusion only takes away, and a compliance
+// policy only reports, so neither waits.
+func (h *Handler) assignmentNeedsApproval(ctx context.Context, a store.Assignment) (bool, error) {
+	if !h.ApprovalsRequired || a.Mode != store.ModeInclude || a.ItemKind == compliance.ItemKindCompliance {
+		return false, nil
 	}
+	q := h.Store.Q()
+	g, err := q.GetGroup(ctx, store.DefaultTenantID, a.GroupID)
+	if err != nil {
+		return false, err
+	}
+	if g.Kind != store.GroupStatic {
+		return true, nil
+	}
+	n, err := q.GroupMemberCount(ctx, a.GroupID)
+	return n > h.ApprovalThreshold, err
+}
+
+// saveAssignment stores an assignment and audits it.
+func (h *Handler) saveAssignment(ctx context.Context, a store.Assignment) (assignmentJSON, error) {
 	groupName := ""
 	// The id CreateAssignment returns is the row that actually exists: on a
 	// fresh insert it matches a.ID, but a conflict keeps the existing row's
@@ -374,9 +435,8 @@ func (h *Handler) createAssignment(w http.ResponseWriter, r *http.Request) {
 	// name. Whether it differs from a.ID is also how we tell a replacement
 	// from a genuine first assignment for the audit action.
 	var resultID uuid.UUID
-	ctx := r.Context()
-	err = h.Store.InTx(ctx, func(q *store.Queries) error {
-		g, err := q.GetGroup(ctx, store.DefaultTenantID, groupID)
+	err := h.Store.InTx(ctx, func(q *store.Queries) error {
+		g, err := q.GetGroup(ctx, store.DefaultTenantID, a.GroupID)
 		if err != nil {
 			return err
 		}
@@ -398,20 +458,15 @@ func (h *Handler) createAssignment(w http.ResponseWriter, r *http.Request) {
 			},
 		})
 	})
-	if errors.Is(err, store.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "not_found", "no such group")
-		return
-	}
 	if err != nil {
-		h.internal(w, "create assignment", err)
-		return
+		return assignmentJSON{}, err
 	}
-	writeJSON(w, http.StatusCreated, assignmentJSON{
+	return assignmentJSON{
 		ID: resultID.String(), ItemKind: a.ItemKind, ItemID: a.ItemID.String(),
 		GroupID: a.GroupID.String(), GroupName: groupName, Mode: a.Mode,
 		Options:   json.RawMessage(a.Options),
 		CreatedAt: a.CreatedAt, CreatedBy: a.CreatedBy,
-	})
+	}, nil
 }
 
 func (h *Handler) deleteAssignment(w http.ResponseWriter, r *http.Request) {

@@ -65,6 +65,15 @@ export function ErrorNote({ error }: { error: unknown }) {
   );
 }
 
+/** HeldNote says a request is waiting for a second administrator. */
+export function HeldNote() {
+  return (
+    <p className="note" role="status">
+      Sent for approval. It happens once another administrator approves it on the Approvals page.
+    </p>
+  );
+}
+
 export function Dialog({
   title,
   open,

@@ -23,6 +23,8 @@ The working list for making Retune usable by an enterprise, started on 2026-09-2
 | File settings refuse to go through a junction or symlink | #20 |
 | Wi-Fi networks and VPN connections, passphrases sealed | #21 |
 | A fleet simulator and a sizing guide | #22 |
+| A helpdesk role | #23 |
+| Two-person approval | #24 |
 
 ## To do, in order (round two)
 
@@ -30,8 +32,8 @@ The first list is done. These are the gaps an enterprise would still hit, limite
 
 | # | item | why an enterprise needs it | notes |
 |---|---|---|---|
-| 11 | **Roles beyond admin and read-only**: a helpdesk role | helpdesk staff unlock and troubleshoot, but shouldn't run code or change policy | in progress |
-| 12 | **Two-person approval** for wipes, and for scripts or apps assigned to large groups | one compromised or careless account can't hit the whole fleet | |
+| 11 | **Roles beyond admin and read-only**: a helpdesk role | helpdesk staff unlock and troubleshoot, but shouldn't run code or change policy | done, #23 |
+| 12 | **Two-person approval** for wipes, and for scripts or apps assigned to large groups | one compromised or careless account can't hit the whole fleet | done, #24 |
 | 13 | **Maintenance windows**: scripts, apps and updates run only inside them | changes land out of hours | agent-side scheduling |
 | 14 | **Phased rollouts**: an assignment reaches a percentage of its group first, then widens | a bad deployment hits a few machines, not all | |
 | 15 | **An OpenAPI document for the admin API**, checked against the routes | integrations are built from a contract | |

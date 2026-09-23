@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 
+import { heldForApproval } from "../api/approvals";
 import { api } from "../api/client";
 import { useSession } from "../session/SessionContext";
 import { SignatureField, parseSignedOrder } from "./SignatureField";
-import { Button, Dialog, ErrorNote, Field } from "./ui";
+import { Button, Dialog, ErrorNote, Field, HeldNote } from "./ui";
 import "./RemoteActionDialogs.css";
 
 /** CollectLogsDialog asks a device for its agent and event logs. */
@@ -93,9 +94,11 @@ export function WipeDialog({
   const [orderText, setOrderText] = useState("");
   const { signingRequired } = useSession();
   const [error, setError] = useState<unknown>(null);
+  const [held, setHeld] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
+    if (open) setHeld(false);
     if (open) {
       setConfirm("");
       setReason("");
@@ -116,7 +119,7 @@ export function WipeDialog({
     setBusy(true);
     setError(null);
     try {
-      await api.post("/commands", {
+      const res = await api.post("/commands", {
         device_ids: [deviceId],
         type: "wipe",
         protected: effectiveProtected,
@@ -125,6 +128,10 @@ export function WipeDialog({
         ...(order ? { expires: order.expires, signature: { key_id: order.key_id, signature: order.signature } } : {}),
       });
       onQueued();
+      if (heldForApproval(res)) {
+        setHeld(true);
+        return;
+      }
       onClose();
     } catch (err) {
       setError(err);
@@ -167,6 +174,7 @@ export function WipeDialog({
         </label>
       )}
       <ErrorNote error={error} />
+      {held ? <HeldNote /> : null}
       <div className="actions">
         <Button variant="danger" disabled={busy || !ready} onClick={() => void wipe()}>
           Wipe {hostname}

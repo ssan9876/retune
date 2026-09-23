@@ -56,7 +56,11 @@ type Handler struct {
 	SSOName string
 	// SigningRequired is whether OPERATIONS_KEYS is set.
 	SigningRequired bool
-	Now             func() time.Time
+	// ApprovalsRequired holds wipes, and code sent to more than
+	// ApprovalThreshold devices, for a second administrator.
+	ApprovalsRequired bool
+	ApprovalThreshold int
+	Now               func() time.Time
 
 	routes map[string]guarded
 	Log     *slog.Logger

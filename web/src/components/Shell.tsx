@@ -43,6 +43,7 @@ const SECTIONS: Section[] = [
   {
     heading: "Tenant administration",
     links: [
+      { to: "/approvals", label: "Approvals", icon: "check", fleet: true },
       { to: "/alerts", label: "Alerts", icon: "bell", fleet: true },
       { to: "/admins", label: "Admins", icon: "person", fleet: true },
       { to: "/api-tokens", label: "API tokens", icon: "key", fleet: true },
