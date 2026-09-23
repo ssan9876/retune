@@ -45,6 +45,8 @@ type fileConfig struct {
 	OIDCGroupsClaim        string `yaml:"oidc_groups_claim"`
 	OIDCAdminGroups        string `yaml:"oidc_admin_groups"`
 	OIDCReadOnlyGroups     string `yaml:"oidc_readonly_groups"`
+	OIDCScopeGroups        string `yaml:"oidc_scope_groups"`
+	OIDCFleetGroups        string `yaml:"oidc_fleet_groups"`
 	OIDCDisplayName        string `yaml:"oidc_display_name"`
 	OIDCDisableLocalLogin  *bool  `yaml:"oidc_disable_local_login"`
 	AuditSyslogAddress     string `yaml:"audit_syslog_address"`
@@ -170,6 +172,8 @@ func loadConfigFile(getenv func(string) string) (map[string]string, error) {
 	set("OIDC_GROUPS_CLAIM", f.OIDCGroupsClaim)
 	set("OIDC_ADMIN_GROUPS", f.OIDCAdminGroups)
 	set("OIDC_READONLY_GROUPS", f.OIDCReadOnlyGroups)
+	set("OIDC_SCOPE_GROUPS", f.OIDCScopeGroups)
+	set("OIDC_FLEET_GROUPS", f.OIDCFleetGroups)
 	set("OIDC_DISPLAY_NAME", f.OIDCDisplayName)
 	if f.OIDCDisableLocalLogin != nil {
 		set("OIDC_DISABLE_LOCAL_LOGIN", strconv.FormatBool(*f.OIDCDisableLocalLogin))

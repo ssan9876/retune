@@ -156,6 +156,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		ClientCert: clientCert,
 	}
 	authSvc.LocalLoginDisabled = cfg.OIDC.DisableLocalLogin
+	authSvc.SSOScopesManaged = cfg.OIDC.ManagesScopes()
 	var sso *auth.OIDC
 	if cfg.OIDC.Enabled() {
 		sso = &auth.OIDC{

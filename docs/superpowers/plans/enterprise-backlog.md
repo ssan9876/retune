@@ -18,14 +18,14 @@ The working list for making Retune usable by an enterprise, started on 2026-09-2
 | Remote actions: lock, collect logs, wipe | #15 |
 | Local admin password rotation, escrowed before it is set | #16 |
 | Signed scripts and wipes: an offline operations key the agent requires | #17 |
+| Trusted certificate profiles | #18 |
 
 ## To do, in order
 
 | # | item | why an enterprise needs it | notes |
 |---|---|---|---|
-| 7a | **Trusted certificate profiles**: root, intermediate and trusted publisher stores | internal CAs and code signing trusted fleet-wide | in progress |
 | 7b | **Wi-Fi and VPN profiles**, with passphrases and pre-shared keys sealed at rest | network access on managed devices | draft: `drafts/network-profiles-spec.md` §2.2, §2.3, §3; applying needs a VM to verify |
-| 8 | **SSO group → scope mapping**: an identity-provider group can grant a device-group scope | scoped admins managed where the users are | builds on M16 and M18 |
+| 8 | **SSO group → scope mapping**: an identity-provider group can grant a device-group scope | scoped admins managed where the users are | in progress |
 | 9 | **File settings refuse junctions** | the last low finding from the security review | agent |
 | 10 | **Scale**: a fleet simulator for load testing, plus a documented sizing guide | knowing how many devices one server handles | needs a target fleet size from the user to be meaningful |
 
