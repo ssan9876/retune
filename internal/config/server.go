@@ -25,6 +25,9 @@ type Server struct {
 	DataDir         string
 	CheckinInterval time.Duration
 	SessionTTL      time.Duration
+	// SessionMaxLifetime is how long a session can live however busy it is.
+	// SessionTTL slides with use; this does not.
+	SessionMaxLifetime time.Duration
 	// ClientCertHeader carries the device certificate in behind-proxy mode.
 	ClientCertHeader string
 	// TrustedProxies may send ClientCertHeader; nobody else may.
@@ -130,6 +133,20 @@ func LoadServer(getenv func(string) string) (Server, error) {
 			return Server{}, errors.New("SESSION_TTL_HOURS must be an integer between 1 and 168")
 		}
 		c.SessionTTL = time.Duration(n) * time.Hour
+	}
+	// Unset, the cap is a day or the idle timeout, whichever is longer, so a
+	// deployment that already allowed longer idle sessions still starts after
+	// an upgrade. Set, it must not undercut the idle timeout it caps.
+	c.SessionMaxLifetime = max(24*time.Hour, c.SessionTTL)
+	if v := lookup("SESSION_MAX_HOURS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 720 {
+			return Server{}, errors.New("SESSION_MAX_HOURS must be an integer between 1 and 720")
+		}
+		c.SessionMaxLifetime = time.Duration(n) * time.Hour
+		if c.SessionMaxLifetime < c.SessionTTL {
+			return Server{}, errors.New("SESSION_MAX_HOURS cannot be shorter than SESSION_TTL_HOURS")
+		}
 	}
 	c.ClientCertHeader = or(lookup("CLIENT_CERT_HEADER"), "X-Forwarded-Client-Cert")
 	c.CAKeySource = or(lookup("CA_KEY_SOURCE"), "file")

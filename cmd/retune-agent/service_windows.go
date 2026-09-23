@@ -7,8 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -266,33 +264,6 @@ func disableService() error {
 	}
 	cfg.StartType = mgr.StartDisabled
 	return s.UpdateConfig(cfg)
-}
-
-// secureDataDir restricts the agent's data directory to SYSTEM and
-// Administrators, because it holds the enrollment token, the device key and
-// the builds the service runs as LocalSystem. icacls ships with Windows and
-// expresses this in one line; building the same ACL through the security APIs
-// is a great deal of code for the same result.
-//
-// It creates the directory if it is not there yet and is safe to repeat --
-// both of which it has to be, because every path that writes something
-// sensitive there calls it, and most of them call it on a directory some
-// earlier run already secured. The grants are absolute (/grant:r), so a second
-// run leaves exactly the same ACL as the first.
-func secureDataDir(dir string) error {
-	// Creating it here rather than finding it is the point: a standard user
-	// who gets to C:\ProgramData\Retune first owns it, and an owner can put
-	// a binary of their choosing where a LocalSystem service will run it.
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("create %s: %w", dir, err)
-	}
-	cmd := exec.Command("icacls", dir, "/inheritance:r",
-		"/grant:r", "SYSTEM:(OI)(CI)F",
-		"/grant:r", "Administrators:(OI)(CI)F")
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("restrict permissions on %s: %w: %s", dir, err, strings.TrimSpace(string(out)))
-	}
-	return nil
 }
 
 // adminError explains the most common reason any of this fails.

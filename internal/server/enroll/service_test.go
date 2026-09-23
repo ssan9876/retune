@@ -92,7 +92,9 @@ func TestEnroll(t *testing.T) {
 		}
 	})
 
-	t.Run("same hardware replaces previous device", func(t *testing.T) {
+	// The serial is the enrolling machine's own claim, so a match must not cut
+	// the other device off: it is recorded, and both stay active.
+	t.Run("same hardware is recorded, not retired", func(t *testing.T) {
 		plain, _ := newToken(t, enroll.TokenOptions{})
 		facts := protocol.DeviceFacts{Hostname: "PC-2", SMBIOSUUID: "U-B"}
 		first, err := svc.Enroll(ctx, protocol.EnrollRequest{Token: plain, CSRPEM: newCSR(t), Device: facts})
@@ -104,8 +106,21 @@ func TestEnroll(t *testing.T) {
 			t.Fatal(err)
 		}
 		old, _ := q.GetDevice(ctx, store.DefaultTenantID, uuid.MustParse(first.DeviceID))
-		if old.Status != store.DeviceReplaced || old.ReplacedBy == nil || old.ReplacedBy.String() != second.DeviceID {
-			t.Fatalf("old device = %+v", old)
+		if old.Status != store.DeviceActive || old.ReplacedBy != nil {
+			t.Fatalf("the earlier device must stay active: %+v", old)
+		}
+		entries, err := q.ListAudit(ctx, 20)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, e := range entries {
+			if e.TargetID == second.DeviceID && e.Details["same_hardware_as"] == first.DeviceID {
+				found = true
+			}
+		}
+		if !found {
+			t.Error("the second enrollment's audit entry should name the device with the same hardware")
 		}
 	})
 

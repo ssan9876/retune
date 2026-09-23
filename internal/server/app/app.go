@@ -137,7 +137,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	}
 	dev := &devices.Service{Store: st}
 	authSvc := &auth.Service{
-		Store: st, Now: time.Now, SessionTTL: cfg.SessionTTL,
+		Store: st, Now: time.Now, SessionTTL: cfg.SessionTTL, MaxSessionLifetime: cfg.SessionMaxLifetime,
 		Limiter: auth.NewLimiter(10, 15*time.Minute, time.Now), Issuer: "Retune",
 	}
 	agent := &agentapi.Handler{

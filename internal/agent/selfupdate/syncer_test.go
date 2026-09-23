@@ -722,10 +722,10 @@ func TestSyncRefusesWhenTheBuildTrustsNoKeys(t *testing.T) {
 	}
 }
 
-// A build refused on its signature must never be downloaded again: the next
-// check-in finds the refused record and returns before fetching or
-// downloading anything, so the same 13 MB is not pulled every cycle for as
-// long as the bad build stays assigned.
+// A build refused on its signature is never downloaded at all - the
+// signature is checked against the definition before a byte is fetched - and
+// the next check-in finds the refused record and returns before even fetching
+// the definition, for as long as the bad build stays assigned.
 func TestARefusedBuildIsNotDownloadedAgain(t *testing.T) {
 	dir := t.TempDir()
 	other := mustKey()
@@ -743,8 +743,8 @@ func TestARefusedBuildIsNotDownloadedAgain(t *testing.T) {
 	if err := s.Sync(context.Background(), []protocol.Item{agentItem("v1", nil)}); err != nil {
 		t.Fatal(err)
 	}
-	if c.downloads != 1 {
-		t.Errorf("downloads = %d, want 1", c.downloads)
+	if c.downloads != 0 {
+		t.Errorf("downloads = %d, want none", c.downloads)
 	}
 	if c.fetches != 1 {
 		t.Errorf("fetches = %d, want 1", c.fetches)
@@ -838,5 +838,31 @@ func TestSyncStaysQuietWhenAlreadyOnTheAssignedVersionWithNoTrustList(t *testing
 	}
 	if len(c.reports) != 0 {
 		t.Errorf("staying on the assigned version must not be reported, got %+v", c.reports)
+	}
+}
+
+// The version names a folder under bin, and it comes from the server. One
+// that would climb out of bin is refused before anything is created, fetched
+// or removed.
+func TestAVersionThatIsNotAVersionIsRefused(t *testing.T) {
+	dir := t.TempDir()
+	c := &fakeClient{version: `..\..\Users`, payload: []byte("bytes")}
+	control := &fakeControl{binPath: `C:\Program Files\Retune\retune-agent.exe`}
+	s := &selfupdate.Syncer{
+		Dir: dir, Client: c, Control: control, Running: "1.0.0", Injected: true, Trusted: trustTestKey(),
+		Log: slog.New(slog.DiscardHandler), Now: time.Now,
+		Spawn: func(string) error { return nil },
+	}
+	// Sync logs a failed item rather than failing the whole cycle; what
+	// matters is that nothing was downloaded or created, and that it said so.
+	_ = s.Sync(context.Background(), []protocol.Item{agentItem("v1", nil)})
+	if c.downloads != 0 {
+		t.Errorf("downloads = %d, want none", c.downloads)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "bin")); !os.IsNotExist(err) {
+		t.Errorf("nothing should be created under bin, got %v", err)
+	}
+	if len(c.reports) != 1 || !strings.Contains(c.reports[0].Detail, "not a valid version") {
+		t.Errorf("the refusal should be reported, got %+v", c.reports)
 	}
 }

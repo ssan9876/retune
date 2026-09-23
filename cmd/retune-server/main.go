@@ -128,6 +128,11 @@ func serve(ctx context.Context, getenv func(string) string) error {
 		Handler:           a.Handler,
 		TLSConfig:         a.TLSConfig,
 		ReadHeaderTimeout: 10 * time.Second,
+		// A whole request must arrive within ten minutes - long enough for a
+		// 128 MiB agent build over a slow link, short enough that a client
+		// trickling a body cannot hold a connection open indefinitely.
+		ReadTimeout: 10 * time.Minute,
+		IdleTimeout: 2 * time.Minute,
 		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelWarn),
 	}
 	errc := make(chan error, 1)

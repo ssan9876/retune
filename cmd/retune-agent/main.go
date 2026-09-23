@@ -111,14 +111,16 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 		if *server == "" || *token == "" {
 			return errors.New("--server and --token are required")
 		}
+		// Secured before the token is written into it, not after: the
+		// directory holds the enrollment token and, shortly, the device key,
+		// and a directory somebody else prepared must be dealt with before
+		// anything sensitive goes in.
+		if err := secureDataDir(*dataDir); err != nil {
+			return err
+		}
 		if err := agentcfg.Save(*dataDir, agentcfg.Config{
 			ServerURL: *server, EnrollToken: *token, ServerCertFingerprint: *pin,
 		}); err != nil {
-			return err
-		}
-		// The directory holds the enrollment token and, shortly, the device
-		// key, so it must not be readable by ordinary users.
-		if err := secureDataDir(*dataDir); err != nil {
 			return err
 		}
 		// The MSI installs the service itself, so this is the only place on

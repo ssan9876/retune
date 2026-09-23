@@ -36,15 +36,16 @@ var sealContext = []byte("oidc-login")
 // SSO refusal codes. They are what the console is told, in the redirect back
 // to the sign-in page, and deliberately say no more than a person needs.
 const (
-	SSOUnavailable  = "unavailable"    // the provider could not be reached
-	SSOBadState     = "state"          // no, expired, or mismatched sign-in in progress
-	SSOExchange     = "exchange"       // the provider would not trade the code for tokens
-	SSOBadToken     = "token"          // the ID token did not verify
-	SSONoEmail      = "no_email"       // the token named nobody we can show
-	SSOUnauthorized = "unauthorized"   // in none of the mapped groups
-	SSOEmailTaken   = "email_taken"    // a different account already uses the address
-	SSODisabled     = "disabled"       // the account is disabled here
-	SSOProvider     = "provider_error" // the provider itself sent back an error
+	SSOUnavailable  = "unavailable"      // the provider could not be reached
+	SSOBadState     = "state"            // no, expired, or mismatched sign-in in progress
+	SSOExchange     = "exchange"         // the provider would not trade the code for tokens
+	SSOBadToken     = "token"            // the ID token did not verify
+	SSONoEmail      = "no_email"         // the token named nobody we can show
+	SSOUnverified   = "email_unverified" // the provider says the email is not verified
+	SSOUnauthorized = "unauthorized"     // in none of the mapped groups
+	SSOEmailTaken   = "email_taken"      // a different account already uses the address
+	SSODisabled     = "disabled"         // the account is disabled here
+	SSOProvider     = "provider_error"   // the provider itself sent back an error
 )
 
 // SSOError is a sign-in refused, with the code the console turns into words.
@@ -217,6 +218,14 @@ func (o *OIDC) Finish(ctx context.Context, cookie, state, code string) (store.Ad
 	var claims map[string]any
 	if err := idToken.Claims(&claims); err != nil {
 		return store.Admin{}, refuse(SSOBadToken, "read the ID token's claims: %w", err)
+	}
+	// Accounts are keyed by subject, not email, so an unverified address
+	// cannot take anyone's account; but it is still what the audit log
+	// records as the actor. A provider that says outright the address is not
+	// verified is refused. One that says nothing - Entra ID does not send the
+	// claim - is taken at its word.
+	if verified, present := claims["email_verified"].(bool); present && !verified {
+		return store.Admin{}, refuse(SSOUnverified, "the provider says the email address is not verified")
 	}
 	email := stringClaim(claims, "email")
 	if email == "" {

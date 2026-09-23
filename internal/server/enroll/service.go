@@ -117,8 +117,15 @@ func (s *Service) Enroll(ctx context.Context, req protocol.EnrollRequest) (proto
 			return err
 		}
 
+		// A device already enrolled with the same serial or SMBIOS UUID is
+		// most likely this machine before a reimage - but the serial is the
+		// enrolling machine's own claim, and serials are not secret. Retiring
+		// the match here let anyone holding an enrollment token cut any
+		// machine off by quoting its serial, so the match is only recorded:
+		// the old record goes stale on its own if it really is gone, and an
+		// admin retires it.
 		prev, err := q.FindActiveDeviceByHardware(ctx, store.DefaultTenantID, req.Device.Serial, req.Device.SMBIOSUUID)
-		replacing := err == nil
+		sameHardware := err == nil
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return err
 		}
@@ -137,11 +144,9 @@ func (s *Service) Enroll(ctx context.Context, req protocol.EnrollRequest) (proto
 			return err
 		}
 		details := map[string]any{"token_id": tok.ID.String(), "hostname": req.Device.Hostname}
-		if replacing {
-			if err := q.MarkDeviceReplaced(ctx, store.DefaultTenantID, prev.ID, deviceID); err != nil {
-				return err
-			}
-			details["replaced_device_id"] = prev.ID.String()
+		if sameHardware {
+			details["same_hardware_as"] = prev.ID.String()
+			details["same_hardware_hostname"] = prev.Hostname
 		}
 		if err := q.IncrementTokenUse(ctx, store.DefaultTenantID, tok.ID); err != nil {
 			return err

@@ -286,3 +286,23 @@ func TestAnEmailChannelIsRefusedWithNoRelay(t *testing.T) {
 		t.Fatalf("email channel with no relay = %d %s, want 400 naming the setting", status, raw)
 	}
 }
+
+// A webhook URL is often the credential itself, so a read-only account sees
+// only where it goes, never the path.
+func TestReadOnlyAdminsSeeOnlyAWebhooksHost(t *testing.T) {
+	a, srv, admin, _ := alertingApp(t)
+	ch := createChannel(t, admin, map[string]any{
+		"name": "Ops chat", "kind": "webhook",
+		"config": map[string]any{"url": "https://hooks.example.com/services/T000/B000/SECRETSECRET"},
+	})
+	viewer := signedIn(t, a, srv, store.RoleReadOnly)
+	for _, path := range []string{"/notification-channels", "/notification-channels/" + ch["id"].(string)} {
+		status, body := viewer.do(http.MethodGet, path, nil)
+		if status != http.StatusOK || strings.Contains(string(body), "SECRETSECRET") || !strings.Contains(string(body), "hooks.example.com") {
+			t.Errorf("%s as read-only: %d %s", path, status, body)
+		}
+	}
+	if _, body := admin.do(http.MethodGet, "/notification-channels", nil); !strings.Contains(string(body), "SECRETSECRET") {
+		t.Errorf("an admin should see the whole URL to edit it: %s", body)
+	}
+}

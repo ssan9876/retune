@@ -32,6 +32,9 @@ func TestServesTheConsole(t *testing.T) {
 	if got := res.Header.Get("X-Content-Type-Options"); got != "nosniff" {
 		t.Fatalf("X-Content-Type-Options = %q", got)
 	}
+	if got := res.Header.Get("Strict-Transport-Security"); !strings.HasPrefix(got, "max-age=") {
+		t.Fatalf("Strict-Transport-Security = %q", got)
+	}
 }
 
 func TestClientRoutesFallBackToIndex(t *testing.T) {

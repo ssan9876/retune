@@ -298,3 +298,31 @@ func TestOIDC(t *testing.T) {
 		t.Fatalf("http on localhost is allowed for trying things out: %+v %v", c.OIDC, err)
 	}
 }
+
+func TestSessionMaxLifetime(t *testing.T) {
+	load := func(extra map[string]string) (Server, error) {
+		m := map[string]string{"DATABASE_URL": "postgres://x", "PUBLIC_URL": "https://h"}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return LoadServer(env(m))
+	}
+	if c, err := load(nil); err != nil || c.SessionMaxLifetime != 24*time.Hour {
+		t.Fatalf("default = %s, %v", c.SessionMaxLifetime, err)
+	}
+	// An existing longer idle timeout keeps working after an upgrade.
+	if c, err := load(map[string]string{"SESSION_TTL_HOURS": "36"}); err != nil || c.SessionMaxLifetime != 36*time.Hour {
+		t.Fatalf("with a 36h idle timeout = %s, %v", c.SessionMaxLifetime, err)
+	}
+	if c, err := load(map[string]string{"SESSION_MAX_HOURS": "8", "SESSION_TTL_HOURS": "4"}); err != nil || c.SessionMaxLifetime != 8*time.Hour {
+		t.Fatalf("set = %s, %v", c.SessionMaxLifetime, err)
+	}
+	for _, bad := range []map[string]string{
+		{"SESSION_MAX_HOURS": "0"}, {"SESSION_MAX_HOURS": "721"},
+		{"SESSION_MAX_HOURS": "6", "SESSION_TTL_HOURS": "12"},
+	} {
+		if _, err := load(bad); err == nil {
+			t.Errorf("%v should be refused", bad)
+		}
+	}
+}

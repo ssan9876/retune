@@ -470,6 +470,11 @@ func (s Setting) validateFirewallRule() error {
 	if strings.TrimSpace(s.Name) == "" {
 		return fmt.Errorf("%w: a firewall rule needs a name", ErrBadSetting)
 	}
+	// The cmdlets read these as wildcards. The agent escapes them anyway, but
+	// a rule named * is never what anybody meant.
+	if strings.ContainsAny(s.Name, "*?[]`") {
+		return fmt.Errorf("%w: a firewall rule's name cannot contain * ? [ ] or `", ErrBadSetting)
+	}
 	if s.Ensure == EnsureAbsent {
 		return nil
 	}

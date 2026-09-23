@@ -283,6 +283,9 @@ func (c *Client) DownloadTimeout() time.Duration { return downloadTimeout }
 // mismatch dst already holds the wrong bytes. Discarding them is the caller's
 // job, and not an optional one: a wrong binary left on disk is worse than no
 // binary at all.
+// maxAgentBinary bounds an agent build download.
+const maxAgentBinary = 256 << 20
+
 func (c *Client) DownloadAgentBinary(ctx context.Context, id, wantSHA256 string, dst io.Writer) error {
 	ctx, cancel := context.WithTimeout(ctx, downloadTimeout)
 	defer cancel()
@@ -307,8 +310,14 @@ func (c *Client) DownloadAgentBinary(ctx context.Context, id, wantSHA256 string,
 
 	// Hashed while it streams, so verification never requires buffering the
 	// whole binary or re-reading it from dst.
+	// Capped, so a server that sends forever cannot fill the disk: the server
+	// refuses uploads over 128 MiB, and this allows twice that.
 	sum := sha256.New()
-	if _, err := io.Copy(io.MultiWriter(dst, sum), res.Body); err != nil {
+	n, err := io.Copy(io.MultiWriter(dst, sum), io.LimitReader(res.Body, maxAgentBinary+1))
+	if err == nil && n > maxAgentBinary {
+		return fmt.Errorf("GET %s: the build is larger than %d bytes", path, maxAgentBinary)
+	}
+	if err != nil {
 		return fmt.Errorf("download %s: %w", path, err)
 	}
 	got := hex.EncodeToString(sum.Sum(nil))

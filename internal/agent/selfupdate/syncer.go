@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sync"
 	"time"
 
@@ -289,6 +290,42 @@ func (s *Syncer) stage(ctx context.Context, item protocol.Item, opts protocol.Ag
 		return nil
 	}
 
+	// Everything below the signature check trusts def.Version as a folder
+	// name and def.SHA256 as the bytes to accept. Both come from the server,
+	// which is exactly what the release signature does not trust, so both are
+	// checked before anything touches the disk: a version that could climb
+	// out of bin\ is refused, and so is a manifest the release key never
+	// signed. The signature covers version and hash together, so once it
+	// verifies, the download's own hash check is what ties the bytes to it.
+	if !validVersion(def.Version) {
+		detail := fmt.Sprintf("the build's version %q is not a valid version", def.Version)
+		if repErr := s.report(ctx, item.ID, def.Version, protocol.ResultFailed, "", detail); repErr != nil {
+			s.log().Error("failed to report a bad version", "error", repErr)
+		}
+		return errors.New(detail)
+	}
+	sigBytes, err := base64.StdEncoding.DecodeString(def.Signature)
+	if err != nil {
+		detail := fmt.Sprintf("the build's signature is not valid base64: %v", err)
+		if repErr := s.report(ctx, item.ID, def.Version, protocol.ResultFailed, "", detail); repErr != nil {
+			s.log().Error("failed to report signature failure", "error", repErr)
+		}
+		s.rememberRefusal(item.ID, def.Version, detail)
+		return fmt.Errorf("verify signature: %w", err)
+	}
+	if err := release.Verify(s.Trusted,
+		release.Manifest{Version: def.Version, SHA256: def.SHA256},
+		release.Signature{Version: def.Version, SHA256: def.SHA256, KeyID: def.KeyID, Signature: sigBytes}); err != nil {
+		// release.Verify's own error already names the key for the untrusted
+		// case, so it is not repeated here.
+		detail := fmt.Sprintf("signature did not verify against any trusted release key: %v", err)
+		if repErr := s.report(ctx, item.ID, def.Version, protocol.ResultFailed, "", detail); repErr != nil {
+			s.log().Error("failed to report signature failure", "error", repErr)
+		}
+		s.rememberRefusal(item.ID, def.Version, detail)
+		return fmt.Errorf("verify signature: %w", err)
+	}
+
 	versionDir := filepath.Join(s.Dir, "bin", def.Version)
 	if err := os.MkdirAll(versionDir, 0o755); err != nil {
 		return fmt.Errorf("create version dir: %w", err)
@@ -308,37 +345,6 @@ func (s *Syncer) stage(ctx context.Context, item protocol.Item, opts protocol.Ag
 			s.log().Error("failed to report download failure", "error", repErr)
 		}
 		return fmt.Errorf("download: %w", err)
-	}
-
-	// The hash matched what the server promised; now check that somebody with
-	// the release key promised it. The server verified this at upload, but the
-	// server is exactly what this check does not trust.
-	sigBytes, err := base64.StdEncoding.DecodeString(def.Signature)
-	if err != nil {
-		if rmErr := os.RemoveAll(versionDir); rmErr != nil {
-			s.log().Error("failed to remove unverified download", "error", rmErr)
-		}
-		detail := fmt.Sprintf("the build's signature is not valid base64: %v", err)
-		if repErr := s.report(ctx, item.ID, def.Version, protocol.ResultFailed, "", detail); repErr != nil {
-			s.log().Error("failed to report signature failure", "error", repErr)
-		}
-		s.rememberRefusal(item.ID, def.Version, detail)
-		return fmt.Errorf("verify signature: %w", err)
-	}
-	if err := release.Verify(s.Trusted,
-		release.Manifest{Version: def.Version, SHA256: def.SHA256},
-		release.Signature{Version: def.Version, SHA256: def.SHA256, KeyID: def.KeyID, Signature: sigBytes}); err != nil {
-		if rmErr := os.RemoveAll(versionDir); rmErr != nil {
-			s.log().Error("failed to remove unverified download", "error", rmErr)
-		}
-		// release.Verify's own error already names the key for the untrusted
-		// case, so it is not repeated here.
-		detail := fmt.Sprintf("signature did not verify against any trusted release key: %v", err)
-		if repErr := s.report(ctx, item.ID, def.Version, protocol.ResultFailed, "", detail); repErr != nil {
-			s.log().Error("failed to report signature failure", "error", repErr)
-		}
-		s.rememberRefusal(item.ID, def.Version, detail)
-		return fmt.Errorf("verify signature: %w", err)
 	}
 
 	if err := os.Rename(partPath, binPath); err != nil {
@@ -507,4 +513,13 @@ func copyRunningExecutable(dst string) error {
 		return fmt.Errorf("close supervisor copy: %w", err)
 	}
 	return os.Rename(tmp, dst)
+}
+
+// versionPattern is the server's own rule for a version (artifacts.Store),
+// applied again here because the agent does not take the server's word for
+// anything it is about to use as a path.
+var versionPattern = regexp.MustCompile(`^[A-Za-z0-9._+-]{1,64}$`)
+
+func validVersion(v string) bool {
+	return v != "." && v != ".." && versionPattern.MatchString(v)
 }

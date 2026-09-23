@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -85,14 +86,21 @@ type Service struct {
 	Log    *slog.Logger
 	SMTP   SMTP
 	Mailer Mailer
-	HTTP   *http.Client
+	// HTTP posts webhooks. Nil means webhookClient, which refuses loopback
+	// and link-local targets and does not follow redirects; tests supply one
+	// that trusts their own receiver.
+	HTTP *http.Client
+
+	defaultClient sync.Once
+	fallback      *http.Client
 }
 
 func (s *Service) client() *http.Client {
 	if s.HTTP != nil {
 		return s.HTTP
 	}
-	return http.DefaultClient
+	s.defaultClient.Do(func() { s.fallback = webhookClient() })
+	return s.fallback
 }
 
 func (s *Service) mailer() Mailer {
