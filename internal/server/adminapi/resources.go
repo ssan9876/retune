@@ -23,10 +23,14 @@ func (h *Handler) mountResources(mux *http.ServeMux, base string) {
 	mux.Handle("POST "+base+"/tokens/{id}/revoke", h.write(h.revokeToken))
 
 	mux.Handle("GET "+base+"/admins", h.read(h.listAdmins))
-	mux.Handle("POST "+base+"/admins", h.write(h.createAdmin))
-	mux.Handle("POST "+base+"/admins/{id}/password", h.write(h.setAdminPassword))
-	mux.Handle("POST "+base+"/admins/{id}/totp", h.write(h.setAdminTOTP))
-	mux.Handle("POST "+base+"/admins/{id}/disabled", h.write(h.setAdminDisabled))
+	mux.Handle("POST "+base+"/admins", h.writeSession(h.createAdmin))
+	mux.Handle("POST "+base+"/admins/{id}/password", h.writeSession(h.setAdminPassword))
+	mux.Handle("POST "+base+"/admins/{id}/totp", h.writeSession(h.setAdminTOTP))
+	mux.Handle("POST "+base+"/admins/{id}/disabled", h.writeSession(h.setAdminDisabled))
+
+	mux.Handle("GET "+base+"/api-tokens", h.readSession(h.listAPITokens))
+	mux.Handle("POST "+base+"/api-tokens", h.writeSession(h.createAPIToken))
+	mux.Handle("POST "+base+"/api-tokens/{id}/revoke", h.writeSession(h.revokeAPIToken))
 
 	mux.Handle("GET "+base+"/groups", h.read(h.listGroups))
 	mux.Handle("POST "+base+"/groups", h.write(h.createGroup))
@@ -52,7 +56,7 @@ func (h *Handler) mountResources(mux *http.ServeMux, base string) {
 	mux.Handle("GET "+base+"/devices/{id}/bitlocker-keys", h.read(h.listBitLockerKeys))
 	// Revealing a recovery key is a write: it is a deliberate act, restricted
 	// to the admin role, and audited every time.
-	mux.Handle("POST "+base+"/bitlocker-keys/{id}/reveal", h.write(h.revealBitLockerKey))
+	mux.Handle("POST "+base+"/bitlocker-keys/{id}/reveal", h.writeSession(h.revealBitLockerKey))
 
 	mux.Handle("GET "+base+"/profiles", h.read(h.listProfiles))
 	mux.Handle("POST "+base+"/profiles", h.write(h.createProfile))
