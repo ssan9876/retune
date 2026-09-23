@@ -117,14 +117,17 @@ func (s *Service) SealSecret(channelID uuid.UUID, secret string) (ciphertext, no
 	if secret == "" {
 		return nil, nil, nil
 	}
-	return s.Key.Seal([]byte(secret), []byte(channelID.String()))
+	return s.Key.Seal([]byte(secret), SecretContext(channelID))
 }
+
+// SecretContext is what a channel's sealed secret is bound to.
+func SecretContext(channelID uuid.UUID) []byte { return []byte(channelID.String()) }
 
 func (s *Service) openSecret(ch store.NotificationChannel) ([]byte, error) {
 	if len(ch.SecretCiphertext) == 0 {
 		return nil, nil
 	}
-	return s.Key.Open(ch.SecretCiphertext, ch.SecretNonce, []byte(ch.ID.String()))
+	return s.Key.Open(ch.SecretCiphertext, ch.SecretNonce, SecretContext(ch.ID))
 }
 
 // Deliver sends one message through one channel.

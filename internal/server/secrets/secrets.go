@@ -87,6 +87,31 @@ func LoadFile(dir string) (*Key, error) {
 	return parse(strings.TrimSpace(string(raw)))
 }
 
+// Generate makes a new random key, returning it and its hex form, which is
+// what a key file or SECRET_KEY holds.
+func Generate() (*Key, string, error) {
+	raw := make([]byte, KeySize)
+	if _, err := rand.Read(raw); err != nil {
+		return nil, "", err
+	}
+	k, err := newKey(raw)
+	return k, hex.EncodeToString(raw), err
+}
+
+// WriteNew writes a key's hex form to a file that must not already exist,
+// readable by its owner only.
+func WriteNew(path, hexKey string) error {
+	fh, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := fh.WriteString(hexKey); err != nil {
+		fh.Close()
+		return err
+	}
+	return fh.Close()
+}
+
 // FromHex builds a key from a hex string, for deployments that supply it
 // through the environment rather than a file.
 func FromHex(value string) (*Key, error) {
@@ -133,6 +158,11 @@ func (k *Key) Seal(plaintext, context []byte) (ciphertext, nonce []byte, err err
 
 // Open decrypts what Seal produced.
 func (k *Key) Open(ciphertext, nonce, context []byte) ([]byte, error) {
+	// GCM panics on a nonce of the wrong size; a stored value can be
+	// damaged or missing, and that is an error, not a crash.
+	if len(nonce) != k.aead.NonceSize() {
+		return nil, errors.New("the stored value is damaged: its nonce is the wrong size")
+	}
 	plaintext, err := k.aead.Open(nil, nonce, ciphertext, context)
 	if err != nil {
 		return nil, errors.New("the stored value could not be decrypted with this server's key")
