@@ -88,11 +88,27 @@ func WriteRecord(dir string, r Record) error {
 	if err := os.WriteFile(tmp, b, 0o600); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := renameRetrying(tmp, path); err != nil {
 		_ = os.Remove(tmp)
 		return err
 	}
 	return nil
+}
+
+// renameRetrying replaces path with tmp, trying again for about a second.
+// On Windows a rename over a file fails while anyone has it open, and the
+// supervisor reads this record in a loop while the new agent writes it; a
+// single failed attempt there lost the agent's report of its own success,
+// and a good update was rolled back for want of it.
+func renameRetrying(tmp, path string) error {
+	var err error
+	for attempt := 0; attempt < 40; attempt++ {
+		if err = os.Rename(tmp, path); err == nil {
+			return nil
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	return err
 }
 
 // RemoveRecord deletes the update record, once an attempt is resolved.

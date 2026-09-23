@@ -153,7 +153,7 @@ func TestSuperviseKeepsAnUpdateThatChecksIn(t *testing.T) {
 		_ = selfupdate.WriteRecord(dir, done)
 	}
 
-	if err := supervisor(dir, c).Supervise(context.Background()); err != nil {
+	if err := supervisor(dir, c).Supervise(testContext(t)); err != nil {
 		t.Fatalf("a successful update should not error: %v", err)
 	}
 	if got := c.binPath; got != rec.ToBinPath {
@@ -198,7 +198,7 @@ func TestSuperviseKeepsAnUpdateThatChecksInAfterSeveralPolls(t *testing.T) {
 	s := supervisor(dir, c)
 	s.Now = func() time.Time { return rec.Deadline.Add(-time.Hour) }
 
-	if err := s.Supervise(context.Background()); err != nil {
+	if err := s.Supervise(testContext(t)); err != nil {
 		t.Fatalf("a successful update should not error: %v", err)
 	}
 	if _, found, _ := selfupdate.ReadRecord(dir); found {
@@ -228,7 +228,7 @@ func TestSuperviseRemovesBuildsNobodyNeedsAnyMore(t *testing.T) {
 		_ = selfupdate.WriteRecord(dir, done)
 	}
 
-	if err := supervisor(dir, c).Supervise(context.Background()); err != nil {
+	if err := supervisor(dir, c).Supervise(testContext(t)); err != nil {
 		t.Fatal(err)
 	}
 	entries, err := os.ReadDir(filepath.Join(dir, "bin"))
@@ -260,7 +260,7 @@ func TestSuperviseRollsBackWhenTheNewAgentNeverChecksIn(t *testing.T) {
 	}
 	c := &fakeControl{binPath: rec.FromBinPath, args: rec.FromArgs}
 
-	if err := supervisor(dir, c).Supervise(context.Background()); err != nil {
+	if err := supervisor(dir, c).Supervise(testContext(t)); err != nil {
 		t.Fatalf("a rollback is an outcome, not an error: %v", err)
 	}
 	if c.binPath != rec.FromBinPath {
@@ -298,7 +298,7 @@ func TestSuperviseDoesNotRepointIfTheServiceWillNotStop(t *testing.T) {
 	}
 	c := &fakeControl{binPath: rec.FromBinPath, args: rec.FromArgs, failStopOnCall: 1, stopErr: errors.New("it will not stop")}
 
-	if err := supervisor(dir, c).Supervise(context.Background()); err == nil {
+	if err := supervisor(dir, c).Supervise(testContext(t)); err == nil {
 		t.Fatal("a service that will not stop should be an error")
 	}
 	if c.binPath != rec.FromBinPath {
@@ -352,7 +352,7 @@ func TestSuperviseRestoresWhenAStepAfterStopFails(t *testing.T) {
 
 			// The restore worked, so the outcome is recorded rather than lost:
 			// a rollback is an outcome, not an error.
-			if err := supervisor(dir, c).Supervise(context.Background()); err != nil {
+			if err := supervisor(dir, c).Supervise(testContext(t)); err != nil {
 				t.Fatalf("a completed restore should not error: %v", err)
 			}
 			if c.binPath != rec.FromBinPath {
@@ -410,7 +410,7 @@ func TestSuperviseRecordsAFailureInsideRollback(t *testing.T) {
 			failStopOnCall: 2, stopErr: errors.New("stuck stopping the new build"),
 		}
 
-		err := supervisor(dir, c).Supervise(context.Background())
+		err := supervisor(dir, c).Supervise(testContext(t))
 		if err == nil {
 			t.Fatal("a rollback that cannot stop the service should be an error")
 		}
@@ -442,7 +442,7 @@ func TestSuperviseRecordsAFailureInsideRollback(t *testing.T) {
 		// affects the check inside rollback.
 		c.configErr = errors.New("the service control manager will not answer")
 
-		if err := supervisor(dir, c).Supervise(context.Background()); err == nil {
+		if err := supervisor(dir, c).Supervise(testContext(t)); err == nil {
 			t.Fatal("a rollback that cannot stop the service should be an error")
 		}
 		got, found, _ := selfupdate.ReadRecord(dir)
@@ -464,7 +464,7 @@ func TestSuperviseRecordsAFailureInsideRollback(t *testing.T) {
 			failStartOnCall: 2, startErr: errors.New("the previous build will not come back up"),
 		}
 
-		err := supervisor(dir, c).Supervise(context.Background())
+		err := supervisor(dir, c).Supervise(testContext(t))
 		if err == nil {
 			t.Fatal("a rollback that cannot start the previous build should be an error")
 		}
@@ -482,10 +482,19 @@ func TestSuperviseRecordsAFailureInsideRollback(t *testing.T) {
 // supervisor may be run after an update has already settled.
 func TestSuperviseWithNoRecord(t *testing.T) {
 	c := &fakeControl{}
-	if err := supervisor(t.TempDir(), c).Supervise(context.Background()); err != nil {
+	if err := supervisor(t.TempDir(), c).Supervise(testContext(t)); err != nil {
 		t.Errorf("no record should be a no-op, got %v", err)
 	}
 	if len(c.did()) != 0 {
 		t.Errorf("nothing should have happened, got %v", c.did())
 	}
+}
+
+// testContext bounds a Supervise call, so a supervisor that never sees the
+// outcome it is waiting for fails the test instead of hanging the run.
+func testContext(t *testing.T) context.Context {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+	return ctx
 }

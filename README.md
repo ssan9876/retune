@@ -219,6 +219,28 @@ provider is ever down. `oidc_disable_local_login: true` turns them off;
 `retune-server bootstrap-admin` still works from the command line, and unsetting
 the option is the way back in.
 
+## API tokens
+
+Scripts and other systems — a ticketing system, a SIEM, a nightly report —
+call the admin API with a token rather than a browser session. Create one under
+**API tokens** (admins only), choose read-only or admin access and a lifetime of
+up to a year, and copy it: only a hash is kept, so it is shown once.
+
+```bash
+curl -H "Authorization: Bearer rtk_…" https://mdm.example.com/api/admin/v1/devices
+```
+
+A token needs no CSRF header. It stops working when it expires, when it is
+revoked, or when the admin who made it is disabled — so someone who leaves does
+not leave working credentials behind — and it never has more access than that
+admin. The audit log records what each token did as `api-token:<name>`.
+
+A few things stay with a person at the console, and a token is refused them:
+managing admins and API tokens, and revealing a BitLocker recovery key. A token
+that leaks can therefore neither make replacements for itself to outlive its
+revocation nor read recovery keys out in bulk. Make one token per system, so
+each can be revoked on its own.
+
 ## Health checks
 
 Two unauthenticated endpoints answer the questions an orchestrator asks. A

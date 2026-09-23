@@ -42,6 +42,7 @@ const SECTIONS: Section[] = [
     links: [
       { to: "/alerts", label: "Alerts", icon: "bell" },
       { to: "/admins", label: "Admins", icon: "person" },
+      { to: "/api-tokens", label: "API tokens", icon: "key" },
       { to: "/audit", label: "Audit log", icon: "list" },
     ],
   },

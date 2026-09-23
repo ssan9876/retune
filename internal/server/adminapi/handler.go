@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"retune/internal/server/agentversions"
@@ -55,11 +56,19 @@ type Handler struct {
 
 type authKey struct{}
 
-// authContext is the signed-in admin for this request.
+// authContext is who is making this request: a signed-in admin with a
+// session, or an API token standing in for one. For a token, Admin is a
+// stand-in carrying the token's role and an "api-token:<name>" email, which
+// is what the audit log records as the actor; Session is empty.
 type authContext struct {
 	Admin   store.Admin
 	Session store.Session
+	Token   *store.APIToken
 }
+
+// authSourceAPIToken marks the stand-in Admin of a token-authenticated
+// request. It is never stored.
+const authSourceAPIToken = "api_token"
 
 func caller(r *http.Request) authContext { return r.Context().Value(authKey{}).(authContext) }
 
@@ -72,21 +81,41 @@ func (h *Handler) Routes() *http.ServeMux {
 	mux.HandleFunc("POST "+base+"/session", h.login)
 	mux.HandleFunc("GET "+base+"/oidc/start", h.oidcStart)
 	mux.HandleFunc("GET "+base+"/oidc/callback", h.oidcCallback)
-	mux.Handle("GET "+base+"/session", h.read(h.currentSession))
-	mux.Handle("DELETE "+base+"/session", h.read(h.logout))
+	mux.Handle("GET "+base+"/session", h.readSession(h.currentSession))
+	mux.Handle("DELETE "+base+"/session", h.readSession(h.logout))
 
 	h.mountResources(mux, base)
 	return mux
 }
 
-// read allows both roles; write requires the admin role.
-func (h *Handler) read(next http.HandlerFunc) http.Handler  { return h.protect(next, false) }
-func (h *Handler) write(next http.HandlerFunc) http.Handler { return h.protect(next, true) }
+// read allows both roles; write requires the admin role. Both accept a
+// session or an API token.
+func (h *Handler) read(next http.HandlerFunc) http.Handler  { return h.protect(next, false, true) }
+func (h *Handler) write(next http.HandlerFunc) http.Handler { return h.protect(next, true, true) }
 
-// protect authenticates the session cookie, enforces CSRF on unsafe methods and
-// checks the role.
-func (h *Handler) protect(next http.HandlerFunc, needsAdmin bool) http.Handler {
+// readSession and writeSession are read and write for what only a person at
+// a console should do: manage admins and API tokens, reveal a recovery key,
+// look at their own session. An API token is refused here, so one that leaks
+// cannot make more tokens or accounts to outlive its own revocation, or read
+// out secrets in bulk.
+func (h *Handler) readSession(next http.HandlerFunc) http.Handler {
+	return h.protect(next, false, false)
+}
+func (h *Handler) writeSession(next http.HandlerFunc) http.Handler {
+	return h.protect(next, true, false)
+}
+
+// protect authenticates the caller - an API token in the Authorization
+// header, else the session cookie - enforces CSRF on a session's unsafe
+// methods, and checks the role.
+func (h *Handler) protect(next http.HandlerFunc, needsAdmin, allowToken bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// A request that sends an Authorization header is judged on it alone,
+		// never on a cookie that happens to ride along with it.
+		if header := r.Header.Get("Authorization"); header != "" {
+			h.withToken(w, r, header, next, needsAdmin, allowToken)
+			return
+		}
 		cookie, err := r.Cookie(SessionCookie)
 		if err != nil || cookie.Value == "" {
 			writeError(w, http.StatusUnauthorized, "unauthenticated", "sign in to continue")
@@ -119,6 +148,36 @@ func (h *Handler) protect(next http.HandlerFunc, needsAdmin bool) http.Handler {
 		}
 		next(w, r.WithContext(context.WithValue(r.Context(), authKey{}, authContext{Admin: admin, Session: session})))
 	})
+}
+
+// withToken authenticates an API token. It needs no CSRF check: the header
+// is something a script sets on purpose, never something a browser attaches
+// to a request another site made it send.
+func (h *Handler) withToken(w http.ResponseWriter, r *http.Request, header string, next http.HandlerFunc, needsAdmin, allowToken bool) {
+	plain, ok := strings.CutPrefix(header, "Bearer ")
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthenticated", "use Authorization: Bearer <API token>")
+		return
+	}
+	tok, err := h.Auth.AuthenticateAPIToken(r.Context(), strings.TrimSpace(plain))
+	switch {
+	case errors.Is(err, auth.ErrInvalidToken):
+		writeError(w, http.StatusUnauthorized, "invalid_token", "the API token is invalid, expired or revoked")
+		return
+	case err != nil:
+		h.internal(w, "authenticate API token", err)
+		return
+	}
+	if !allowToken {
+		writeError(w, http.StatusForbidden, "session_required", "this needs an admin signed in to the console; an API token cannot do it")
+		return
+	}
+	if needsAdmin && tok.Role != store.RoleAdmin {
+		writeError(w, http.StatusForbidden, "forbidden", "this token may only read")
+		return
+	}
+	admin := store.Admin{ID: tok.ID, Email: "api-token:" + tok.Name, Role: tok.Role, AuthSource: authSourceAPIToken}
+	next(w, r.WithContext(context.WithValue(r.Context(), authKey{}, authContext{Admin: admin, Token: &tok})))
 }
 
 func (h *Handler) clearCookie(w http.ResponseWriter) {
