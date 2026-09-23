@@ -200,6 +200,17 @@ func (h *Handler) checkin(w http.ResponseWriter, r *http.Request) {
 	}
 	items := make([]protocol.Item, 0, len(assigned))
 	for _, it := range assigned {
+		// A maintenance window travels whole: the agent needs its schedule,
+		// not a version to fetch it by.
+		if it.Kind == protocol.ItemKindWindow {
+			win, err := h.Store.Q().GetMaintenanceWindow(ctx, it.ID)
+			if err != nil {
+				h.Log.Warn("assigned maintenance window is missing", "window_id", it.ID, "error", err)
+				continue
+			}
+			items = append(items, protocol.Item{Kind: it.Kind, ID: it.ID.String(), Version: 1, Options: win.Schedule})
+			continue
+		}
 		version, agentVersion, exists := h.itemVersion(ctx, it)
 		if !exists {
 			continue

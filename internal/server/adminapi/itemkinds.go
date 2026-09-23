@@ -46,20 +46,28 @@ var optionsParsers = map[string]func(json.RawMessage) ([]byte, error){
 	// A compliance policy has nothing to configure per assignment - unlike a
 	// script or profile, the same policy always evaluates the same way - so
 	// the only acceptable options are none at all.
-	compliance.ItemKindCompliance: func(raw json.RawMessage) ([]byte, error) {
+	compliance.ItemKindCompliance: noOptions("compliance"),
+	// Nor does a maintenance window: its schedule is the window's own, and an
+	// assignment only says which devices it applies to.
+	protocol.ItemKindWindow: noOptions("a maintenance window"),
+}
+
+// noOptions accepts no options at all: nothing, null or {}.
+func noOptions(what string) func(json.RawMessage) ([]byte, error) {
+	return func(raw json.RawMessage) ([]byte, error) {
 		if len(raw) == 0 {
 			return nil, nil
 		}
 		var v any
 		if err := json.Unmarshal(raw, &v); err != nil {
-			return nil, fmt.Errorf("%w: compliance takes no options", protocol.ErrBadOptions)
+			return nil, fmt.Errorf("%w: %s takes no options", protocol.ErrBadOptions, what)
 		}
 		if v == nil {
 			return nil, nil
 		}
 		if m, ok := v.(map[string]any); !ok || len(m) != 0 {
-			return nil, fmt.Errorf("%w: compliance takes no options", protocol.ErrBadOptions)
+			return nil, fmt.Errorf("%w: %s takes no options", protocol.ErrBadOptions, what)
 		}
 		return nil, nil
-	},
+	}
 }

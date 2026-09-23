@@ -34,6 +34,7 @@ const SECTIONS: Section[] = [
       { to: "/scripts", label: "Scripts", icon: "script" },
       { to: "/profiles", label: "Configuration profiles", icon: "profile" },
       { to: "/agent-versions", label: "Agent versions", icon: "update" },
+      { to: "/maintenance-windows", label: "Maintenance windows", icon: "clock" },
     ],
   },
   {

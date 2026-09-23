@@ -30,6 +30,8 @@ Go agent runs on each machine.
 - **Agent self-update.** Agent builds assigned to groups, verified by hash,
   swapped under supervision, and rolled back automatically if the new build
   cannot check in.
+- **Maintenance windows.** Script deployments, app installs and agent updates
+  held until a window assigned to the device opens, in its local time.
 - **Compliance.** Policies assigned to groups that say what a healthy device
   looks like — encryption, patch level, check-in recency, forbidden or
   required software and more — evaluated server-side from what is already
@@ -712,6 +714,29 @@ Uploaded files no app version uses any more are deleted after a day. Include
 `DATA_DIR/app-packages` in backups, or re-upload after a restore: a version
 whose file is missing fails to install with "the server no longer has this
 package".
+
+## Maintenance windows
+
+A **maintenance window** says when devices may be changed: on some days of the
+week (or every day), from a time, for up to 24 hours — `Sat, Sun from 22:00
+for 4 hours`, say. It is in each device's own local time, and may run past
+midnight. Create windows on the **Maintenance windows** page and assign them
+to groups like anything else.
+
+A device with at least one window assigned makes these changes only while one
+of them is open:
+
+- script deployments;
+- app installs and removals;
+- agent updates.
+
+Anything due outside a window waits for the next one. Commands you send (a
+script run now, a restart, a lock, a wipe) are not held: they are somebody
+asking for something now. Configuration profiles aren't either: they keep a
+setting as it should be rather than making a change. A device with no window
+assigned can be changed at any time, and excluding a window from a group lifts
+it for those devices. If a device can't read a window assigned to it, it holds
+everything back rather than guessing.
 
 ## Signed scripts and wipes
 

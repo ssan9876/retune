@@ -155,6 +155,12 @@ func (s *Syncer) Sync(ctx context.Context, items []protocol.Item) error {
 		}
 	}
 
+	// A rollback is reported whenever it happens; a new build waits for a
+	// maintenance window.
+	if !protocol.WindowsFrom(items).Open(s.now()) {
+		s.log().Debug("outside this device's maintenance windows; agent updates wait")
+		return nil
+	}
 	for _, item := range items {
 		if item.Kind != protocol.ItemKindAgent {
 			continue
