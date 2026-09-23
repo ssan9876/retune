@@ -15,7 +15,8 @@ Go agent runs on each machine.
   inventory, with results (exit code and output) reported back.
 - **Lifecycle.** Certificates renew before expiry; retiring a device stops its
   check-ins; unenrolling makes the agent delete its own identity and state.
-- **Console and admin API.** Sign-in with password and optional authenticator
+- **Console and admin API.** Sign-in with single sign-on (OpenID Connect), or a
+  password and optional authenticator
   codes, roles (admin and read-only), enrollment tokens, and an audit log.
 - **Groups and assignments.** Static groups, or dynamic groups defined by a
   rule over inventory; items assigned to groups with include and exclude.
@@ -95,6 +96,11 @@ session_ttl_hours: 12
 | `command_retention_days` | `90` | how long finished commands and their output are kept; `0` keeps them forever |
 | `script_run_retention_days` | `90` | how long script run history is kept; `0` keeps it forever |
 | `app_install_retention_days` | `90` | how long app install history is kept; `0` keeps it forever |
+| `oidc_issuer`, `oidc_client_id`, `oidc_client_secret` | — | turn on single sign-on; all three or none |
+| `oidc_admin_groups`, `oidc_readonly_groups` | — | comma-separated group names that grant each role |
+| `oidc_groups_claim` | `groups` | the ID token claim that lists a person's groups |
+| `oidc_display_name` | `Sign in with SSO` | the sign-in button's text |
+| `oidc_disable_local_login` | `false` | refuse password sign-in, leaving SSO the only way in |
 
 Every setting is also an environment variable of the same name in capitals,
 and the environment wins over the file.
@@ -167,6 +173,51 @@ server {
 
 Agents reaching a proxy with a publicly trusted certificate need no pin;
 `--pin` and `SERVER_CERT_FINGERPRINT` are for self-signed servers.
+
+## Single sign-on
+
+The console can sign people in through any OpenID Connect provider — Entra
+ID, Okta, Google, Keycloak and the like. Register Retune with the provider as
+a web application using the authorization code flow, with this redirect URL
+(the server also logs it at startup):
+
+```
+https://<PUBLIC_URL>/api/admin/v1/oidc/callback
+```
+
+```yaml
+oidc_issuer: https://login.microsoftonline.com/<tenant-id>/v2.0
+oidc_client_id: <application id>
+oidc_client_secret: <client secret>
+oidc_admin_groups: <group id or name>          # full control
+oidc_readonly_groups: <group id or name>       # may look, not change
+```
+
+The provider must put the person's groups in the ID token, in the claim
+`oidc_groups_claim` names — in Entra ID that is "Add groups claim" on the
+app registration, which sends group object IDs; in Keycloak, a group
+membership mapper. Someone in an admin group is an admin, else someone in a
+read-only group is read-only, else they are refused and nothing is created.
+
+**Accounts are created on first sign-in**, and the role is worked out again
+every time someone signs in: move a person between groups at the provider
+and it takes effect the next time they sign in; take them out of every group
+and they are refused, and the sessions they already had end there. Somebody
+removed from the provider altogether simply never signs in again — their open
+session lasts until it expires (`session_ttl_hours`) unless an admin disables
+the account here, which always wins.
+
+An SSO account is identified by the provider's own ID for the person, never
+by email address, because not every provider checks that an address belongs
+to whoever claims it. So an SSO sign-in whose email matches an existing
+password account is **refused, not merged**: to move a person over, remove or
+re-email their password account first. SSO accounts have no password or
+authenticator here; the provider owns both, MFA included.
+
+Password accounts keep working beside SSO, which is the way in if the
+provider is ever down. `oidc_disable_local_login: true` turns them off;
+`retune-server bootstrap-admin` still works from the command line, and unsetting
+the option is the way back in.
 
 ## Health checks
 

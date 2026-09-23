@@ -10,14 +10,15 @@ Specs and plans written unattended on the night of 2026-09-14 ("please work on a
 |---|---|---|---|---|
 | [remote-actions](remote-actions-spec.md) | M13 | lock, collect logs, local admin password rotation, wipe | Retune-managed passwords rather than Windows LAPS; wipe through `MDM_RemoteWipe` | a disposable Windows VM: none of these may run on a real machine |
 | [network-profiles](network-profiles-spec.md) | M16 | certificate, Wi-Fi and VPN profile settings | public certificates only (no client certificates, so no EAP-TLS); the first secrets stored inside profile settings | a VM to apply them on |
-| [sso-scoped-admins](sso-scoped-admins-spec.md) | M17 | OIDC sign-in and admins scoped to groups | two new dependencies (`go-oidc`, `x/oauth2`); just-in-time provisioning from the groups claim; local login kept as a break-glass | an identity provider to test against |
+| [sso-scoped-admins](sso-scoped-admins-spec.md) §3 | M17 | admins scoped to device groups (the SSO half shipped as M16) | a scoped admin gets 404 for devices outside their groups, can assign only to their groups, and has read-only item definitions; a route-enumeration test makes every new route declare its scope | nothing |
 | [signed-commands](signed-commands-spec.md) | M18 | scripts and wipes signed by an operations key the agent trusts | enforcement fixed at agent build time; profiles, apps and other commands left unsigned | nothing |
 | [app-packages](app-packages-spec.md) | M19 | uploaded MSI/EXE packages, detection rules, supersedence | admin supplies the MSI product code; Retune never reboots on its own; packages not release-signed | a VM to install on |
 | [update-rings](update-rings-spec.md) | M20 | Windows Update deadlines, pause, target release, patch compliance | rings are profiles with a `windows_update` setting, not a separate page | a VM: update policy must not change on a real machine |
 
-Three drafts from that night are not here:
+Four drafts from that night are not here, or not wholly:
 - **Alerts, metrics and retention (overnight M14).** Alerts shipped differently, as M13. Metrics and retention became [`specs/2026-09-22-m14-metrics-retention-design.md`](../specs/2026-09-22-m14-metrics-retention-design.md).
 - **Cleanup plan.** Done, in PR #1.
 - **Defender and firewall (overnight M15).** Promoted and built as M15: [`specs/2026-09-22-m15-defender-firewall-design.md`](../specs/2026-09-22-m15-defender-firewall-design.md). The draft files stay here for the record.
+- **Single sign-on (overnight M17, §2 and §4).** Built as M16: [`specs/2026-09-22-m16-sso-design.md`](../specs/2026-09-22-m16-sso-design.md). The same draft's group-scoped administrators (§3) are still a candidate, above.
 
 [`deferred.md`](deferred.md) lists what cannot be built without something from the user: hardware, a purchase, or a product decision.
