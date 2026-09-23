@@ -5,7 +5,9 @@ package secrets
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -28,6 +30,8 @@ var ErrNoKey = errors.New("no server secret key")
 // Key is the symmetric key protecting data at rest.
 type Key struct {
 	aead cipher.AEAD
+	// mac is a separate key derived from the same secret, for MACs.
+	mac []byte
 }
 
 // LoadOrCreateFile reads the key from dir, creating one on first use.
@@ -112,7 +116,8 @@ func newKey(raw []byte) (*Key, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Key{aead: aead}, nil
+	mac := sha256.Sum256(append([]byte("retune-mac-v1\x00"), raw...))
+	return &Key{aead: aead, mac: mac[:]}, nil
 }
 
 // Seal encrypts plaintext, returning the ciphertext and the nonce it used.
@@ -133,4 +138,15 @@ func (k *Key) Open(ciphertext, nonce, context []byte) ([]byte, error) {
 		return nil, errors.New("the stored value could not be decrypted with this server's key")
 	}
 	return plaintext, nil
+}
+
+// MAC is a keyed hash of data in context: equal for equal inputs, and
+// useless to anyone without the key - so it can say whether a secret changed
+// without letting a stolen database be used to guess it.
+func (k *Key) MAC(data, context []byte) []byte {
+	h := hmac.New(sha256.New, k.mac)
+	h.Write(context)
+	h.Write([]byte{0})
+	h.Write(data)
+	return h.Sum(nil)
 }

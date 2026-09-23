@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import Profiles, { pauseEnds, pemProblem, today } from "./Profiles";
+import Profiles, { pauseEnds, pemProblem, today, wifiProblem } from "./Profiles";
 
 const fetchMock = vi.fn();
 
@@ -260,3 +260,21 @@ describe("pemProblem", () => {
     expect(pemProblem("-----BEGIN CERTIFICATE REQUEST-----\nX")).toMatch(/Only a CERTIFICATE/);
   });
 });
+
+describe("wifiProblem", () => {
+  const wifi = (extra: Record<string, unknown>) => ({ kind: "wifi", ssid: "Contoso", security: "wpa2_personal", ...extra });
+  it("accepts a network with a passphrase, or one already set", () => {
+    expect(wifiProblem(wifi({ passphrase: "correct horse" }))).toBeUndefined();
+    expect(wifiProblem(wifi({ passphrase: "", secret_set: true }))).toBeUndefined();
+    expect(wifiProblem(wifi({ security: "open" }))).toBeUndefined();
+  });
+  it("catches what the server would refuse", () => {
+    expect(wifiProblem(wifi({ passphrase: "" }))).toMatch(/needs its passphrase/);
+    expect(wifiProblem(wifi({ passphrase: "short" }))).toMatch(/8 to 63/);
+    expect(wifiProblem(wifi({ passphrase: "café au lait" }))).toMatch(/ASCII/);
+    expect(wifiProblem(wifi({ ssid: "" }))).toMatch(/1 to 32/);
+    expect(wifiProblem(wifi({ ssid: "x".repeat(33) }))).toMatch(/1 to 32/);
+    expect(wifiProblem(wifi({ ssid: 'Say "hi"', passphrase: "correct horse" }))).toMatch(/quotes/);
+  });
+});
+

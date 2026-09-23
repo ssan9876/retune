@@ -22,7 +22,29 @@ const KINDS = [
   { value: "bitlocker", label: "BitLocker" },
   { value: "defender", label: "Microsoft Defender" },
   { value: "certificate", label: "Trusted certificate" },
+  { value: "wifi", label: "Wi-Fi network" },
+  { value: "vpn", label: "VPN connection" },
 ];
+
+const WIFI_SECURITY = [
+  { value: "wpa2_personal", label: "WPA2-Personal" },
+  { value: "wpa3_personal", label: "WPA3-Personal" },
+  { value: "open", label: "Open (no password)" },
+];
+
+/** wifiProblem matches the server's checks on a Wi-Fi setting. */
+export function wifiProblem(s: Setting): string | undefined {
+  const ssid = s.ssid ?? "";
+  const bytes = new TextEncoder().encode(ssid).length;
+  if (bytes === 0 || bytes > 32) return "The network name is 1 to 32 bytes.";
+  if (/["\u0000-\u001f]/.test(ssid)) return "The network name can't contain quotes or control characters.";
+  if (s.security === "open") return undefined;
+  const pass = s.passphrase ?? "";
+  if (pass === "") return s.secret_set ? undefined : "A password-protected network needs its passphrase.";
+  if (pass.length < 8 || pass.length > 63 || !/^[\x20-\x7e]+$/.test(pass))
+    return "A passphrase is 8 to 63 printable ASCII characters.";
+  return undefined;
+}
 
 const CERTIFICATE_STORES = [
   { value: "root", label: "Trusted root authorities" },
@@ -101,6 +123,10 @@ function blankSetting(kind: string): Setting {
       return { kind, realtime_monitoring: true };
     case "certificate":
       return { kind, store: "root", certificate_pem: "" };
+    case "wifi":
+      return { kind, ssid: "", security: "wpa2_personal", passphrase: "" };
+    case "vpn":
+      return { kind, name: "", server: "", tunnel: "ikev2", authentication: "eap" };
     default:
       return { kind: "registry", hive: "HKLM", key: "", name: "", type: "REG_SZ", data: "" };
   }
@@ -137,6 +163,10 @@ function describe(s: Setting): string {
       return s.require_encryption ? "Require BitLocker on the system drive" : "BitLocker";
     case "defender":
       return "Microsoft Defender preferences";
+    case "wifi":
+      return `Join the ${s.ssid} Wi-Fi network`;
+    case "vpn":
+      return `Add the ${s.name} VPN (${s.server})`;
     case "certificate":
       return `Trust a certificate (${CERTIFICATE_STORES.find((c) => c.value === s.store)?.label.toLowerCase() ?? s.store})`;
     default:
@@ -514,6 +544,98 @@ function SettingFields({
             ) : null}
           </div>
         </Field>
+      </>
+    );
+  }
+
+  if (setting.kind === "wifi") {
+    const problem = wifiProblem(setting);
+    return (
+      <>
+        <Field label="Network name (SSID)" error={setting.ssid ? problem : undefined}>
+          <input value={setting.ssid ?? ""} onChange={(e) => set({ ssid: e.target.value })} />
+        </Field>
+        <Field label="Security">
+          <select
+            value={setting.security ?? "wpa2_personal"}
+            onChange={(e) => set({ security: e.target.value, passphrase: "" })}
+          >
+            {WIFI_SECURITY.map((w) => (
+              <option key={w.value} value={w.value}>
+                {w.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+        {setting.security !== "open" ? (
+          <Field
+            label="Passphrase"
+            hint={
+              setting.secret_set
+                ? "Set, and never shown again. Type a new one to change it; leave it empty to keep it."
+                : "Stored encrypted and only ever sent to the devices this profile is assigned to."
+            }
+          >
+            <input
+              type="password"
+              autoComplete="new-password"
+              aria-label="Passphrase"
+              placeholder={setting.secret_set ? "••••••••" : ""}
+              value={setting.passphrase ?? ""}
+              onChange={(e) => set({ passphrase: e.target.value })}
+            />
+          </Field>
+        ) : null}
+        <label className="settings__check">
+          <input
+            type="checkbox"
+            checked={setting.auto_connect !== false}
+            onChange={(e) => set({ auto_connect: e.target.checked ? undefined : false })}
+          />
+          Connect automatically
+        </label>
+        <label className="settings__check">
+          <input type="checkbox" checked={setting.hidden ?? false} onChange={(e) => set({ hidden: e.target.checked })} />
+          The network is hidden (doesn't broadcast its name)
+        </label>
+        <p className="hint">Machines without a wireless adapter report this setting as not applicable.</p>
+      </>
+    );
+  }
+
+  if (setting.kind === "vpn") {
+    return (
+      <>
+        <Field label="Connection name">
+          <input value={setting.name ?? ""} onChange={(e) => set({ name: e.target.value })} />
+        </Field>
+        <Field label="Server" hint="Host name or IP address.">
+          <input className="mono" value={setting.server ?? ""} onChange={(e) => set({ server: e.target.value })} />
+        </Field>
+        <Field label="Tunnel">
+          <select value={setting.tunnel ?? "ikev2"} onChange={(e) => set({ tunnel: e.target.value })}>
+            <option value="ikev2">IKEv2</option>
+            <option value="sstp">SSTP</option>
+          </select>
+        </Field>
+        <Field label="Sign-in">
+          <select value={setting.authentication ?? "eap"} onChange={(e) => set({ authentication: e.target.value })}>
+            <option value="eap">EAP (the user's credentials)</option>
+            <option value="mschapv2">MS-CHAP v2</option>
+            {setting.tunnel !== "sstp" ? <option value="machine_certificate">Machine certificate</option> : null}
+          </select>
+        </Field>
+        <Field label="DNS suffix" hint="Optional, such as corp.contoso.com.">
+          <input className="mono" value={setting.dns_suffix ?? ""} onChange={(e) => set({ dns_suffix: e.target.value })} />
+        </Field>
+        <label className="settings__check">
+          <input
+            type="checkbox"
+            checked={setting.split_tunneling ?? false}
+            onChange={(e) => set({ split_tunneling: e.target.checked })}
+          />
+          Split tunnelling (only company traffic goes through the VPN)
+        </label>
       </>
     );
   }

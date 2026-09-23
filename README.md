@@ -768,6 +768,8 @@ scripts and assigned to groups the same way.
 | `bitlocker` | requiring the system drive to be encrypted, and escrowing its recovery key |
 | `defender` | Microsoft Defender's real-time monitoring, cloud protection, sample submission, PUA protection and cloud block level |
 | `certificate` | a certificate in the machine's trusted root, intermediate or trusted publisher store |
+| `wifi` | a Wi-Fi network for every user: open, WPA2-Personal or WPA3-Personal |
+| `vpn` | a VPN connection for every user: IKEv2 or SSTP |
 
 Each setting is applied as: test, then set only if needed, then **test again**.
 That second test is what separates fixing something from merely running
@@ -804,6 +806,27 @@ applied. PEM with a private key in it is refused outright: a trust store
 takes certificates, and a key pasted into a profile would be sent to every
 machine it is assigned to. Client certificates and certificates issued
 through SCEP aren't supported.
+
+A `wifi` setting adds a network profile for every user of the machine, from
+its name (SSID), security (`open`, `wpa2_personal`, `wpa3_personal`),
+whether to connect automatically and whether the network is hidden. **The
+passphrase is write-only**: it is sealed with the server key as soon as it
+arrives, the console and API only ever say it is set, and it is opened only
+when an assigned device fetches its profile over its mutual-TLS connection.
+Leave it empty when editing to keep it; changing it makes a new version. On
+the device it reaches `netsh` in a file that is deleted straight after, never
+on a command line. A machine without a wireless adapter reports the setting
+`not_applicable`, which counts as done. Enterprise (802.1X) networks aren't
+supported yet.
+
+A `vpn` setting adds a connection for every user: a name, a server, IKEv2 or
+SSTP, and EAP, MS-CHAP v2 or (IKEv2 only) a machine certificate to sign in,
+with optional split tunnelling and a DNS suffix. L2TP with a pre-shared key
+isn't offered: it's the weakest of Windows' VPN types, and the key would have
+to cross a command line.
+
+Removing either setting takes the network or connection away again, or puts
+back what was there before the profile first applied.
 
 A `defender` setting enforces only the preferences it names and leaves every
 other one as it is. Two profiles that both configure Defender are a conflict

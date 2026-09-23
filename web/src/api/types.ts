@@ -301,6 +301,17 @@ export interface Setting {
   cloud_block_level?: string;
   store?: string;
   certificate_pem?: string;
+  ssid?: string;
+  security?: string;
+  passphrase?: string;
+  secret_set?: boolean;
+  auto_connect?: boolean;
+  hidden?: boolean;
+  server?: string;
+  tunnel?: string;
+  authentication?: string;
+  split_tunneling?: boolean;
+  dns_suffix?: string;
 }
 
 export interface BitLockerKey {

@@ -20,13 +20,13 @@ The working list for making Retune usable by an enterprise, started on 2026-09-2
 | Signed scripts and wipes: an offline operations key the agent requires | #17 |
 | Trusted certificate profiles | #18 |
 | SSO groups decide which devices an admin manages | #19 |
+| File settings refuse to go through a junction or symlink | #20 |
 
 ## To do, in order
 
 | # | item | why an enterprise needs it | notes |
 |---|---|---|---|
-| 7b | **Wi-Fi and VPN profiles**, with passphrases and pre-shared keys sealed at rest | network access on managed devices | draft: `drafts/network-profiles-spec.md` §2.2, §2.3, §3; applying needs a VM to verify |
-| 9 | **File settings refuse junctions** | the last low finding from the security review | in progress |
+| 7b | **Wi-Fi and VPN profiles**, with passphrases and pre-shared keys sealed at rest | network access on managed devices | in progress; applying needs a VM to verify |
 | 10 | **Scale**: a fleet simulator for load testing, plus a documented sizing guide | knowing how many devices one server handles | needs a target fleet size from the user to be meaningful |
 
 ## Can't be done from here

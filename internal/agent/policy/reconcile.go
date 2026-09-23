@@ -3,6 +3,7 @@ package policy
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -142,6 +143,9 @@ func (r *Reconciler) apply(ctx context.Context, action Action) (status, detail s
 	}
 
 	ok, err := h.Test(ctx, action.Setting)
+	if errors.Is(err, ErrNotApplicable) {
+		return protocol.SettingNotApplicable, err.Error()
+	}
 	if err != nil {
 		return protocol.SettingError, err.Error()
 	}
