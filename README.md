@@ -447,6 +447,17 @@ The destinations are server settings, not console ones, so an admin can't
 quietly redirect the record of what admins do. The `audit.stream` sweeper job
 on `/metrics` shows whether sending is working, and failures are logged.
 
+## Sizing
+
+What decides the size of the server is check-ins per second: devices divided
+by the check-in interval (300 seconds by default). Measured on one 16-thread
+desktop running the server, PostgreSQL and the load generator together, a
+server answered check-ins in under 35 ms at the 99th percentile up to about
+150 a second — a 45,000-device fleet at the default interval — and slowed,
+without failing, past about 200. [docs/sizing.md](docs/sizing.md) has the
+numbers, recommended machines by fleet size, and how to measure your own with
+`retune-loadsim`.
+
 ## Backups
 
 Two things have to be backed up, and they have to be backed up together:
