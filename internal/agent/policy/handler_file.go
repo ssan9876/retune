@@ -32,6 +32,9 @@ type fileState struct {
 }
 
 func (FileHandler) Get(_ context.Context, s protocol.Setting) (State, error) {
+	if err := checkNoLinks(filePath(s)); err != nil {
+		return State{}, err
+	}
 	info, err := os.Stat(filePath(s))
 	if errors.Is(err, fs.ErrNotExist) {
 		return State{}, nil
@@ -57,6 +60,9 @@ func (FileHandler) Get(_ context.Context, s protocol.Setting) (State, error) {
 
 func (FileHandler) Test(_ context.Context, s protocol.Setting) (bool, error) {
 	path := filePath(s)
+	if err := checkNoLinks(path); err != nil {
+		return false, err
+	}
 	if s.Ensure == protocol.EnsureAbsent {
 		_, err := os.Stat(path)
 		if errors.Is(err, fs.ErrNotExist) {
@@ -83,6 +89,9 @@ func (FileHandler) Test(_ context.Context, s protocol.Setting) (bool, error) {
 
 func (FileHandler) Set(_ context.Context, s protocol.Setting) error {
 	path := filePath(s)
+	if err := checkNoLinks(path); err != nil {
+		return err
+	}
 	if s.Ensure == protocol.EnsureAbsent {
 		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
@@ -96,12 +105,20 @@ func (FileHandler) Set(_ context.Context, s protocol.Setting) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
+	// Again, now the folders exist: a link made while they were being
+	// created would otherwise be written through.
+	if err := checkNoLinks(path); err != nil {
+		return err
+	}
 	return os.WriteFile(path, content, 0o644)
 }
 
 // Revert restores the file as it was, or removes one this agent created.
 func (FileHandler) Revert(_ context.Context, s protocol.Setting, prior State) error {
 	path := filePath(s)
+	if err := checkNoLinks(path); err != nil {
+		return err
+	}
 	if !prior.Exists {
 		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err

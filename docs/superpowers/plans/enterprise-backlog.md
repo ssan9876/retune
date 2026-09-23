@@ -26,7 +26,7 @@ The working list for making Retune usable by an enterprise, started on 2026-09-2
 |---|---|---|---|
 | 7b | **Wi-Fi and VPN profiles**, with passphrases and pre-shared keys sealed at rest | network access on managed devices | draft: `drafts/network-profiles-spec.md` §2.2, §2.3, §3; applying needs a VM to verify |
 | 8 | **SSO group → scope mapping**: an identity-provider group can grant a device-group scope | scoped admins managed where the users are | in progress |
-| 9 | **File settings refuse junctions** | the last low finding from the security review | agent |
+| 9 | **File settings refuse junctions** | the last low finding from the security review | in progress |
 | 10 | **Scale**: a fleet simulator for load testing, plus a documented sizing guide | knowing how many devices one server handles | needs a target fleet size from the user to be meaningful |
 
 ## Can't be done from here
