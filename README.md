@@ -880,6 +880,38 @@ rules would quietly stop the alerting. Pausing a rule stops its messages but
 keeps its state up to date, so resuming it reports what is wrong now rather
 than replaying a week.
 
+## Remote actions
+
+A device's page has buttons for one-off commands. Each goes through the
+same queue as a script: it is delivered at the next check-in, and its result
+shows on the **Commands** page.
+
+| Action | What the device does |
+|---|---|
+| Run script | runs PowerShell as SYSTEM |
+| Refresh inventory | sends a fresh inventory now |
+| Restart | restarts, after an optional delay and message |
+| Lock | locks the signed-in user's session; with nobody signed in, it succeeds with nothing to lock |
+| Collect logs | zips the agent's logs, its last update record, and the System and Application event logs from the last 1–168 hours (up to 50 MiB; anything that won't fit is left out and listed) and uploads it |
+| Wipe | resets the device to factory settings through Windows' own MDM remote wipe; a *protected* wipe also removes the recovery partition's data and may leave a device that needs reinstalling |
+
+**Collected logs** are kept on the server in `DATA_DIR/command-artifacts`
+for 30 days, and downloaded from the command's result on the Commands page.
+Event logs can say a good deal about who used a machine, so downloading
+needs the admin role and is audited (`command.artifact_downloaded`).
+
+**Wiping** can't be undone, so it asks more of whoever does it:
+
+- one device at a time, by an administrator signed in to the console or the
+  server CLI, never an API token;
+- the device's hostname typed to confirm, and a reason, both recorded in the
+  audit log as `command.wipe_queued`;
+- the order lapses after 24 hours, so a lost laptop that comes back online a
+  month later doesn't wipe itself on an order nobody remembers.
+
+The device reports the wipe as started once Windows has accepted it, then
+resets. It won't report again, and will need enrolling anew.
+
 ## Overview and export
 
 The console's landing page (`/`) is a fleet-wide overview: device counts by

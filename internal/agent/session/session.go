@@ -114,6 +114,9 @@ func New(cfg Config) (*Session, error) {
 	if cfg.Executor.RefreshInventory == nil {
 		cfg.Executor.RefreshInventory = s.UploadInventory
 	}
+	if cfg.Executor.Uploader == nil {
+		cfg.Executor.Uploader = artifactClient{s}
+	}
 	if cfg.Scripts != nil && cfg.Scripts.Client == nil {
 		cfg.Scripts.Client = scriptClient{s}
 	}
@@ -473,6 +476,14 @@ func (scriptSyncer) Name() string     { return "assigned scripts" }
 // appClient routes the app syncer's calls through the session's current
 // client, so a certificate renewal is picked up without the syncer knowing
 // anything about certificates.
+// artifactClient uploads command files through whichever client is current,
+// so a certificate renewed mid-command is used.
+type artifactClient struct{ s *Session }
+
+func (c artifactClient) UploadCommandArtifact(ctx context.Context, id string, body io.Reader, size int64) error {
+	return c.s.currentClient().UploadCommandArtifact(ctx, id, body, size)
+}
+
 type appClient struct{ s *Session }
 
 func (c appClient) FetchApp(ctx context.Context, id string, version int) (protocol.AppVersionResponse, error) {
