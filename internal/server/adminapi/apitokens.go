@@ -37,7 +37,7 @@ func (h *Handler) listAPITokens(w http.ResponseWriter, r *http.Request) {
 	for _, t := range tokens {
 		items = append(items, newAPITokenJSON(t))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": len(items)})
 }
 
 // createAPIToken returns the token itself once, in this response, and never

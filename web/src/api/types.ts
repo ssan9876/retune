@@ -12,6 +12,19 @@ export interface Admin {
   auth_source: "local" | "oidc";
 }
 
+/** ApiToken is a credential for the admin API; the token itself is only ever
+ * returned once, when it is created. */
+export interface ApiToken {
+  id: string;
+  name: string;
+  role: Role;
+  created_by: string;
+  created_at: string;
+  expires_at: string;
+  last_used_at?: string;
+  revoked_at?: string;
+}
+
 /** Setup is what the sign-in page may offer. */
 export interface Setup {
   needs_setup: boolean;

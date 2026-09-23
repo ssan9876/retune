@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { Shell } from "./components/Shell";
 import { Spinner } from "./components/ui";
 import Admins from "./pages/Admins";
+import ApiTokens from "./pages/ApiTokens";
 import AgentVersions from "./pages/AgentVersions";
 import Apps from "./pages/Apps";
 import Alerts from "./pages/Alerts";
@@ -40,6 +41,7 @@ export default function App() {
         <Route path="/alerts" element={<Alerts />} />
         <Route path="/audit" element={<Audit />} />
         <Route path="/admins" element={<Admins />} />
+        <Route path="/api-tokens" element={<ApiTokens />} />
         <Route path="*" element={<Navigate to="/devices" replace />} />
       </Routes>
     </Shell>
