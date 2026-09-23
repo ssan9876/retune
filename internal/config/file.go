@@ -25,6 +25,7 @@ type fileConfig struct {
 	DataDir                string `yaml:"data_dir"`
 	CheckinIntervalSeconds int    `yaml:"checkin_interval_seconds"`
 	SessionTTLHours        int    `yaml:"session_ttl_hours"`
+	SessionMaxHours        int    `yaml:"session_max_hours"`
 	ClientCertHeader       string `yaml:"client_cert_header"`
 	TrustedProxies         string `yaml:"trusted_proxies"`
 	CAKeySource            string `yaml:"ca_key_source"`
@@ -133,6 +134,9 @@ func loadConfigFile(getenv func(string) string) (map[string]string, error) {
 	}
 	if f.SessionTTLHours != 0 {
 		set("SESSION_TTL_HOURS", strconv.Itoa(f.SessionTTLHours))
+	}
+	if f.SessionMaxHours != 0 {
+		set("SESSION_MAX_HOURS", strconv.Itoa(f.SessionMaxHours))
 	}
 	set("AGENT_RELEASE_KEYS", f.AgentReleaseKeys)
 	set("SMTP_HOST", f.SMTPHost)

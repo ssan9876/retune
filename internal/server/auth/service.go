@@ -73,6 +73,11 @@ type Service struct {
 	Store      *store.Store
 	Now        func() time.Time
 	SessionTTL time.Duration
+	// MaxSessionLifetime caps a session however busy it is, counted from
+	// sign-in. Without it a session kept in use never ends, and neither does
+	// the access of someone the identity provider has since removed. Zero
+	// means no cap.
+	MaxSessionLifetime time.Duration
 	Limiter    *Limiter
 	Issuer     string
 	// LocalLoginDisabled refuses every password sign-in.
@@ -193,7 +198,7 @@ func (s *Service) CreateSession(ctx context.Context, adminID uuid.UUID, userAgen
 		return SessionInfo{}, err
 	}
 	now := s.Now()
-	expires := now.Add(s.SessionTTL)
+	expires := s.capped(now, now.Add(s.SessionTTL))
 	hash := hashToken(token)
 	if err := s.Store.Q().CreateSession(ctx, store.Session{
 		TokenHash: hash, AdminID: adminID, CSRFToken: csrf,
@@ -230,13 +235,24 @@ func (s *Service) ValidateSession(ctx context.Context, token string) (store.Admi
 		return store.Admin{}, store.Session{}, ErrAccountDisabled
 	}
 	if now.Sub(session.LastSeenAt) >= touchInterval {
-		expires := now.Add(s.SessionTTL)
+		expires := s.capped(session.CreatedAt, now.Add(s.SessionTTL))
 		if err := q.TouchSession(ctx, hash, now, expires); err != nil {
 			return store.Admin{}, store.Session{}, err
 		}
 		session.LastSeenAt, session.ExpiresAt = now, expires
 	}
 	return admin, session, nil
+}
+
+// capped keeps an expiry within MaxSessionLifetime of when the session began.
+func (s *Service) capped(createdAt, expires time.Time) time.Time {
+	if s.MaxSessionLifetime <= 0 {
+		return expires
+	}
+	if limit := createdAt.Add(s.MaxSessionLifetime); expires.After(limit) {
+		return limit
+	}
+	return expires
 }
 
 // DeleteSession signs one browser out. An unknown token is not an error.
