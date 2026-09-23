@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -37,6 +38,33 @@ type AppVersion struct {
 	Hash          string
 	CreatedAt     time.Time
 	CreatedBy     string
+
+	// Source is "winget" or "package"; the rest are for packages.
+	Source            string
+	InstallerType     string
+	FileName          string
+	FileSHA256        string
+	FileSize          int64
+	UninstallCommand  string
+	SuccessExitCodes  []int32
+	Detection         json.RawMessage
+	UninstallPrevious bool
+}
+
+const appVersionCols = `app_id, version, package_id, pinned_version, scope, install_args, hash, created_at, created_by,
+	source, installer_type, file_name, file_sha256, file_size, uninstall_command, success_exit_codes, detection,
+	uninstall_previous`
+
+func scanAppVersion(row pgx.Row) (AppVersion, error) {
+	var v AppVersion
+	var detection []byte
+	err := row.Scan(&v.AppID, &v.Version, &v.PackageID, &v.PinnedVersion, &v.Scope, &v.InstallArgs, &v.Hash,
+		&v.CreatedAt, &v.CreatedBy, &v.Source, &v.InstallerType, &v.FileName, &v.FileSHA256, &v.FileSize,
+		&v.UninstallCommand, &v.SuccessExitCodes, &detection, &v.UninstallPrevious)
+	if len(detection) > 0 {
+		v.Detection = json.RawMessage(detection)
+	}
+	return v, err
 }
 
 // AppInstall is one install or uninstall attempt on one device.
@@ -131,26 +159,38 @@ func (q *Queries) DeleteApp(ctx context.Context, tenantID, id uuid.UUID) error {
 }
 
 func (q *Queries) CreateAppVersion(ctx context.Context, v AppVersion) error {
+	if v.Source == "" {
+		v.Source = "winget"
+	}
+	if v.SuccessExitCodes == nil {
+		v.SuccessExitCodes = []int32{}
+	}
+	var detection any
+	if len(v.Detection) > 0 {
+		detection = []byte(v.Detection)
+	}
 	_, err := q.db.Exec(ctx, `
-		INSERT INTO app_versions (app_id, version, tenant_id, package_id, pinned_version, scope, install_args, hash, created_at, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-		v.AppID, v.Version, DefaultTenantID, v.PackageID, v.PinnedVersion, v.Scope, v.InstallArgs, v.Hash, v.CreatedAt, v.CreatedBy)
+		INSERT INTO app_versions (app_id, version, tenant_id, package_id, pinned_version, scope, install_args, hash,
+			created_at, created_by, source, installer_type, file_name, file_sha256, file_size, uninstall_command,
+			success_exit_codes, detection, uninstall_previous)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+		v.AppID, v.Version, DefaultTenantID, v.PackageID, v.PinnedVersion, v.Scope, v.InstallArgs, v.Hash,
+		v.CreatedAt, v.CreatedBy, v.Source, v.InstallerType, v.FileName, v.FileSHA256, v.FileSize,
+		v.UninstallCommand, v.SuccessExitCodes, detection, v.UninstallPrevious)
 	return err
 }
 
 func (q *Queries) GetAppVersion(ctx context.Context, tenantID, appID uuid.UUID, version int) (AppVersion, error) {
-	var v AppVersion
-	err := q.db.QueryRow(ctx, `
-		SELECT app_id, version, package_id, pinned_version, scope, install_args, hash, created_at, created_by
-		FROM app_versions WHERE tenant_id = $1 AND app_id = $2 AND version = $3`, tenantID, appID, version).
-		Scan(&v.AppID, &v.Version, &v.PackageID, &v.PinnedVersion, &v.Scope, &v.InstallArgs, &v.Hash, &v.CreatedAt, &v.CreatedBy)
+	v, err := scanAppVersion(q.db.QueryRow(ctx, `
+		SELECT `+appVersionCols+`
+		FROM app_versions WHERE tenant_id = $1 AND app_id = $2 AND version = $3`, tenantID, appID, version))
 	return v, notFound(err)
 }
 
 // ListAppVersions returns an app's versions, newest first.
 func (q *Queries) ListAppVersions(ctx context.Context, appID uuid.UUID) ([]AppVersion, error) {
 	rows, err := q.db.Query(ctx, `
-		SELECT app_id, version, package_id, pinned_version, scope, install_args, hash, created_at, created_by
+		SELECT `+appVersionCols+`
 		FROM app_versions WHERE tenant_id = $1 AND app_id = $2 ORDER BY version DESC`, DefaultTenantID, appID)
 	if err != nil {
 		return nil, err
@@ -158,14 +198,22 @@ func (q *Queries) ListAppVersions(ctx context.Context, appID uuid.UUID) ([]AppVe
 	defer rows.Close()
 	var out []AppVersion
 	for rows.Next() {
-		var v AppVersion
-		if err := rows.Scan(&v.AppID, &v.Version, &v.PackageID, &v.PinnedVersion,
-			&v.Scope, &v.InstallArgs, &v.Hash, &v.CreatedAt, &v.CreatedBy); err != nil {
+		v, err := scanAppVersion(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, v)
 	}
 	return out, rows.Err()
+}
+
+// AppPackageInUse reports whether any app version, in any tenant, uses the
+// uploaded file with this hash.
+func (q *Queries) AppPackageInUse(ctx context.Context, sha256 string) (bool, error) {
+	var used bool
+	err := q.db.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM app_versions WHERE file_sha256 = $1)`, sha256).Scan(&used)
+	return used, err
 }
 
 func (q *Queries) InsertAppInstall(ctx context.Context, in AppInstall) error {

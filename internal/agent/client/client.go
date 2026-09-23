@@ -287,10 +287,28 @@ func (c *Client) DownloadTimeout() time.Duration { return downloadTimeout }
 const maxAgentBinary = 256 << 20
 
 func (c *Client) DownloadAgentBinary(ctx context.Context, id, wantSHA256 string, dst io.Writer) error {
-	ctx, cancel := context.WithTimeout(ctx, downloadTimeout)
+	path := "/api/agent/v1/agent-versions/" + url.PathEscape(id) + "/binary"
+	return c.downloadVerified(ctx, path, wantSHA256, maxAgentBinary, downloadTimeout, dst)
+}
+
+// packageDownloadTimeout allows for a 2 GiB installer over a slow link.
+const packageDownloadTimeout = 2 * time.Hour
+
+// DownloadAppPackage streams an assigned app version's installer to dst,
+// under the same rules as DownloadAgentBinary: on an error, including a hash
+// mismatch, whatever dst holds must be thrown away.
+func (c *Client) DownloadAppPackage(ctx context.Context, id string, version int, wantSHA256 string, dst io.Writer) error {
+	path := "/api/agent/v1/apps/" + url.PathEscape(id) + "/versions/" + strconv.Itoa(version) + "/package"
+	return c.downloadVerified(ctx, path, wantSHA256, protocol.MaxPackageBytes, packageDownloadTimeout, dst)
+}
+
+// downloadVerified streams path to dst, refusing more than max bytes or
+// anything that doesn't hash to wantSHA256.
+func (c *Client) downloadVerified(ctx context.Context, path, wantSHA256 string, max int64,
+	timeout time.Duration, dst io.Writer) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	path := "/api/agent/v1/agent-versions/" + url.PathEscape(id) + "/binary"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+path, nil)
 	if err != nil {
 		return err
@@ -310,12 +328,11 @@ func (c *Client) DownloadAgentBinary(ctx context.Context, id, wantSHA256 string,
 
 	// Hashed while it streams, so verification never requires buffering the
 	// whole binary or re-reading it from dst.
-	// Capped, so a server that sends forever cannot fill the disk: the server
-	// refuses uploads over 128 MiB, and this allows twice that.
+	// Capped, so a server that sends forever cannot fill the disk.
 	sum := sha256.New()
-	n, err := io.Copy(io.MultiWriter(dst, sum), io.LimitReader(res.Body, maxAgentBinary+1))
-	if err == nil && n > maxAgentBinary {
-		return fmt.Errorf("GET %s: the build is larger than %d bytes", path, maxAgentBinary)
+	n, err := io.Copy(io.MultiWriter(dst, sum), io.LimitReader(res.Body, max+1))
+	if err == nil && n > max {
+		return fmt.Errorf("GET %s: the download is larger than %d bytes", path, max)
 	}
 	if err != nil {
 		return fmt.Errorf("download %s: %w", path, err)

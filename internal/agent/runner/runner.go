@@ -98,6 +98,13 @@ func Run(ctx context.Context, opts Options) error {
 	} else {
 		appSyncer.Winget = wg
 	}
+	// Uploaded packages need no App Installer, only Windows. Their download
+	// client is filled in by the session.
+	if pk, err := apps.NewPackages(filepath.Join(opts.DataDir, "app-cache"), nil); err != nil {
+		appSyncer.PackagesUnavailable = err
+	} else {
+		appSyncer.Packages = pk
+	}
 
 	updater := &selfupdate.Syncer{
 		Dir: opts.DataDir, Running: facts.AgentVersion, Injected: facts.VersionInjected(),

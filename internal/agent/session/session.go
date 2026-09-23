@@ -120,6 +120,11 @@ func New(cfg Config) (*Session, error) {
 	if cfg.Apps != nil && cfg.Apps.Client == nil {
 		cfg.Apps.Client = appClient{s}
 	}
+	if cfg.Apps != nil {
+		if pk, ok := cfg.Apps.Packages.(*apps.Packages); ok && pk.Download == nil {
+			pk.Download = appClient{s}
+		}
+	}
 	if cfg.SelfUpdate != nil && cfg.SelfUpdate.Client == nil {
 		cfg.SelfUpdate.Client = selfUpdateClient{s}
 	}
@@ -476,6 +481,10 @@ func (c appClient) FetchApp(ctx context.Context, id string, version int) (protoc
 
 func (c appClient) ReportAppResult(ctx context.Context, id string, r protocol.AppResult) error {
 	return c.s.currentClient().ReportAppResult(ctx, id, r)
+}
+
+func (c appClient) DownloadAppPackage(ctx context.Context, id string, version int, sha string, dst io.Writer) error {
+	return c.s.currentClient().DownloadAppPackage(ctx, id, version, sha, dst)
 }
 
 // appSyncer adapts the app syncer. Like scripts, it is not called with an

@@ -16,6 +16,7 @@ const (
 	lockEvaluateAlerts     = 5274005
 	lockRetention          = 5274006
 	lockAuditStream        = 5274007
+	lockPrunePackages      = 5274008
 )
 
 // GroupEvaluator recomputes dynamic group membership.
@@ -32,6 +33,22 @@ func GroupJob(g GroupEvaluator) Job {
 		Run: func(ctx context.Context, _ *store.Queries, _ time.Time) (int64, error) {
 			n, err := g.EvaluateAll(ctx)
 			return int64(n), err
+		},
+	}
+}
+
+// PackagePruner removes uploaded app packages nothing uses any more.
+type PackagePruner interface {
+	PrunePackages(ctx context.Context, now time.Time) (int64, error)
+}
+
+// PackagePruneJob clears out unused app packages hourly. The files live on
+// disk, not in the database, so nothing else would ever remove them.
+func PackagePruneJob(p PackagePruner) Job {
+	return Job{
+		Name: "apps.prune_packages", LockID: lockPrunePackages, Interval: time.Hour,
+		Run: func(ctx context.Context, _ *store.Queries, now time.Time) (int64, error) {
+			return p.PrunePackages(ctx, now)
 		},
 	}
 }

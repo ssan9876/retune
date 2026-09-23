@@ -111,7 +111,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	cmd := &commands.Service{Store: st, Now: time.Now}
 	scr := &scripts.Service{Store: st, Now: time.Now}
 	prof := &profiles.Service{Store: st, Now: time.Now}
-	appSvc := &apps.Service{Store: st, Now: time.Now}
+	appSvc := &apps.Service{Store: st, Now: time.Now, Packages: artifacts.Blobs{Dir: filepath.Join(cfg.DataDir, "app-packages")}}
 	agentVers := &agentversions.Service{
 		Store: st, Now: time.Now,
 		// Beside the CA and the secret key: DATA_DIR is already what the

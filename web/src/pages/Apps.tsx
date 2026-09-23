@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { api } from "../api/client";
-import type { App, AppInstall, Group } from "../api/types";
+import type { App, AppInstall, DetectionRule, Group } from "../api/types";
 import { StatusDot } from "../components/StatusDot";
 import { Button, Dialog, EmptyState, ErrorNote, Field, Spinner } from "../components/ui";
 import { useList } from "../hooks/useList";
@@ -15,7 +15,27 @@ interface Rollup {
   rollup: Record<string, number>;
 }
 
-/** AppEditor creates or edits an app and the package it installs. */
+/** parseExitCodes reads "0, 3010, 1641" into numbers, or null if any isn't one. */
+export function parseExitCodes(text: string): number[] | null {
+  const parts = text
+    .split(/[\s,]+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const codes = parts.map((p) => Number(p));
+  return codes.every((c) => Number.isInteger(c)) ? codes : null;
+}
+
+/** installerTypeOf is "msi" or "exe" from a file name, or "" for anything else. */
+export function installerTypeOf(fileName: string): "msi" | "exe" | "" {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith(".msi")) return "msi";
+  if (lower.endsWith(".exe")) return "exe";
+  return "";
+}
+
+const DEFAULT_EXIT_CODES = "0, 3010, 1641";
+
+/** AppEditor creates or edits an app: a winget package, or an uploaded installer. */
 function AppEditor({
   app,
   open,
@@ -29,9 +49,15 @@ function AppEditor({
 }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [source, setSource] = useState<"winget" | "package">("winget");
   const [packageID, setPackageID] = useState("");
   const [pinnedVersion, setPinnedVersion] = useState("");
   const [installArgs, setInstallArgs] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [uninstallCommand, setUninstallCommand] = useState("");
+  const [exitCodes, setExitCodes] = useState(DEFAULT_EXIT_CODES);
+  const [detection, setDetection] = useState<DetectionRule>({ type: "msi_product_code" });
+  const [uninstallPrevious, setUninstallPrevious] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -39,23 +65,64 @@ function AppEditor({
     if (!open) return;
     setName(app?.name ?? "");
     setDescription(app?.description ?? "");
+    setSource(app?.source === "package" ? "package" : "winget");
     setPackageID(app?.package_id ?? "");
     setPinnedVersion(app?.pinned_version ?? "");
     setInstallArgs(app?.install_args ?? "");
+    setFile(null);
+    setUninstallCommand(app?.uninstall_command ?? "");
+    setExitCodes(app?.success_exit_codes?.length ? app.success_exit_codes.join(", ") : DEFAULT_EXIT_CODES);
+    setDetection(app?.detection ?? { type: "msi_product_code" });
+    setUninstallPrevious(app?.uninstall_previous ?? false);
     setError(null);
   }, [open, app]);
+
+  const fileName = file?.name ?? (app?.source === "package" ? (app.file_name ?? "") : "");
+  const installerType = installerTypeOf(fileName);
+  const codes = parseExitCodes(exitCodes);
+  const packageReady = fileName !== "" && installerType !== "" && codes !== null;
+  const ready = name.trim() !== "" && (source === "winget" ? packageID.trim() !== "" : packageReady);
+
+  function setRule(patch: Partial<DetectionRule>) {
+    setDetection((d) => ({ ...d, ...patch }));
+  }
 
   async function save() {
     setBusy(true);
     setError(null);
     try {
-      const payload = {
-        name,
-        description,
-        package_id: packageID,
-        pinned_version: pinnedVersion,
-        install_args: installArgs,
-      };
+      let payload: Record<string, unknown>;
+      if (source === "winget") {
+        payload = {
+          name,
+          description,
+          package_id: packageID,
+          pinned_version: pinnedVersion,
+          install_args: installArgs,
+        };
+      } else {
+        let sha = app?.source === "package" ? (app.file_sha256 ?? "") : "";
+        if (file) {
+          const uploaded = await api.postBinary<{ file_sha256: string }>(
+            `/app-packages?file_name=${encodeURIComponent(file.name)}`,
+            file,
+          );
+          sha = uploaded.file_sha256;
+        }
+        payload = {
+          name,
+          description,
+          source: "package",
+          installer_type: installerType,
+          file_sha256: sha,
+          file_name: fileName,
+          install_args: installArgs,
+          uninstall_command: uninstallCommand,
+          success_exit_codes: codes ?? [],
+          detection: cleanRule(detection),
+          uninstall_previous: uninstallPrevious,
+        };
+      }
       if (app) {
         await api.post(`/apps/${app.id}`, payload);
       } else {
@@ -78,25 +145,186 @@ function AppEditor({
       <Field label="Description">
         <input value={description} onChange={(e) => setDescription(e.target.value)} />
       </Field>
-      <Field label="Package ID" hint="The winget package identifier, such as 7zip.7zip.">
-        <input className="mono" value={packageID} onChange={(e) => setPackageID(e.target.value)} />
-      </Field>
-      <Field
-        label="Pinned version"
-        hint="Leave blank to install whatever is current when a device first installs it. Retune does not chase later releases on its own; set a version here to hold to one."
-      >
-        <input className="mono" value={pinnedVersion} onChange={(e) => setPinnedVersion(e.target.value)} />
-      </Field>
-      <Field
-        label="Extra install arguments"
-        hint="Optional. Arguments are separated by spaces; a value containing spaces of its own is not supported."
-      >
-        <input className="mono" value={installArgs} onChange={(e) => setInstallArgs(e.target.value)} />
-      </Field>
+      <fieldset className="apps__source">
+        <legend>Installs from</legend>
+        <label>
+          <input
+            type="radio"
+            name="source"
+            checked={source === "winget"}
+            onChange={() => setSource("winget")}
+          />
+          A winget package
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="source"
+            checked={source === "package"}
+            onChange={() => setSource("package")}
+          />
+          An installer I upload (MSI or EXE)
+        </label>
+      </fieldset>
+
+      {source === "winget" ? (
+        <>
+          <Field label="Package ID" hint="The winget package identifier, such as 7zip.7zip.">
+            <input className="mono" value={packageID} onChange={(e) => setPackageID(e.target.value)} />
+          </Field>
+          <Field
+            label="Pinned version"
+            hint="Leave blank to install whatever is current when a device first installs it. Retune does not chase later releases on its own; set a version here to hold to one."
+          >
+            <input className="mono" value={pinnedVersion} onChange={(e) => setPinnedVersion(e.target.value)} />
+          </Field>
+          <Field
+            label="Extra install arguments"
+            hint="Optional. Arguments are separated by spaces; a value containing spaces of its own is not supported."
+          >
+            <input className="mono" value={installArgs} onChange={(e) => setInstallArgs(e.target.value)} />
+          </Field>
+        </>
+      ) : (
+        <>
+          <Field
+            label="Installer"
+            hint={
+              fileName
+                ? `${fileName}${file ? "" : " (choose a file to replace it)"}. Up to 2 GiB.`
+                : "An .msi or .exe file, up to 2 GiB."
+            }
+          >
+            <input
+              type="file"
+              accept=".msi,.exe"
+              aria-label="Installer file"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            />
+          </Field>
+          {fileName && installerType === "" ? (
+            <p className="note">The installer must be an .msi or .exe file.</p>
+          ) : null}
+          <Field
+            label={installerType === "exe" ? "Install arguments" : "Extra msiexec arguments"}
+            hint={
+              installerType === "exe"
+                ? "The switches that make this setup program silent, such as /S or /quiet /norestart. Passed exactly as written."
+                : "Optional, after msiexec /i <file> /qn /norestart — such as properties: ALLUSERS=1."
+            }
+          >
+            <input className="mono" value={installArgs} onChange={(e) => setInstallArgs(e.target.value)} />
+          </Field>
+          <Field
+            label="Uninstall command"
+            hint={
+              installerType === "msi"
+                ? "Optional. Left blank, an MSI detected by its product code is removed with msiexec /x."
+                : 'The whole command line, such as "%ProgramFiles%\\Contoso\\uninstall.exe" /S. Needed to uninstall.'
+            }
+          >
+            <input className="mono" value={uninstallCommand} onChange={(e) => setUninstallCommand(e.target.value)} />
+          </Field>
+          <Field
+            label="Success exit codes"
+            hint="Comma-separated. 3010 and 1641 also mean a restart is needed to finish; Retune never restarts on its own."
+          >
+            <input className="mono" value={exitCodes} onChange={(e) => setExitCodes(e.target.value)} />
+          </Field>
+          {codes === null ? <p className="note">Exit codes must be whole numbers.</p> : null}
+
+          <fieldset className="apps__detection">
+            <legend>Detection</legend>
+            <p className="apps__hint">How a device tells whether this app is installed, before and after installing.</p>
+            <Field label="Detect by">
+              <select
+                aria-label="Detect by"
+                value={detection.type}
+                onChange={(e) => setDetection({ type: e.target.value as DetectionRule["type"] })}
+              >
+                <option value="msi_product_code">MSI product code</option>
+                <option value="registry">Registry key or value</option>
+                <option value="file">File</option>
+              </select>
+            </Field>
+            {detection.type === "msi_product_code" ? (
+              <Field
+                label="Product code"
+                hint="The MSI's ProductCode, braces included. Once installed on a test machine it appears under HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall."
+              >
+                <input
+                  className="mono"
+                  placeholder="{00000000-0000-0000-0000-000000000000}"
+                  value={detection.product_code ?? ""}
+                  onChange={(e) => setRule({ product_code: e.target.value.trim() })}
+                />
+              </Field>
+            ) : null}
+            {detection.type === "registry" ? (
+              <>
+                <Field label="Key" hint="Under HKEY_LOCAL_MACHINE; both 64- and 32-bit views are checked.">
+                  <input
+                    className="mono"
+                    placeholder="SOFTWARE\Contoso\App"
+                    value={detection.key ?? ""}
+                    onChange={(e) => setRule({ key: e.target.value })}
+                  />
+                </Field>
+                <Field label="Value" hint="Optional. Blank means the key existing is enough.">
+                  <input
+                    className="mono"
+                    value={detection.value ?? ""}
+                    onChange={(e) => setRule({ value: e.target.value })}
+                  />
+                </Field>
+                {detection.value ? (
+                  <Field label="Equals" hint="Optional. The value must be exactly this.">
+                    <input
+                      className="mono"
+                      value={detection.equals ?? ""}
+                      onChange={(e) => setRule({ equals: e.target.value })}
+                    />
+                  </Field>
+                ) : null}
+              </>
+            ) : null}
+            {detection.type === "file" ? (
+              <Field label="Path" hint="Environment variables such as %ProgramFiles% are expanded.">
+                <input
+                  className="mono"
+                  placeholder="%ProgramFiles%\Contoso\app.exe"
+                  value={detection.path ?? ""}
+                  onChange={(e) => setRule({ path: e.target.value })}
+                />
+              </Field>
+            ) : null}
+            {detection.type !== "registry" || (detection.value && !detection.equals) ? (
+              <Field label="At least version" hint="Optional, such as 2.1 — older counts as not installed.">
+                <input
+                  className="mono"
+                  value={detection.version_at_least ?? ""}
+                  onChange={(e) => setRule({ version_at_least: e.target.value.trim() })}
+                />
+              </Field>
+            ) : null}
+          </fieldset>
+
+          {app ? (
+            <label className="apps__check">
+              <input
+                type="checkbox"
+                checked={uninstallPrevious}
+                onChange={(e) => setUninstallPrevious(e.target.checked)}
+              />
+              Remove the previous version first, for installers that can't upgrade in place
+            </label>
+          ) : null}
+        </>
+      )}
       <ErrorNote error={error} />
       <div className="actions">
-        <Button onClick={() => void save()} disabled={busy || name.trim() === "" || packageID.trim() === ""}>
-          {app ? "Save changes" : "Create app"}
+        <Button onClick={() => void save()} disabled={busy || !ready}>
+          {busy && file ? "Uploading…" : app ? "Save changes" : "Create app"}
         </Button>
         <Button variant="quiet" onClick={onClose}>
           Cancel
@@ -104,6 +332,22 @@ function AppEditor({
       </div>
     </Dialog>
   );
+}
+
+/** cleanRule drops the fields a rule's type doesn't use, which the server refuses. */
+export function cleanRule(rule: DetectionRule): DetectionRule {
+  const keep: Record<DetectionRule["type"], (keyof DetectionRule)[]> = {
+    msi_product_code: ["product_code", "version_at_least"],
+    registry: ["key", "value", "equals", "version_at_least"],
+    file: ["path", "version_at_least"],
+  };
+  const out: DetectionRule = { type: rule.type };
+  for (const field of keep[rule.type]) {
+    const value = rule[field];
+    if (value) (out as unknown as Record<string, string>)[field] = value;
+  }
+  if (out.equals) delete out.version_at_least;
+  return out;
 }
 
 /** AssignDialog gives an app to a group, deciding whether it installs or uninstalls. */
@@ -364,7 +608,7 @@ export default function Apps() {
                     </button>
                     {app.description ? <div className="app__description">{app.description}</div> : null}
                   </td>
-                  <td className="mono">{app.package_id}</td>
+                  <td className="mono">{app.source === "package" ? app.file_name : app.package_id}</td>
                   <td className="numeric">{app.current_version}</td>
                   <td>{relative(app.updated_at)}</td>
                   <td className="app__actions">

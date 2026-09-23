@@ -84,6 +84,7 @@ var expectedRoutes = map[string]string{
 	"POST /api/admin/v1/api-tokens":                                 "admin+write",
 	"POST /api/admin/v1/api-tokens/{id}/revoke":                     "admin+write",
 	"POST /api/admin/v1/apps":                                       "fleet+write",
+	"POST /api/admin/v1/app-packages":                               "fleet+write",
 	"POST /api/admin/v1/apps/{id}":                                  "fleet+write",
 	"POST /api/admin/v1/assignments":                                "scoped+write",
 	"POST /api/admin/v1/bitlocker-keys/{id}/reveal":                 "session+write",

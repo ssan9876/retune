@@ -2,6 +2,7 @@ package apps
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -27,10 +28,17 @@ type Syncer struct {
 
 	// Unavailable, when set, is why Winget could not be constructed on this
 	// machine at all (see apps.New): no App Installer, or not Windows. Every
-	// assigned app is then reported failed with this reason instead of being
-	// acted on — Winget is never touched, since there is no working one to
-	// call.
+	// assigned winget app is then reported failed with this reason instead of
+	// being acted on — Winget is never touched, since there is no working one
+	// to call.
 	Unavailable error
+
+	// Packages installs uploaded MSI and EXE packages, and
+	// PackagesUnavailable is why it can't on this machine, as Unavailable is
+	// for winget. The two are independent: a machine with no App Installer
+	// can still run an MSI.
+	Packages            Installer
+	PackagesUnavailable error
 
 	// mu keeps one winget invocation running at a time: two of them fighting
 	// over the same package source is rarely what an administrator meant.
@@ -65,13 +73,7 @@ func (s *Syncer) Sync(ctx context.Context, items []protocol.Item) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		var err error
-		if s.Unavailable != nil {
-			err = s.reportUnavailable(ctx, item)
-		} else {
-			err = s.syncOne(ctx, item)
-		}
-		if err != nil {
+		if err := s.syncOne(ctx, item); err != nil {
 			// One bad deployment must not stop the rest.
 			s.log().Warn("app deployment failed", "app_id", item.ID, "error", err)
 		}
@@ -79,20 +81,34 @@ func (s *Syncer) Sync(ctx context.Context, items []protocol.Item) error {
 	return nil
 }
 
+// installerFor picks what acts on v, or says why nothing on this machine can.
+func (s *Syncer) installerFor(v protocol.AppVersionResponse) (Installer, error) {
+	if v.IsPackage() {
+		switch {
+		case s.PackagesUnavailable != nil:
+			return nil, s.PackagesUnavailable
+		case s.Packages == nil:
+			return nil, errors.New("this agent can't install uploaded packages")
+		}
+		return s.Packages, nil
+	}
+	switch {
+	case s.Unavailable != nil:
+		return nil, s.Unavailable
+	case s.Winget == nil:
+		return nil, ErrNoAppInstaller
+	}
+	return wingetInstaller{s.Winget}, nil
+}
+
 // reportUnavailable reports one assigned app as failed because this machine
-// cannot run winget at all, instead of trying to act on it. It reports once
-// per app per version — the same way a real result is remembered — so an
-// hourly check-in on a machine that will never gain an App Installer does not
-// fill the install history with an identical failure forever.
-func (s *Syncer) reportUnavailable(ctx context.Context, item protocol.Item) error {
-	opts, err := protocol.ParseAppOptions(item.Options)
-	if err != nil {
-		return fmt.Errorf("options: %w", err)
-	}
-	st, err := s.State.AppState(item.ID)
-	if err != nil {
-		return fmt.Errorf("read local state: %w", err)
-	}
+// cannot install its kind of app at all, instead of trying to act on it. It
+// reports once per app per version — the same way a real result is
+// remembered — so an hourly check-in on a machine that will never gain an App
+// Installer does not fill the install history with an identical failure
+// forever.
+func (s *Syncer) reportUnavailable(ctx context.Context, item protocol.Item, opts protocol.AppOptions,
+	st state.AppState, why error) error {
 	if st.Version == item.Version && st.LastStatus == protocol.ResultFailed {
 		return nil
 	}
@@ -109,7 +125,7 @@ func (s *Syncer) reportUnavailable(ctx context.Context, item protocol.Item) erro
 
 	result := protocol.AppResult{
 		Version: item.Version, Intent: opts.Intent,
-		Status: protocol.ResultFailed, Detail: s.Unavailable.Error(),
+		Status: protocol.ResultFailed, Detail: why.Error(),
 		StartedAt: now, FinishedAt: now,
 	}
 	if err := s.Client.ReportAppResult(ctx, item.ID, result); err != nil {
@@ -170,13 +186,18 @@ func (s *Syncer) detect(ctx context.Context, item protocol.Item, opts protocol.A
 		return fmt.Errorf("fetch app: %w", err)
 	}
 
-	installed, _, r := s.Winget.Detect(ctx, v.PackageID)
+	inst, why := s.installerFor(v)
+	if why != nil {
+		return s.reportUnavailable(ctx, item, opts, st, why)
+	}
+	installed, _, r := inst.Detect(ctx, item.ID, v)
 	if r.Err != nil {
 		// A failed detection is not an answer, only a failed attempt to get
 		// one: treating it as "not installed" would make the agent reinstall
 		// (or remove) software on every cycle for as long as winget or the
 		// package source is unreachable. Leave the remembered state alone.
-		s.log().Warn("detecting app failed", "app_id", item.ID, "package_id", v.PackageID, "error", r.Err)
+		s.log().Warn("detecting app failed", "app_id", item.ID, "package_id", v.PackageID,
+			"file_name", v.FileName, "error", r.Err)
 		return nil
 	}
 
@@ -228,25 +249,57 @@ func (s *Syncer) install(ctx context.Context, item protocol.Item, opts protocol.
 	if err != nil {
 		return fmt.Errorf("fetch app: %w", err)
 	}
+	inst, why := s.installerFor(v)
+	if why != nil {
+		return s.reportUnavailable(ctx, item, opts, st, why)
+	}
+
+	// An upgrade whose installer can't replace the old version in place
+	// removes it first, with that version's own uninstall -- but only a
+	// version this agent installed.
+	if v.UninstallPrevious && st.InstalledByAgent != 0 && st.InstalledByAgent != item.Version {
+		prev, err := s.Client.FetchApp(ctx, item.ID, st.InstalledByAgent)
+		if err != nil {
+			return fmt.Errorf("fetch version %d to remove it: %w", st.InstalledByAgent, err)
+		}
+		pinst, why := s.installerFor(prev)
+		if why != nil {
+			return s.reportUnavailable(ctx, item, opts, st, why)
+		}
+		removeCtx, cancel := context.WithTimeout(ctx, opts.Timeout())
+		started := s.now()
+		r := pinst.Uninstall(removeCtx, item.ID, prev)
+		cancel()
+		if r.Err == nil && !r.TimedOut && pinst.Outcome(prev, r.ExitCode) == OutcomeFailed {
+			r.Err = fmt.Errorf("removing version %d first failed with exit code %d", st.InstalledByAgent, r.ExitCode)
+		} else if r.Err != nil {
+			r.Err = fmt.Errorf("removing version %d first: %w", st.InstalledByAgent, r.Err)
+		}
+		if r.Err != nil || r.TimedOut {
+			return s.finish(ctx, item, opts, st, protocol.IntentInstall, "", r, OutcomeFailed, started, s.now())
+		}
+		st.InstalledByAgent = 0
+	}
 
 	installCtx, cancel := context.WithTimeout(ctx, opts.Timeout())
 	started := s.now()
-	r := s.Winget.Install(installCtx, v)
+	r := inst.Install(installCtx, item.ID, v)
 	cancel()
 	finished := s.now()
 
+	outcome := inst.Outcome(v, r.ExitCode)
 	installedVersion := ""
 	if r.Err == nil && !r.TimedOut {
-		switch classify(r.ExitCode) {
+		switch outcome {
 		case OutcomeSucceeded, OutcomeRebootRequired:
 			// winget install does not report the version it landed; winget
-			// list does.
-			if _, ver, dr := s.Winget.Detect(ctx, v.PackageID); dr.Err == nil {
+			// list does, and a package's detection rule may.
+			if _, ver, dr := inst.Detect(ctx, item.ID, v); dr.Err == nil {
 				installedVersion = ver
 			}
 		}
 	}
-	return s.finish(ctx, item, opts, st, protocol.IntentInstall, installedVersion, r, started, finished)
+	return s.finish(ctx, item, opts, st, protocol.IntentInstall, installedVersion, r, outcome, started, finished)
 }
 
 func (s *Syncer) uninstall(ctx context.Context, item protocol.Item, opts protocol.AppOptions, st state.AppState) error {
@@ -254,14 +307,18 @@ func (s *Syncer) uninstall(ctx context.Context, item protocol.Item, opts protoco
 	if err != nil {
 		return fmt.Errorf("fetch app: %w", err)
 	}
+	inst, why := s.installerFor(v)
+	if why != nil {
+		return s.reportUnavailable(ctx, item, opts, st, why)
+	}
 
 	uninstallCtx, cancel := context.WithTimeout(ctx, opts.Timeout())
 	started := s.now()
-	r := s.Winget.Uninstall(uninstallCtx, v.PackageID)
+	r := inst.Uninstall(uninstallCtx, item.ID, v)
 	cancel()
 	finished := s.now()
 
-	return s.finish(ctx, item, opts, st, protocol.IntentUninstall, "", r, started, finished)
+	return s.finish(ctx, item, opts, st, protocol.IntentUninstall, "", r, inst.Outcome(v, r.ExitCode), started, finished)
 }
 
 // finish turns an install or uninstall outcome into what to remember locally
@@ -269,7 +326,7 @@ func (s *Syncer) uninstall(ctx context.Context, item protocol.Item, opts protoco
 // reported, so a server that cannot be reached does not make the agent try
 // again on the next check-in.
 func (s *Syncer) finish(ctx context.Context, item protocol.Item, opts protocol.AppOptions, st state.AppState,
-	intent, installedVersion string, r Result, started, finished time.Time) error {
+	intent, installedVersion string, r Result, outcome Outcome, started, finished time.Time) error {
 
 	result := protocol.AppResult{
 		Version: item.Version, Intent: intent,
@@ -286,7 +343,7 @@ func (s *Syncer) finish(ctx context.Context, item protocol.Item, opts protocol.A
 	case r.Err != nil:
 		result.Status, result.ExitCode, result.Error = protocol.ResultFailed, -1, r.Err.Error()
 	default:
-		switch classify(r.ExitCode) {
+		switch outcome {
 		case OutcomeRebootRequired:
 			result.Status = protocol.ResultSucceeded
 			result.Detail = "a restart is needed to finish installing this app"
@@ -306,6 +363,10 @@ func (s *Syncer) finish(ctx context.Context, item protocol.Item, opts protocol.A
 		next.Failures = 0
 		next.Installed = intent == protocol.IntentInstall
 		next.LastSeenAt = finished
+		next.InstalledByAgent = 0
+		if next.Installed {
+			next.InstalledByAgent = item.Version
+		}
 		// This report is itself the transition into the settled state, so a
 		// later hourly detect that confirms the same thing must stay quiet.
 		next.Settled = true
