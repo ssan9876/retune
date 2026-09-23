@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"retune/internal/protocol"
 	"retune/internal/server/compliance"
 	"retune/internal/server/groups"
 	"retune/internal/server/store"
@@ -408,10 +409,12 @@ func parseAssignment(req assignmentRequest, actor string, now time.Time) (store.
 // assignmentNeedsApproval: with approvals on, including something in a group
 // of more devices than the threshold waits for a second administrator - as
 // does including it in a dynamic group or All devices, which can grow to any
-// size after it is approved. An exclusion only takes away, and a compliance
-// policy only reports, so neither waits.
+// size after it is approved. An exclusion only takes away, a compliance
+// policy only reports, and a maintenance window only holds changes back, so
+// none of them waits.
 func (h *Handler) assignmentNeedsApproval(ctx context.Context, a store.Assignment) (bool, error) {
-	if !h.ApprovalsRequired || a.Mode != store.ModeInclude || a.ItemKind == compliance.ItemKindCompliance {
+	if !h.ApprovalsRequired || a.Mode != store.ModeInclude ||
+		a.ItemKind == compliance.ItemKindCompliance || a.ItemKind == protocol.ItemKindWindow {
 		return false, nil
 	}
 	q := h.Store.Q()

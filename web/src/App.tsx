@@ -15,6 +15,7 @@ import DeviceDetail from "./pages/DeviceDetail";
 import Devices from "./pages/Devices";
 import Groups from "./pages/Groups";
 import Login from "./pages/Login";
+import MaintenanceWindows from "./pages/MaintenanceWindows";
 import Overview from "./pages/Overview";
 import Profiles from "./pages/Profiles";
 import Scripts from "./pages/Scripts";
@@ -36,6 +37,7 @@ export default function App() {
         <Route path="/apps" element={<Apps />} />
         <Route path="/agent-versions" element={<AgentVersions />} />
         <Route path="/profiles" element={<Profiles />} />
+        <Route path="/maintenance-windows" element={<MaintenanceWindows />} />
         <Route path="/compliance" element={<Compliance />} />
         <Route path="/commands" element={<Commands />} />
         <Route path="/tokens" element={<Tokens />} />

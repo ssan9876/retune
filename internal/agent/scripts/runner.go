@@ -60,6 +60,10 @@ func (s *Scheduler) Sync(ctx context.Context, items []protocol.Item) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if !protocol.WindowsFrom(items).Open(s.now()) {
+		s.log().Debug("outside this device's maintenance windows; script deployments wait")
+		return nil
+	}
 	for _, item := range items {
 		if item.Kind != protocol.ItemKindScript {
 			continue
