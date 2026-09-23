@@ -84,7 +84,8 @@ session_ttl_hours: 12
 | `ca_key_source` | `file` | `file`, or `env` to read `CA_CERT_PEM` and `CA_KEY_PEM` |
 | `data_dir` | `data` | holds the CA |
 | `checkin_interval_seconds` | `300` | how often agents check in (minimum 30) |
-| `session_ttl_hours` | `12` | console session lifetime (1–168) |
+| `session_ttl_hours` | `12` | how long an idle console session lasts (1–168) |
+| `session_max_hours` | `24` | how long any session lasts, however busy, from sign-in (1–720; never shorter than `session_ttl_hours`) |
 | `sweep_interval_seconds` | `300` | how often expired commands and sessions are cleared (minimum 10) |
 | `agent_release_keys` | — | comma-separated public keys that sign agent builds; uploads are refused until set |
 | `smtp_host`, `smtp_port` | — / `587` | the relay alert email is sent through |
@@ -372,6 +373,15 @@ on first boot. Restoring the database without `DATA_DIR` is not a restore: the
 devices in it are authenticated by certificates only that CA can vouch for.
 
 ## Enroll a machine
+
+A machine that enrolls with the same serial number or SMBIOS UUID as a device
+already enrolled — usually the same machine, reimaged — becomes a new device,
+and the enrollment's audit entry names the earlier one (`same_hardware_as`).
+The earlier device is **not** retired automatically: the serial is the
+enrolling machine's own claim, and retiring on it would let anyone holding an
+enrollment token cut any machine off by quoting its serial. After a genuine
+reimage the old record stops checking in and goes stale; retire it from its
+page.
 
 With the MSI, which installs the agent as an automatic service running as
 LocalSystem:
@@ -716,7 +726,11 @@ named and the rest counted, so a fleet-wide failure is one thing to read.
   Give the channel a shared secret and each request carries
   `X-Retune-Signature: sha256=<hex>` over the exact body. The secret is
   encrypted with the same key that protects escrowed BitLocker recovery keys,
-  and can be set or cleared but never read back.
+  and can be set or cleared but never read back. A webhook is never sent to a
+  loopback or link-local address (the server's own services, or a cloud
+  metadata endpoint) and does not follow redirects; addresses on your own
+  network are fine. For many receivers the URL is the credential, so
+  read-only accounts see only its host.
 
 **Send test** on a channel delivers a fixed message, so a wrong relay or a
 typo'd URL is found while you are still looking at the form. Every attempt,
