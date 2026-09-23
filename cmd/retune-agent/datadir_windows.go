@@ -92,7 +92,16 @@ func secureDataDir(dir string) error {
 		return fmt.Errorf("restrict permissions on %s: %w", dir, err)
 	}
 
-	empty, err := windows.ACLFromEntries(nil, nil)
+	// Each entry inside gets SYSTEM and Administrators explicitly, and
+	// inherits the directory's list besides. Replacing its list outright is
+	// what removes anything somebody granted on it directly. (An empty list
+	// would say the same with less, but ACLFromEntries cannot build one.)
+	own := func(sid *windows.SID) windows.EXPLICIT_ACCESS {
+		e := full(sid)
+		e.Inheritance = windows.NO_INHERITANCE
+		return e
+	}
+	childACL, err := windows.ACLFromEntries([]windows.EXPLICIT_ACCESS{own(system), own(admins)}, nil)
 	if err != nil {
 		return err
 	}
@@ -118,11 +127,11 @@ func secureDataDir(dir string) error {
 			}
 			return nil
 		}
-		// An empty, unprotected list means "inherit only": whatever was set
-		// on this entry directly is gone, and the directory's list applies.
+		// Replaced, and unprotected so the directory's list is inherited too:
+		// whatever was set on this entry directly is gone.
 		if err := windows.SetNamedSecurityInfo(path, windows.SE_FILE_OBJECT,
 			windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION|windows.UNPROTECTED_DACL_SECURITY_INFORMATION,
-			admins, nil, empty, nil); err != nil {
+			admins, nil, childACL, nil); err != nil {
 			return fmt.Errorf("reset permissions on %s: %w", path, err)
 		}
 		return nil
