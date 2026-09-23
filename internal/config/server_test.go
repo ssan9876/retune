@@ -194,3 +194,59 @@ func TestAgentReleaseKeysParse(t *testing.T) {
 		t.Error("no keys is allowed at startup; uploads are what refuse")
 	}
 }
+
+func TestRetention(t *testing.T) {
+	base := map[string]string{"DATABASE_URL": "postgres://x", "PUBLIC_URL": "https://h"}
+	c, err := LoadServer(env(base))
+	if err != nil {
+		t.Fatal(err)
+	}
+	day := 24 * time.Hour
+	want := Retention{Audit: 365 * day, Commands: 90 * day, ScriptRuns: 90 * day, AppInstalls: 90 * day}
+	if c.Retention != want {
+		t.Fatalf("defaults = %+v, want %+v", c.Retention, want)
+	}
+
+	m := map[string]string{
+		"AUDIT_RETENTION_DAYS": "0", "COMMAND_RETENTION_DAYS": "7",
+		"SCRIPT_RUN_RETENTION_DAYS": "3650", "APP_INSTALL_RETENTION_DAYS": "1",
+	}
+	for k, v := range base {
+		m[k] = v
+	}
+	c, err = LoadServer(env(m))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want = Retention{Audit: 0, Commands: 7 * day, ScriptRuns: 3650 * day, AppInstalls: day}
+	if c.Retention != want {
+		t.Fatalf("set = %+v, want %+v", c.Retention, want)
+	}
+
+	for _, bad := range []string{"-1", "3651", "ninety"} {
+		m := map[string]string{"COMMAND_RETENTION_DAYS": bad}
+		for k, v := range base {
+			m[k] = v
+		}
+		if _, err := LoadServer(env(m)); err == nil || !strings.Contains(err.Error(), "COMMAND_RETENTION_DAYS") {
+			t.Errorf("%q: want an error naming the setting, got %v", bad, err)
+		}
+	}
+}
+
+func TestMetricsToken(t *testing.T) {
+	base := map[string]string{"DATABASE_URL": "postgres://x", "PUBLIC_URL": "https://h"}
+	c, err := LoadServer(env(base))
+	if err != nil || c.MetricsToken != "" {
+		t.Fatalf("unset: %q %v", c.MetricsToken, err)
+	}
+	long := strings.Repeat("k", 32)
+	base["METRICS_TOKEN"] = long
+	if c, err = LoadServer(env(base)); err != nil || c.MetricsToken != long {
+		t.Fatalf("set: %q %v", c.MetricsToken, err)
+	}
+	base["METRICS_TOKEN"] = strings.Repeat("k", 31)
+	if _, err := LoadServer(env(base)); err == nil || !strings.Contains(err.Error(), "METRICS_TOKEN") {
+		t.Fatalf("a short token should be refused, got %v", err)
+	}
+}

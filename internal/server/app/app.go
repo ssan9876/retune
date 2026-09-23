@@ -32,6 +32,7 @@ import (
 	"retune/internal/server/scripts"
 	"retune/internal/server/secrets"
 	"retune/internal/server/store"
+	"retune/internal/server/sweeper"
 )
 
 const clientCertValidity = 90 * 24 * time.Hour
@@ -55,6 +56,9 @@ type App struct {
 	Auth          *auth.Service
 	Handler       http.Handler
 	TLSConfig     *tls.Config
+	// Sweeps records what the sweeper jobs do, for /metrics. The caller that
+	// runs the sweeper passes it to sweeper.Runner.
+	Sweeps *sweeper.Stats
 }
 
 // New migrates the database, loads (or creates) the CA, and builds handlers.
@@ -144,6 +148,8 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	}
 	root := http.NewServeMux()
 	mountHealth(root, st, log)
+	sweeps := sweeper.NewStats()
+	mountMetrics(root, st, cfg.MetricsToken, sweeps, time.Now, log)
 	root.Handle("/api/agent/v1/", agent.Routes())
 	root.Handle("/api/admin/v1/", admin.Routes())
 	root.Handle("/", console.Handler())
@@ -166,6 +172,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		Auth:          authSvc,
 		Handler:       root,
 		TLSConfig:     tlsCfg,
+		Sweeps:        sweeps,
 	}, nil
 }
 

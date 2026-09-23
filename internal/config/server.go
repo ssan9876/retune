@@ -38,7 +38,28 @@ type Server struct {
 	// creating an email notification channel is refused rather than accepted
 	// and quietly never delivered.
 	SMTP SMTPConfig
+	// Retention says how long history is kept before the retention sweeper
+	// deletes it.
+	Retention Retention
+	// MetricsToken turns on GET /metrics and is the bearer token a scraper
+	// must send. Empty leaves the endpoint off.
+	MetricsToken string
 }
+
+// Retention is how long each kind of history is kept. A zero duration keeps
+// that history forever; the defaults are set in LoadServer.
+type Retention struct {
+	Audit       time.Duration
+	Commands    time.Duration
+	ScriptRuns  time.Duration
+	AppInstalls time.Duration
+}
+
+// minMetricsToken is the shortest METRICS_TOKEN accepted. The endpoint is
+// reachable by anything that can reach the server, so its token is a
+// password, and one short enough to guess is worse than none because it
+// looks like protection.
+const minMetricsToken = 32
 
 // SMTPConfig is the mail relay. It is process configuration rather than a
 // notification channel's own settings because a deployment has one relay, and
@@ -113,6 +134,13 @@ func LoadServer(getenv func(string) string) (Server, error) {
 		return Server{}, err
 	}
 	c.SMTP = smtpCfg
+	if c.Retention, err = loadRetention(lookup); err != nil {
+		return Server{}, err
+	}
+	c.MetricsToken = strings.TrimSpace(lookup("METRICS_TOKEN"))
+	if c.MetricsToken != "" && len(c.MetricsToken) < minMetricsToken {
+		return Server{}, fmt.Errorf("METRICS_TOKEN must be at least %d characters", minMetricsToken)
+	}
 	if v := lookup("TRUSTED_PROXIES"); v != "" {
 		proxies, err := parsePrefixes(v)
 		if err != nil {
@@ -194,6 +222,35 @@ func loadSMTP(lookup func(string) string) (SMTPConfig, error) {
 		return SMTPConfig{}, errors.New("SMTP_PASSWORD needs SMTP_USERNAME")
 	}
 	return cfg, nil
+}
+
+// loadRetention reads the four history horizons. Each is a number of days:
+// 0 keeps that history forever, anything else must be 1-3650, and unset
+// takes the default. Audit history is kept longer than the rest because it
+// is the record of who did what, not of what a machine happened to report.
+func loadRetention(lookup func(string) string) (Retention, error) {
+	var r Retention
+	for _, h := range []struct {
+		key         string
+		defaultDays int
+		dst         *time.Duration
+	}{
+		{"AUDIT_RETENTION_DAYS", 365, &r.Audit},
+		{"COMMAND_RETENTION_DAYS", 90, &r.Commands},
+		{"SCRIPT_RUN_RETENTION_DAYS", 90, &r.ScriptRuns},
+		{"APP_INSTALL_RETENTION_DAYS", 90, &r.AppInstalls},
+	} {
+		days := h.defaultDays
+		if v := lookup(h.key); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 0 || n > 3650 {
+				return Retention{}, fmt.Errorf("%s must be 0 (keep forever) or a number of days up to 3650", h.key)
+			}
+			days = n
+		}
+		*h.dst = time.Duration(days) * 24 * time.Hour
+	}
+	return r, nil
 }
 
 // parsePrefixes reads a comma-separated list of CIDRs and bare addresses.

@@ -26,6 +26,8 @@ type Runner struct {
 	Jobs  []Job
 	Log   *slog.Logger
 	Now   func() time.Time
+	// Stats, when set, records every run for the metrics endpoint.
+	Stats *Stats
 }
 
 // Start launches one goroutine per job and returns immediately.
@@ -60,6 +62,8 @@ func (r *Runner) runRecovered(ctx context.Context, job Job) (n int64, ran bool, 
 	defer func() {
 		if p := recover(); p != nil {
 			err = fmt.Errorf("panic: %v", p)
+			// RunOnce never got to record this run.
+			r.Stats.record(job.Name, 0, true, err, r.Now())
 		}
 	}()
 	return r.RunOnce(ctx, job)
@@ -74,5 +78,6 @@ func (r *Runner) RunOnce(ctx context.Context, job Job) (int64, bool, error) {
 		n, err = job.Run(ctx, q, r.Now())
 		return err
 	})
+	r.Stats.record(job.Name, n, ran, err, r.Now())
 	return n, ran, err
 }

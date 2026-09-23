@@ -14,6 +14,7 @@ const (
 	lockEvaluateGroups     = 5274003
 	lockEvaluateCompliance = 5274004
 	lockEvaluateAlerts     = 5274005
+	lockRetention          = 5274006
 )
 
 // GroupEvaluator recomputes dynamic group membership.

@@ -81,9 +81,9 @@ const enrollmentTrendDays = 30
 func (h *Handler) dashboard(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Same cutoff newDeviceJSON's Stale flag uses (now - staleAfter), so the
+	// Same cutoff newDeviceJSON's Stale flag uses (now - StaleAfter), so the
 	// dashboard and the device list's FleetBar never disagree about one device.
-	active, stale, retired, err := h.Store.Q().DeviceBucketCounts(ctx, h.Now().Add(-staleAfter))
+	active, stale, retired, err := h.Store.Q().DeviceBucketCounts(ctx, h.Now().Add(-StaleAfter))
 	if err != nil {
 		h.internal(w, "device bucket counts", err)
 		return
