@@ -178,7 +178,7 @@ func (f *fakeShell) run(_ context.Context, script string) (string, error) {
 		return "", nil
 
 	case strings.HasPrefix(script, "$r = Get-NetFirewallRule"):
-		name := quotedAfter(script, "-DisplayName ")
+		name := quotedAfter(script, "::Escape(")
 		rule, ok := f.rules[strings.ToLower(name)]
 		if !ok {
 			return "", nil
@@ -186,9 +186,12 @@ func (f *fakeShell) run(_ context.Context, script string) (string, error) {
 		raw, _ := json.Marshal(rule)
 		return string(raw), nil
 
-	case strings.HasPrefix(script, "Remove-NetFirewallRule"):
-		name := quotedAfter(script, "-DisplayName ")
-		delete(f.rules, strings.ToLower(name))
+	case strings.HasPrefix(script, "Get-NetFirewallRule") && strings.HasSuffix(script, "Remove-NetFirewallRule"):
+		// Like the real pipeline, only rules in Retune's group are removed.
+		name := strings.ToLower(quotedAfter(script, "::Escape("))
+		if rule, ok := f.rules[name]; ok && strings.EqualFold(rule["group"], protocol.FirewallGroup) {
+			delete(f.rules, name)
+		}
 		return "", nil
 
 	case strings.HasPrefix(script, "New-NetFirewallRule"):
@@ -532,5 +535,39 @@ func TestBitLockerCannotBeReverted(t *testing.T) {
 	var h any = policy.BitLockerHandler{}
 	if _, ok := h.(policy.Reverter); ok {
 		t.Fatal("BitLocker must not be revertible: a profile going out of scope must never decrypt a drive")
+	}
+}
+
+// A name made of wildcards, or holding a typographic quote PowerShell also
+// ends strings with, reaches the cmdlets as a literal.
+func TestFirewallNamesAreLiteral(t *testing.T) {
+	sh := newShell()
+	h := policy.FirewallRuleHandler{Run: sh.run}
+	for _, name := range []string{"*", "a\u2019; Remove-Item C:\\ -Recurse; \u2019b"} {
+		sh.ran = nil
+		_, _ = h.Test(context.Background(), protocol.Setting{Kind: protocol.KindFirewallRule, Name: name, Ensure: protocol.EnsureAbsent})
+		if len(sh.ran) == 0 || !strings.Contains(sh.ran[0], "[WildcardPattern]::Escape(") {
+			t.Fatalf("the lookup should escape wildcards: %v", sh.ran)
+		}
+	}
+	if got := policy.QuoteForTest("it’s"); got != "'it’’s'" {
+		t.Errorf("a typographic quote should be doubled, got %q", got)
+	}
+}
+
+// Replacing a rule of the same name that something else created would mean
+// deleting it; the agent refuses instead.
+func TestFirewallRuleWillNotReplaceSomeoneElsesRule(t *testing.T) {
+	sh := newShell()
+	sh.rules["allow app"] = map[string]string{"name": "Allow app", "group": "Contoso", "direction": "Inbound",
+		"action": "Allow", "protocol": "TCP", "enabled": "True"}
+	h := policy.FirewallRuleHandler{Run: sh.run}
+	err := h.Set(context.Background(), protocol.Setting{Kind: protocol.KindFirewallRule, Name: "Allow app",
+		Direction: protocol.DirectionInbound, Action: protocol.ActionBlock, Protocol: protocol.ProtocolTCP})
+	if err == nil || !strings.Contains(err.Error(), "not created by Retune") {
+		t.Fatalf("want a refusal, got %v", err)
+	}
+	if _, ok := sh.rules["allow app"]; !ok {
+		t.Error("the other rule must still be there")
 	}
 }

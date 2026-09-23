@@ -134,15 +134,37 @@ type firewallRule struct {
 	Program   string `json:"program"`
 }
 
+// singleQuotes are every character PowerShell accepts as a single quote: the
+// ASCII one and four typographic ones. Escaping only the ASCII quote left a
+// value containing a curly one able to close the string and run the rest.
+var singleQuotes = strings.NewReplacer(
+	"'", "''", "\u2018", "\u2018\u2018", "\u2019", "\u2019\u2019", "\u201A", "\u201A\u201A", "\u201B", "\u201B\u201B",
+)
+
 // quote makes a value safe to put inside a single-quoted PowerShell string.
 func quote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+	return "'" + singleQuotes.Replace(value) + "'"
+}
+
+// exactName is a -DisplayName argument that matches only that name. The
+// parameter takes wildcards, so a rule named * would otherwise have matched
+// - and on removal, deleted - every rule on the machine.
+func exactName(name string) string {
+	return "([WildcardPattern]::Escape(" + quote(name) + "))"
+}
+
+// removeOurs deletes rules with this name that Retune created, and no
+// others: Windows allows several rules to share a display name, and one made
+// by something else on the machine is never Retune's to remove.
+func removeOurs(name string) string {
+	return "Get-NetFirewallRule -DisplayName " + exactName(name) + " -ErrorAction SilentlyContinue | " +
+		"Where-Object { $_.Group -eq " + quote(protocol.FirewallGroup) + " } | Remove-NetFirewallRule"
 }
 
 // lookupScript reads one rule with the filters that hold its port and program,
 // which live on separate objects in the cmdlets' model.
 func lookupScript(name string) string {
-	return `$r = Get-NetFirewallRule -DisplayName ` + quote(name) + ` -ErrorAction SilentlyContinue
+	return `$r = Get-NetFirewallRule -DisplayName ` + exactName(name) + ` -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $r) { '' ; exit 0 }
 $f = $r | Get-NetFirewallPortFilter
 $a = $r | Get-NetFirewallApplicationFilter
@@ -257,12 +279,16 @@ func (h FirewallRuleHandler) Set(ctx context.Context, s protocol.Setting) error 
 			// Never delete a rule something else on the machine put there.
 			return fmt.Errorf("the rule %q was not created by Retune, so it is left alone", s.Name)
 		}
-		_, err := h.run(ctx, "Remove-NetFirewallRule -DisplayName "+quote(s.Name))
+		_, err := h.run(ctx, removeOurs(s.Name))
 		return err
 	}
 
 	if found {
-		if _, err := h.run(ctx, "Remove-NetFirewallRule -DisplayName "+quote(s.Name)); err != nil {
+		if !strings.EqualFold(rule.Group, protocol.FirewallGroup) {
+			// Replacing it would mean deleting a rule something else made.
+			return fmt.Errorf("a rule named %q already exists and was not created by Retune, so it is left alone", s.Name)
+		}
+		if _, err := h.run(ctx, removeOurs(s.Name)); err != nil {
 			return err
 		}
 	}
@@ -298,7 +324,7 @@ func (h FirewallRuleHandler) Revert(ctx context.Context, s protocol.Setting, pri
 		if !strings.EqualFold(rule.Group, protocol.FirewallGroup) {
 			return nil
 		}
-		_, err = h.run(ctx, "Remove-NetFirewallRule -DisplayName "+quote(s.Name))
+		_, err = h.run(ctx, removeOurs(s.Name))
 		return err
 	}
 
@@ -306,7 +332,7 @@ func (h FirewallRuleHandler) Revert(ctx context.Context, s protocol.Setting, pri
 	if err := json.Unmarshal(prior.Data, &was); err != nil {
 		return err
 	}
-	if _, err := h.run(ctx, "Remove-NetFirewallRule -DisplayName "+quote(s.Name)+" -ErrorAction SilentlyContinue"); err != nil {
+	if _, err := h.run(ctx, removeOurs(s.Name)); err != nil {
 		return err
 	}
 	restored := protocol.Setting{
