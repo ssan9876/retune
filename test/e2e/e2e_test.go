@@ -99,18 +99,20 @@ func TestEnrollAndCheckin(t *testing.T) {
 		t.Fatalf("device after checkin: %+v", d1)
 	}
 
-	// Reimage: same hardware enrolls again; old identity is rejected.
+	// Same hardware enrolls again. The earlier identity keeps working: the
+	// serial is the enrolling machine's own claim, so a match must not let
+	// anyone with a token cut another machine off.
 	id2, err := enrollment.Enroll(ctx, opts())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d1, _ = a.Store.Q().GetDevice(ctx, store.DefaultTenantID, uuid.MustParse(id1.DeviceID)); d1.Status != store.DeviceReplaced {
-		t.Fatalf("old device status = %s", d1.Status)
+	if d1, _ = a.Store.Q().GetDevice(ctx, store.DefaultTenantID, uuid.MustParse(id1.DeviceID)); d1.Status != store.DeviceActive {
+		t.Fatalf("the earlier device should stay active, is %s", d1.Status)
+	}
+	if _, err := c1.Checkin(ctx, protocol.CheckinRequest{}); err != nil {
+		t.Fatalf("the earlier identity should still check in: %v", err)
 	}
 	var he *client.HTTPError
-	if _, err := c1.Checkin(ctx, protocol.CheckinRequest{}); !errors.As(err, &he) || he.Status != http.StatusUnauthorized {
-		t.Fatalf("replaced device checkin err = %v", err)
-	}
 
 	// Token had 2 uses; a third enrollment is refused.
 	if _, err := enrollment.Enroll(ctx, opts()); !errors.As(err, &he) || he.Status != http.StatusForbidden {
