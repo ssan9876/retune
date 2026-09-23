@@ -108,7 +108,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	// outlives its request but not the process it runs in.
 	comp := &compliance.Service{Store: st, Now: time.Now, Log: log, Background: ctx}
 	inv := &inventory.Service{Store: st, Now: time.Now, Groups: grp, Compliance: comp, Log: log}
-	cmd := &commands.Service{Store: st, Now: time.Now}
+	cmd := &commands.Service{Store: st, Now: time.Now, ArtifactDir: filepath.Join(cfg.DataDir, "command-artifacts")}
 	scr := &scripts.Service{Store: st, Now: time.Now}
 	prof := &profiles.Service{Store: st, Now: time.Now}
 	appSvc := &apps.Service{Store: st, Now: time.Now, Packages: artifacts.Blobs{Dir: filepath.Join(cfg.DataDir, "app-packages")}}

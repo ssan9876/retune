@@ -3,7 +3,10 @@ package adminapi
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -54,6 +57,12 @@ type queueRequest struct {
 	DelaySeconds   int      `json:"delay_seconds"`
 	Message        string   `json:"message"`
 	TTLHours       int      `json:"ttl_hours"`
+	// collect_logs
+	Hours int `json:"hours"`
+	// wipe
+	Protected       bool   `json:"protected"`
+	ConfirmHostname string `json:"confirm_hostname"`
+	Reason          string `json:"reason"`
 }
 
 func (h *Handler) listCommands(w http.ResponseWriter, r *http.Request) {
@@ -93,6 +102,18 @@ func (h *Handler) queueCommand(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
 		return
 	}
+	if req.Type == protocol.CommandWipe {
+		// A wipe is one device at a time, confirmed by name, by a person:
+		// not something a script with a token does.
+		if caller(r).Token != nil {
+			writeError(w, http.StatusForbidden, "forbidden", "a wipe must be queued by an administrator signed in to the console, not an API token")
+			return
+		}
+		if len(req.DeviceIDs) != 1 {
+			writeError(w, http.StatusBadRequest, "bad_request", "a wipe names exactly one device")
+			return
+		}
+	}
 	actor := caller(r).Admin.Email
 	type queued struct {
 		ID       string `json:"id"`
@@ -117,7 +138,8 @@ func (h *Handler) queueCommand(w http.ResponseWriter, r *http.Request) {
 	for _, deviceID := range ids {
 		c, err := h.Commands.Queue(r.Context(), commands.QueueOptions{
 			DeviceID: deviceID, Type: req.Type, Payload: payload, CreatedBy: actor,
-			TTL: time.Duration(req.TTLHours) * time.Hour,
+			TTL:             time.Duration(req.TTLHours) * time.Hour,
+			ConfirmHostname: req.ConfirmHostname, Reason: req.Reason,
 		})
 		switch {
 		case err == nil:
@@ -146,10 +168,14 @@ func payloadFor(req queueRequest) (json.RawMessage, error) {
 		return json.Marshal(protocol.RunPowerShellPayload{Script: req.Script, TimeoutSeconds: req.TimeoutSeconds})
 	case protocol.CommandRestart:
 		return json.Marshal(protocol.RestartPayload{DelaySeconds: req.DelaySeconds, Message: req.Message})
-	case protocol.CommandRefreshInventory:
+	case protocol.CommandRefreshInventory, protocol.CommandLock:
 		return nil, nil
+	case protocol.CommandCollectLogs:
+		return json.Marshal(protocol.CollectLogsPayload{Hours: req.Hours})
+	case protocol.CommandWipe:
+		return json.Marshal(protocol.WipePayload{Protected: req.Protected})
 	default:
-		return nil, errors.New("type must be run_powershell, restart or refresh_inventory")
+		return nil, errors.New("type must be run_powershell, restart, refresh_inventory, lock, collect_logs or wipe")
 	}
 }
 
@@ -186,4 +212,66 @@ func (h *Handler) getCommand(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, body)
+}
+
+// downloadCommandArtifact streams the file a command produced, such as a
+// collect_logs archive. Logs can hold anything a machine wrote down, so each
+// download is audited.
+func (h *Handler) downloadCommandArtifact(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathUUID(w, r, "no such command")
+	if !ok {
+		return
+	}
+	ctx := r.Context()
+	c, _, err := h.Commands.Get(ctx, id)
+	if errors.Is(err, commands.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "no such command")
+		return
+	}
+	if err != nil {
+		h.internal(w, "get command", err)
+		return
+	}
+	if !h.deviceVisible(w, r, c.DeviceID) {
+		return
+	}
+	f, a, err := h.Commands.OpenArtifact(ctx, id)
+	if errors.Is(err, commands.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "this command has no file")
+		return
+	}
+	if err != nil {
+		h.internal(w, "open command file", err)
+		return
+	}
+	defer f.Close()
+	hostname := "device"
+	if d, err := h.Store.Q().GetDevice(ctx, store.DefaultTenantID, c.DeviceID); err == nil {
+		hostname = d.Hostname
+	}
+	if err := h.Store.Q().InsertAudit(ctx, store.AuditEntry{
+		Actor: caller(r).Admin.Email, Action: "command.artifact_downloaded", TargetKind: "command",
+		TargetID: id.String(), Details: map[string]any{"device_id": c.DeviceID.String(), "hostname": hostname},
+	}); err != nil {
+		h.internal(w, "audit command file download", err)
+		return
+	}
+	name := fmt.Sprintf("logs-%s-%s.zip", safeFileName(hostname), a.CreatedAt.UTC().Format("20060102-150405"))
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Length", strconv.FormatInt(a.SizeBytes, 10))
+	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+	if _, err := io.Copy(w, f); err != nil {
+		h.Log.Warn("command file download ended early", "command_id", id, "error", err)
+	}
+}
+
+// safeFileName keeps letters, digits, dash, dot and underscore.
+func safeFileName(s string) string {
+	b := []byte(s)
+	for i, c := range b {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '.' || c == '_') {
+			b[i] = '_'
+		}
+	}
+	return string(b)
 }

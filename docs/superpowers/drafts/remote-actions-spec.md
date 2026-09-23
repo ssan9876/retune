@@ -1,6 +1,6 @@
 # M13 — Remote actions: lock, collect logs, local admin password rotation, wipe
 
-Status: self-approved overnight under the user's standing directive; decisions ledgered for morning review. Builds on M1–M12. **Nothing in this milestone is ever executed against this machine** — lock, rotation and wipe are built and tested with fakes only.
+Status: lock, collect_logs and wipe built in the remote-actions PR (see "As built"); password rotation is the next PR. Originally self-approved overnight under the user's standing directive; decisions ledgered for morning review. Builds on M1–M12. **Nothing in this milestone is ever executed against this machine** — lock, rotation and wipe are built and tested with fakes only.
 
 ## 1. What and why
 
@@ -49,3 +49,12 @@ All four go through `commands.Service.Queue` validation (typed payload parsing, 
 Executor tests with fakes for each type (including: nobody signed in for lock; escrow failure means the password is never set; wipe reports before invoking). Server tests: payload validation, wipe guardrails (hostname mismatch, missing reason, read-only role), artifact upload gating (wrong device, wrong type, not running, too large, duplicate), password state machine (success → active + supersede; failure → abandoned), reveal audit and refusal when auditing fails, artifact retention sweep. An e2e test drives `collect_logs` and `rotate_local_admin_password` through the real server with a fake agent client. Console tests for each dialog.
 
 No on-machine verification of lock, rotation or wipe. `collect_logs` is read-only and may be verified against the installed agent if an agent is installed for another reason.
+
+## As built (lock, collect_logs, wipe)
+
+- **Split.** Password rotation (§4) is its own backlog item, 5b.
+- **Wipe reports after Windows accepts it, not before.** `MDM_RemoteWipe.doWipeMethod` returns once the reset is scheduled. Reporting first would claim a wipe that might then fail, so the agent reports "wipe started" only after the call succeeds, and a refusal is reported as failed. The reset can still overtake the report.
+- **Wipe from the admin API** also refuses API tokens (403) and requests naming more than one device. The server CLI can wipe with `--confirm-hostname` and `--reason`.
+- **Lock** runs `rundll32 user32.dll,LockWorkStation` through `winsession.RunPowerShell` as the signed-in user; no new session helper was needed.
+- **collect_logs** fits the archive under 50 MiB by leaving out whatever wouldn't fit and listing it in the result, rather than failing. The artifact download needs the admin role (`write`), not `read`: event logs are sensitive.
+- **Retention.** The `command_artifacts` rows cascade from `commands`, so command retention removes them. The `commands.prune_artifacts` sweeper job (hourly) deletes files older than 30 days and any file without a row.

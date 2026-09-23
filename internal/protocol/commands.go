@@ -10,7 +10,36 @@ const (
 	CommandRunPowerShell    = "run_powershell"
 	CommandRestart          = "restart"
 	CommandRefreshInventory = "refresh_inventory"
+	// CommandLock locks the signed-in user's session.
+	CommandLock = "lock"
+	// CommandCollectLogs uploads an archive of the agent's logs and recent
+	// Windows event logs.
+	CommandCollectLogs = "collect_logs"
+	// CommandWipe resets the device to factory settings, removing everything.
+	CommandWipe = "wipe"
 )
+
+// Bounds on collect_logs.
+const (
+	MinLogHours     = 1
+	MaxLogHours     = 168
+	DefaultLogHours = 24
+	// MaxLogArchiveBytes caps the archive an agent may upload.
+	MaxLogArchiveBytes = 50 << 20
+)
+
+// CollectLogsPayload configures CommandCollectLogs.
+type CollectLogsPayload struct {
+	// Hours is how far back the event logs go.
+	Hours int `json:"hours"`
+}
+
+// WipePayload configures CommandWipe.
+type WipePayload struct {
+	// Protected also removes what a plain reset keeps for recovery, and
+	// can leave a device that can't start until it is reinstalled.
+	Protected bool `json:"protected"`
+}
 
 // Terminal result statuses reported by the agent.
 const (

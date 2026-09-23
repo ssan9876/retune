@@ -116,6 +116,32 @@ func (c *Client) SubmitResult(ctx context.Context, id string, r protocol.Command
 	return c.do(ctx, http.MethodPost, "/api/agent/v1/commands/"+url.PathEscape(id)+"/result", r, nil)
 }
 
+// UploadCommandArtifact sends the file a command produced, such as a logs
+// archive, as the raw body. It uses the download client, which has no
+// whole-request deadline, since 50 MiB can take a while on a slow link.
+func (c *Client) UploadCommandArtifact(ctx context.Context, id string, body io.Reader, size int64) error {
+	ctx, cancel := context.WithTimeout(ctx, downloadTimeout)
+	defer cancel()
+	path := "/api/agent/v1/commands/" + url.PathEscape(id) + "/artifact"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+path, body)
+	if err != nil {
+		return err
+	}
+	req.ContentLength = size
+	req.Header.Set("Content-Type", "application/zip")
+	res, err := c.download.Do(req)
+	if err != nil {
+		return fmt.Errorf("POST %s: %w", path, err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusNoContent && res.StatusCode != http.StatusOK {
+		var e protocol.Error
+		_ = json.NewDecoder(io.LimitReader(res.Body, 64<<10)).Decode(&e)
+		return &HTTPError{Status: res.StatusCode, Code: e.Code, Message: e.Message}
+	}
+	return nil
+}
+
 // Renew exchanges a CSR for a fresh client certificate.
 func (c *Client) Renew(ctx context.Context, req protocol.RenewRequest) (protocol.RenewResponse, error) {
 	var resp protocol.RenewResponse

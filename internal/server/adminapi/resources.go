@@ -17,6 +17,7 @@ func (h *Handler) mountResources(mux *http.ServeMux, base string) {
 	h.handle(mux, "GET "+base+"/commands", h.read(h.listCommands))
 	h.handle(mux, "POST "+base+"/commands", h.write(h.queueCommand))
 	h.handle(mux, "GET "+base+"/commands/{id}", h.read(h.getCommand))
+	h.handle(mux, "GET "+base+"/commands/{id}/artifact", h.write(h.downloadCommandArtifact))
 
 	h.handle(mux, "GET "+base+"/tokens", h.readFleet(h.listTokens))
 	h.handle(mux, "POST "+base+"/tokens", h.writeFleet(h.createToken))

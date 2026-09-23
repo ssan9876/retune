@@ -30,6 +30,13 @@ type Executor struct {
 	Restarter        Restarter
 	RefreshInventory func(ctx context.Context) error
 	Now              func() time.Time
+
+	// The remote actions. Each is optional: one left nil fails its command
+	// with a plain reason rather than panicking.
+	Locker   Locker
+	Wiper    Wiper
+	Uploader ArtifactUploader
+	Logs     LogSources
 }
 
 // Execute runs one command.
@@ -44,6 +51,12 @@ func (e *Executor) Execute(ctx context.Context, c protocol.Command) protocol.Com
 		if err := e.RefreshInventory(ctx); err != nil {
 			fail(&res, fmt.Sprintf("refreshing inventory: %v", err))
 		}
+	case protocol.CommandLock:
+		e.lock(ctx, &res)
+	case protocol.CommandCollectLogs:
+		e.collectLogs(ctx, c, &res)
+	case protocol.CommandWipe:
+		e.wipe(ctx, c.Payload, &res)
 	default:
 		fail(&res, fmt.Sprintf("unsupported command type %q", c.Type))
 	}

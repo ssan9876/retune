@@ -17,6 +17,7 @@ const (
 	lockRetention          = 5274006
 	lockAuditStream        = 5274007
 	lockPrunePackages      = 5274008
+	lockPruneArtifacts     = 5274009
 )
 
 // GroupEvaluator recomputes dynamic group membership.
@@ -49,6 +50,21 @@ func PackagePruneJob(p PackagePruner) Job {
 		Name: "apps.prune_packages", LockID: lockPrunePackages, Interval: time.Hour,
 		Run: func(ctx context.Context, _ *store.Queries, now time.Time) (int64, error) {
 			return p.PrunePackages(ctx, now)
+		},
+	}
+}
+
+// ArtifactPruner removes old command files, such as collected logs.
+type ArtifactPruner interface {
+	PruneArtifacts(ctx context.Context, now time.Time) (int64, error)
+}
+
+// ArtifactPruneJob clears out command files past their retention hourly.
+func ArtifactPruneJob(p ArtifactPruner) Job {
+	return Job{
+		Name: "commands.prune_artifacts", LockID: lockPruneArtifacts, Interval: time.Hour,
+		Run: func(ctx context.Context, _ *store.Queries, now time.Time) (int64, error) {
+			return p.PruneArtifacts(ctx, now)
 		},
 	}
 }

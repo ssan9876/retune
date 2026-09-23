@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { DeviceCompliance, DeviceDetail as Detail } from "../api/types";
 import { RecoveryKeys } from "../components/RecoveryKeys";
+import { CollectLogsDialog, WipeDialog } from "../components/RemoteActionDialogs";
 import { RunScriptDialog } from "../components/RunScriptDialog";
 import { SecurityStatus } from "../components/SecurityStatus";
 import { StatusDot } from "../components/StatusDot";
@@ -21,6 +22,8 @@ export default function DeviceDetail() {
   const [error, setError] = useState<unknown>(null);
   const [tab, setTab] = useState<"software" | "commands">("software");
   const [scriptOpen, setScriptOpen] = useState(false);
+  const [logsOpen, setLogsOpen] = useState(false);
+  const [wipeOpen, setWipeOpen] = useState(false);
 
   const load = useCallback(() => {
     api
@@ -51,7 +54,8 @@ export default function DeviceDetail() {
     }
   }
 
-  async function queueSimple(type: string) {
+  async function queueSimple(type: string, confirmation?: string) {
+    if (confirmation && !window.confirm(confirmation)) return;
     try {
       await api.post("/commands", { device_ids: [id], type });
       load();
@@ -156,6 +160,17 @@ export default function DeviceDetail() {
           <Button onClick={() => void queueSimple("refresh_inventory")}>Refresh inventory</Button>
           <Button onClick={() => void queueSimple("restart")}>Restart</Button>
           <Button
+            onClick={() =>
+              void queueSimple("lock", `Lock ${device.hostname}? Whoever is signed in will need their password.`)
+            }
+          >
+            Lock
+          </Button>
+          <Button onClick={() => setLogsOpen(true)}>Collect logs</Button>
+          <Button variant="danger" onClick={() => setWipeOpen(true)}>
+            Wipe…
+          </Button>
+          <Button
             variant="danger"
             onClick={() => void act("retire", `Stop accepting check-ins from ${device.hostname}?`)}
           >
@@ -239,6 +254,14 @@ export default function DeviceDetail() {
         deviceIds={[device.id]}
         open={scriptOpen}
         onClose={() => setScriptOpen(false)}
+        onQueued={load}
+      />
+      <CollectLogsDialog deviceId={device.id} open={logsOpen} onClose={() => setLogsOpen(false)} onQueued={load} />
+      <WipeDialog
+        deviceId={device.id}
+        hostname={device.hostname}
+        open={wipeOpen}
+        onClose={() => setWipeOpen(false)}
         onQueued={load}
       />
     </>

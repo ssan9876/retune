@@ -44,6 +44,7 @@ var expectedRoutes = map[string]string{
 	"GET /api/admin/v1/audit":                                       "fleet",
 	"GET /api/admin/v1/commands":                                    "scoped",
 	"GET /api/admin/v1/commands/{id}":                               "scoped",
+	"GET /api/admin/v1/commands/{id}/artifact":                      "scoped+write",
 	"GET /api/admin/v1/compliance-policies":                         "scoped",
 	"GET /api/admin/v1/compliance-policies/{id}":                    "scoped",
 	"GET /api/admin/v1/compliance-policies/{id}/devices":            "scoped",

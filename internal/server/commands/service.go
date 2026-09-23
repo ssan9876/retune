@@ -33,6 +33,9 @@ const (
 type Service struct {
 	Store *store.Store
 	Now   func() time.Time
+	// ArtifactDir holds files commands produce, such as collect_logs'
+	// archives. Left empty, uploads are refused.
+	ArtifactDir string
 }
 
 // QueueOptions describe a command to queue.
@@ -42,7 +45,19 @@ type QueueOptions struct {
 	Payload   json.RawMessage
 	CreatedBy string
 	TTL       time.Duration
+
+	// ConfirmHostname and Reason are required for a wipe: the hostname the
+	// administrator typed, which must be the device's, and why.
+	ConfirmHostname string
+	Reason          string
 }
+
+// WipeTTL is how long a wipe waits for its device. A lost machine that comes
+// back online a week later must not wipe itself on an order nobody
+// remembers giving.
+const WipeTTL = 24 * time.Hour
+
+const maxWipeReason = 500
 
 // Queue validates and stores a command for an active device.
 func (s *Service) Queue(ctx context.Context, o QueueOptions) (store.Command, error) {
@@ -54,6 +69,19 @@ func (s *Service) Queue(ctx context.Context, o QueueOptions) (store.Command, err
 	ttl := o.TTL
 	if ttl <= 0 {
 		ttl = DefaultTTL
+	}
+	wipe := o.Type == protocol.CommandWipe
+	reason := strings.TrimSpace(o.Reason)
+	if wipe {
+		if reason == "" {
+			return store.Command{}, fmt.Errorf("%w: a wipe needs a reason", ErrBadRequest)
+		}
+		if len(reason) > maxWipeReason {
+			return store.Command{}, fmt.Errorf("%w: the reason must be at most %d characters", ErrBadRequest, maxWipeReason)
+		}
+		if ttl > WipeTTL {
+			ttl = WipeTTL
+		}
 	}
 	id, err := uuid.NewV7()
 	if err != nil {
@@ -74,12 +102,23 @@ func (s *Service) Queue(ctx context.Context, o QueueOptions) (store.Command, err
 		if d.Status != store.DeviceActive {
 			return fmt.Errorf("%w: %s is %s", ErrDeviceNotActive, d.Hostname, d.Status)
 		}
+		if wipe && !strings.EqualFold(strings.TrimSpace(o.ConfirmHostname), d.Hostname) {
+			return fmt.Errorf("%w: to wipe this device, confirm_hostname must be its hostname, %s", ErrBadRequest, d.Hostname)
+		}
 		if err := q.CreateCommand(ctx, c); err != nil {
 			return err
 		}
+		action, details := "command.queued", map[string]any{"device_id": o.DeviceID.String(), "type": o.Type}
+		if wipe {
+			action = "command.wipe_queued"
+			details["hostname"], details["reason"] = d.Hostname, reason
+			var wp protocol.WipePayload
+			_ = json.Unmarshal(payload, &wp) // canonical, from normalizePayload
+			details["protected"] = wp.Protected
+		}
 		return q.InsertAudit(ctx, store.AuditEntry{
-			Actor: o.CreatedBy, Action: "command.queued", TargetKind: "command", TargetID: id.String(),
-			Details: map[string]any{"device_id": o.DeviceID.String(), "type": o.Type},
+			Actor: o.CreatedBy, Action: action, TargetKind: "command", TargetID: id.String(),
+			Details: details,
 		})
 	})
 	if err != nil {
@@ -118,8 +157,26 @@ func normalizePayload(typ string, raw json.RawMessage) ([]byte, error) {
 			return nil, fmt.Errorf("%w: message must be at most %d characters", ErrBadRequest, maxRestartMessage)
 		}
 		return json.Marshal(p)
-	case protocol.CommandRefreshInventory:
+	case protocol.CommandRefreshInventory, protocol.CommandLock:
 		return []byte(`{}`), nil
+	case protocol.CommandCollectLogs:
+		var p protocol.CollectLogsPayload
+		if err := decodePayload(raw, &p); err != nil {
+			return nil, err
+		}
+		if p.Hours == 0 {
+			p.Hours = protocol.DefaultLogHours
+		}
+		if p.Hours < protocol.MinLogHours || p.Hours > protocol.MaxLogHours {
+			return nil, fmt.Errorf("%w: hours must be between %d and %d", ErrBadRequest, protocol.MinLogHours, protocol.MaxLogHours)
+		}
+		return json.Marshal(p)
+	case protocol.CommandWipe:
+		var p protocol.WipePayload
+		if err := decodePayload(raw, &p); err != nil {
+			return nil, err
+		}
+		return json.Marshal(p)
 	default:
 		return nil, fmt.Errorf("%w: unsupported command type %q", ErrBadRequest, typ)
 	}

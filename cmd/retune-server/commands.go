@@ -39,13 +39,17 @@ func commandCmd(ctx context.Context, args []string, getenv func(string) string, 
 func commandQueue(ctx context.Context, args []string, getenv func(string) string, out io.Writer) error {
 	fs := flag.NewFlagSet("command queue", flag.ContinueOnError)
 	device := fs.String("device", "", "device ID")
-	typ := fs.String("type", "", "run_powershell | restart | refresh_inventory")
+	typ := fs.String("type", "", "run_powershell | restart | refresh_inventory | lock | collect_logs | wipe")
 	script := fs.String("script", "", "PowerShell script text")
 	scriptFile := fs.String("script-file", "", "path to a .ps1 file")
 	timeout := fs.Duration("timeout", commands.DefaultScriptTimeout, "script timeout")
 	delay := fs.Duration("delay", time.Minute, "restart delay")
 	message := fs.String("message", "", "restart message shown to the user")
 	ttl := fs.Duration("ttl", commands.DefaultTTL, "how long the command stays deliverable")
+	hours := fs.Int("hours", protocol.DefaultLogHours, "collect_logs: how many hours of event logs")
+	protected := fs.Bool("protected", false, "wipe: also remove what a reset keeps for recovery")
+	confirm := fs.String("confirm-hostname", "", "wipe: the device's hostname, to confirm")
+	reason := fs.String("reason", "", "wipe: why")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -68,9 +72,13 @@ func commandQueue(ctx context.Context, args []string, getenv func(string) string
 		payload, err = json.Marshal(protocol.RunPowerShellPayload{Script: body, TimeoutSeconds: int(timeout.Seconds())})
 	case protocol.CommandRestart:
 		payload, err = json.Marshal(protocol.RestartPayload{DelaySeconds: int(delay.Seconds()), Message: *message})
-	case protocol.CommandRefreshInventory:
+	case protocol.CommandRefreshInventory, protocol.CommandLock:
+	case protocol.CommandCollectLogs:
+		payload, err = json.Marshal(protocol.CollectLogsPayload{Hours: *hours})
+	case protocol.CommandWipe:
+		payload, err = json.Marshal(protocol.WipePayload{Protected: *protected})
 	default:
-		return errors.New("--type must be one of run_powershell, restart, refresh_inventory")
+		return errors.New("--type must be one of run_powershell, restart, refresh_inventory, lock, collect_logs, wipe")
 	}
 	if err != nil {
 		return err
@@ -85,6 +93,7 @@ func commandQueue(ctx context.Context, args []string, getenv func(string) string
 	svc := &commands.Service{Store: st, Now: time.Now}
 	c, err := svc.Queue(ctx, commands.QueueOptions{
 		DeviceID: id, Type: *typ, Payload: payload, CreatedBy: "cli", TTL: *ttl,
+		ConfirmHostname: *confirm, Reason: *reason,
 	})
 	if err != nil {
 		return err

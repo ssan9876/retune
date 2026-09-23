@@ -65,6 +65,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.Handle("PUT /api/agent/v1/inventory", h.requireDevice(h.putInventory))
 	mux.Handle("POST /api/agent/v1/commands/{id}/start", h.requireDevice(h.startCommand))
 	mux.Handle("POST /api/agent/v1/commands/{id}/result", h.requireDevice(h.commandResult))
+	mux.Handle("POST /api/agent/v1/commands/{id}/artifact", h.requireDevice(h.commandArtifact))
 	mux.Handle("GET /api/agent/v1/scripts/{id}/versions/{version}", h.requireDevice(h.scriptVersion))
 	mux.Handle("POST /api/agent/v1/scripts/{id}/runs", h.requireDevice(h.scriptRun))
 	mux.Handle("GET /api/agent/v1/profiles/{id}/versions/{version}", h.requireDevice(h.profileVersion))
@@ -835,6 +836,32 @@ func (h *Handler) escrowBitLocker(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
 	default:
 		h.Log.Error("escrow recovery key", "device_id", a.Device.ID, "volume_id", req.VolumeID, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+	}
+}
+
+// commandArtifact takes the file a running command produced, such as a
+// collect_logs archive, as the raw request body.
+func (h *Handler) commandArtifact(w http.ResponseWriter, r *http.Request) {
+	a := auth(r)
+	id, ok := commandID(w, r)
+	if !ok {
+		return
+	}
+	body := http.MaxBytesReader(w, r.Body, protocol.MaxLogArchiveBytes)
+	err := h.Commands.UploadArtifact(r.Context(), a.Device.ID, id, body)
+	var tooBig *http.MaxBytesError
+	switch {
+	case err == nil:
+		writeNoContent(w)
+	case errors.As(err, &tooBig), errors.Is(err, commands.ErrTooLarge):
+		writeError(w, http.StatusRequestEntityTooLarge, "too_large", "the file is larger than the server accepts")
+	case errors.Is(err, commands.ErrNotFound):
+		writeError(w, http.StatusNotFound, "command_not_found", "unknown command")
+	case errors.Is(err, commands.ErrConflict):
+		writeError(w, http.StatusConflict, "conflict", err.Error())
+	default:
+		h.Log.Error("store command file", "device_id", a.Device.ID, "command_id", id, "error", err)
 		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
 	}
 }

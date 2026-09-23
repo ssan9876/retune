@@ -133,6 +133,12 @@ func Run(ctx context.Context, opts Options) error {
 			Runner:    scriptRunner,
 			Restarter: executor.DefaultRestarter(),
 			Now:       time.Now,
+			Locker:    executor.DefaultLocker(),
+			Wiper:     executor.DefaultWiper(scriptRunner),
+			Logs: executor.LogSources{
+				Dir: opts.DataDir, Channels: []string{"System", "Application"},
+				Events: executor.DefaultEventExporter(),
+			},
 		},
 		Scripts: &scripts.Scheduler{
 			State: st, Runner: scriptRunner, Log: opts.Log, Now: time.Now,

@@ -6,6 +6,7 @@ import type { Command, CommandResult } from "../api/types";
 import { StatusDot } from "../components/StatusDot";
 import { Button, EmptyState, ErrorNote, Spinner } from "../components/ui";
 import { useList } from "../hooks/useList";
+import { useSession } from "../session/SessionContext";
 import { relative } from "./Devices";
 
 interface CommandDetail {
@@ -16,6 +17,7 @@ interface CommandDetail {
 const STATUSES = ["", "queued", "delivered", "running", "succeeded", "failed", "timed_out", "expired"];
 
 export default function Commands() {
+  const { canWrite } = useSession();
   const [params, setParams] = useSearchParams();
   const deviceID = params.get("device_id") ?? "";
   const [status, setStatus] = useState("");
@@ -122,6 +124,13 @@ export default function Commands() {
                 Exit code {open.result.exit_code}
                 {open.result.error ? ` · ${open.result.error}` : ""}
               </p>
+              {open.command.type === "collect_logs" && open.command.status === "succeeded" && canWrite ? (
+                <p>
+                  <a className="button" href={`/api/admin/v1/commands/${open.command.id}/artifact`}>
+                    Download logs
+                  </a>
+                </p>
+              ) : null}
               {open.result.stdout ? (
                 <pre className="mono" style={{ whiteSpace: "pre-wrap" }}>
                   {open.result.stdout}
