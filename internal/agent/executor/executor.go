@@ -37,6 +37,9 @@ type Executor struct {
 	Wiper    Wiper
 	Uploader ArtifactUploader
 	Logs     LogSources
+	// Passwords and Escrower rotate local admin passwords.
+	Passwords PasswordSetter
+	Escrower  PasswordEscrower
 }
 
 // Execute runs one command.
@@ -57,6 +60,8 @@ func (e *Executor) Execute(ctx context.Context, c protocol.Command) protocol.Com
 		e.collectLogs(ctx, c, &res)
 	case protocol.CommandWipe:
 		e.wipe(ctx, c.Payload, &res)
+	case protocol.CommandRotateAdminPassword:
+		e.rotateAdminPassword(ctx, c, &res)
 	default:
 		fail(&res, fmt.Sprintf("unsupported command type %q", c.Type))
 	}

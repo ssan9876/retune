@@ -894,6 +894,7 @@ shows on the **Commands** page.
 | Lock | locks the signed-in user's session; with nobody signed in, it succeeds with nothing to lock |
 | Collect logs | zips the agent's logs, its last update record, and the System and Application event logs from the last 1–168 hours (up to 50 MiB; anything that won't fit is left out and listed) and uploads it |
 | Wipe | resets the device to factory settings through Windows' own MDM remote wipe; a *protected* wipe also removes the recovery partition's data and may leave a device that needs reinstalling |
+| Rotate admin password | sets a new random password on the built-in Administrator (or a named local account), escrowed with the server first |
 
 **Collected logs** are kept on the server in `DATA_DIR/command-artifacts`
 for 30 days, and downloaded from the command's result on the Commands page.
@@ -911,6 +912,39 @@ needs the admin role and is audited (`command.artifact_downloaded`).
 
 The device reports the wipe as started once Windows has accepted it, then
 resets. It won't report again, and will need enrolling anew.
+
+### Local administrator passwords
+
+**Rotate admin password** gives a machine's built-in Administrator account —
+found by its well-known ID, so renaming it doesn't matter — a new random
+password of 20–64 characters (24 by default) that avoids look-alike
+characters and meets any complexity policy. Name another local account with
+`account` on the API or `--account` on the CLI.
+
+The agent **escrows the password with the server before it sets it**: if
+the server can't take it, the old password stays and the command fails. A
+password set but never stored would be one nobody knows. The new password
+is sealed with the server key (`DATA_DIR/secret.key`), bound to its device
+and account, and never appears in a command's output or the audit log.
+
+The device page lists each account's passwords with their state:
+
+| State | Meaning |
+|---|---|
+| In use | the rotation succeeded; this is the current password |
+| Being set | escrowed, and the device hasn't reported yet |
+| Replaced | a later rotation succeeded |
+| Rotation failed | the command failed; the device may still have this password if it failed after setting it |
+
+**Show the password** needs the admin role, a signed-in session (not an API
+token) and a reason, and is recorded as `local_admin_password.revealed`
+with that reason. Every state can be shown, since a rotation that failed
+after setting the password leaves that password in effect. Once you've used
+a password, rotate again so it stops working.
+
+This rotates on request, not on a schedule, and doesn't touch domain
+accounts or Windows LAPS's own policy; it's for machines that aren't using
+Windows LAPS.
 
 ## Overview and export
 

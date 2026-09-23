@@ -29,6 +29,7 @@ import (
 	"retune/internal/server/enroll"
 	"retune/internal/server/groups"
 	"retune/internal/server/inventory"
+	"retune/internal/server/laps"
 	"retune/internal/server/profiles"
 	"retune/internal/server/scripts"
 	"retune/internal/server/secrets"
@@ -125,6 +126,8 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		return nil, err
 	}
 	locker := &bitlocker.Service{Store: st, Key: secretKey, Now: time.Now}
+	adminPasswords := &laps.Service{Store: st, Key: secretKey, Now: time.Now}
+	cmd.OnComplete = laps.Settle
 	// Alerts share the key that protects escrowed recovery keys: a webhook's
 	// shared secret is the same kind of thing, something the server must be
 	// able to use and nobody should be able to read back out of the console.
@@ -147,7 +150,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		log.Info("sealed authenticator secrets stored by an earlier version", "count", n)
 	}
 	agent := &agentapi.Handler{
-		Enroll: svc, Inventory: inv, Commands: cmd, Scripts: scr, Profiles: prof, Apps: appSvc, AgentVersions: agentVers, BitLocker: locker, Store: st,
+		Enroll: svc, Inventory: inv, Commands: cmd, Scripts: scr, Profiles: prof, Apps: appSvc, AgentVersions: agentVers, BitLocker: locker, LAPS: adminPasswords, Store: st,
 		Now: time.Now, CheckinInterval: cfg.CheckinInterval, Log: log,
 		ClientCert: clientCert,
 	}
@@ -162,7 +165,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 			"issuer", cfg.OIDC.Issuer, "redirect_url", sso.RedirectURL)
 	}
 	admin := &adminapi.Handler{
-		Auth: authSvc, Store: st, Commands: cmd, Devices: dev, Enroll: svc, Groups: grp, Scripts: scr, Profiles: prof, Apps: appSvc, Compliance: comp, AgentVersions: agentVers, BitLocker: locker, Alerts: alerter,
+		Auth: authSvc, Store: st, Commands: cmd, Devices: dev, Enroll: svc, Groups: grp, Scripts: scr, Profiles: prof, Apps: appSvc, Compliance: comp, AgentVersions: agentVers, BitLocker: locker, LAPS: adminPasswords, Alerts: alerter,
 		SSO: sso, SSOName: cfg.OIDC.DisplayName,
 		Now: time.Now, Log: log,
 	}

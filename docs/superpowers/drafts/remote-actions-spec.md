@@ -58,3 +58,12 @@ No on-machine verification of lock, rotation or wipe. `collect_logs` is read-onl
 - **Lock** runs `rundll32 user32.dll,LockWorkStation` through `winsession.RunPowerShell` as the signed-in user; no new session helper was needed.
 - **collect_logs** fits the archive under 50 MiB by leaving out whatever wouldn't fit and listing it in the result, rather than failing. The artifact download needs the admin role (`write`), not `read`: event logs are sensitive.
 - **Retention.** The `command_artifacts` rows cascade from `commands`, so command retention removes them. The `commands.prune_artifacts` sweeper job (hourly) deletes files older than 30 days and any file without a row.
+
+## As built (password rotation)
+
+- **Every state can be revealed**, not only active and superseded ones. The agent escrows, then sets, then reports. If it fails after setting, or restarts and reports the command failed, the password in effect is the one on an abandoned row. Refusing to reveal it would lock the account for good. The console labels each state instead ("Rotation failed; may not be in use").
+- **Settling** runs as a `commands.Service.OnComplete` hook, inside the transaction that records the result: `laps.Settle` turns the command's pending row active and supersedes the account's previous active one (matching the account case-insensitively), or marks the row abandoned.
+- **Escrow** is accepted only for the device's own `rotate_local_admin_password` command while it is running. A retried escrow replaces the pending row for that command. `command_id` has no foreign key, because command retention may delete the command while its password still matters.
+- **Sealing context** is `admin-password:<device>/<ACCOUNT>`.
+- **The built-in Administrator** is found as the machine SID plus `-500` via `LookupSID` / `LookupAccount`. The password is set with `NetUserSetInfo` level 1003 in process, never on a command line.
+- **Reveal** requires a reason (up to 500 characters) and a session (`writeSession`), so API tokens can't reveal.

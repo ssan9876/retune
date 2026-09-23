@@ -117,6 +117,9 @@ func New(cfg Config) (*Session, error) {
 	if cfg.Executor.Uploader == nil {
 		cfg.Executor.Uploader = artifactClient{s}
 	}
+	if cfg.Executor.Escrower == nil {
+		cfg.Executor.Escrower = artifactClient{s}
+	}
 	if cfg.Scripts != nil && cfg.Scripts.Client == nil {
 		cfg.Scripts.Client = scriptClient{s}
 	}
@@ -479,6 +482,10 @@ func (scriptSyncer) Name() string     { return "assigned scripts" }
 // artifactClient uploads command files through whichever client is current,
 // so a certificate renewed mid-command is used.
 type artifactClient struct{ s *Session }
+
+func (c artifactClient) EscrowAdminPassword(ctx context.Context, req protocol.AdminPasswordEscrowRequest) error {
+	return c.s.currentClient().EscrowAdminPassword(ctx, req)
+}
 
 func (c artifactClient) UploadCommandArtifact(ctx context.Context, id string, body io.Reader, size int64) error {
 	return c.s.currentClient().UploadCommandArtifact(ctx, id, body, size)

@@ -36,6 +36,9 @@ type Service struct {
 	// ArtifactDir holds files commands produce, such as collect_logs'
 	// archives. Left empty, uploads are refused.
 	ArtifactDir string
+	// OnComplete, if set, runs in the transaction that records a command's
+	// result, for whatever depends on how a command ended.
+	OnComplete func(ctx context.Context, q *store.Queries, c store.Command, status string, at time.Time) error
 }
 
 // QueueOptions describe a command to queue.
@@ -177,6 +180,23 @@ func normalizePayload(typ string, raw json.RawMessage) ([]byte, error) {
 			return nil, err
 		}
 		return json.Marshal(p)
+	case protocol.CommandRotateAdminPassword:
+		var p protocol.RotateAdminPasswordPayload
+		if err := decodePayload(raw, &p); err != nil {
+			return nil, err
+		}
+		p.Account = strings.TrimSpace(p.Account)
+		if len(p.Account) > 20 || strings.ContainsAny(p.Account, `"/\[]:;|=,+*?<>@`) {
+			return nil, fmt.Errorf("%w: account must be a local account name, up to 20 characters", ErrBadRequest)
+		}
+		if p.Length == 0 {
+			p.Length = protocol.DefaultAdminPasswordLength
+		}
+		if p.Length < protocol.MinAdminPasswordLength || p.Length > protocol.MaxAdminPasswordLength {
+			return nil, fmt.Errorf("%w: length must be between %d and %d", ErrBadRequest,
+				protocol.MinAdminPasswordLength, protocol.MaxAdminPasswordLength)
+		}
+		return json.Marshal(p)
 	default:
 		return nil, fmt.Errorf("%w: unsupported command type %q", ErrBadRequest, typ)
 	}
@@ -265,12 +285,22 @@ func (s *Service) Complete(ctx context.Context, deviceID, commandID uuid.UUID, r
 			}
 			return nil // already terminal: a duplicate submission
 		}
-		return q.InsertCommandResult(ctx, store.CommandResult{
+		if err := q.InsertCommandResult(ctx, store.CommandResult{
 			CommandID: commandID, ExitCode: r.ExitCode,
 			Stdout: stdout, Stderr: stderr,
 			StdoutTruncated: stdoutTruncated, StderrTruncated: stderrTruncated,
 			Error: errText, StartedAt: r.StartedAt, FinishedAt: r.FinishedAt,
-		})
+		}); err != nil {
+			return err
+		}
+		if s.OnComplete == nil {
+			return nil
+		}
+		c, err := q.GetCommand(ctx, store.DefaultTenantID, commandID)
+		if err != nil {
+			return err
+		}
+		return s.OnComplete(ctx, q, c, r.Status, now)
 	})
 }
 

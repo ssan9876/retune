@@ -23,6 +23,7 @@ import (
 	"retune/internal/server/commands"
 	"retune/internal/server/enroll"
 	"retune/internal/server/inventory"
+	"retune/internal/server/laps"
 	"retune/internal/server/profiles"
 	"retune/internal/server/scripts"
 	"retune/internal/server/store"
@@ -38,6 +39,7 @@ type Handler struct {
 	Apps            *apps.Service
 	AgentVersions   *agentversions.Service
 	BitLocker       *bitlocker.Service
+	LAPS            *laps.Service
 	Store           *store.Store
 	Now             func() time.Time
 	CheckinInterval time.Duration
@@ -78,6 +80,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.Handle("POST /api/agent/v1/agent-versions/{id}/result", h.requireDevice(h.agentVersionResult))
 	mux.Handle("GET /api/agent/v1/bitlocker", h.requireDevice(h.bitlockerStatus))
 	mux.Handle("POST /api/agent/v1/bitlocker", h.requireDevice(h.escrowBitLocker))
+	mux.Handle("POST /api/agent/v1/admin-passwords", h.requireDevice(h.escrowAdminPassword))
 	return mux
 }
 
@@ -862,6 +865,34 @@ func (h *Handler) commandArtifact(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "conflict", err.Error())
 	default:
 		h.Log.Error("store command file", "device_id", a.Device.ID, "command_id", id, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+	}
+}
+
+// escrowAdminPassword stores the password a device is about to set on a
+// local administrator account. The password is never logged.
+func (h *Handler) escrowAdminPassword(w http.ResponseWriter, r *http.Request) {
+	a := auth(r)
+	var req protocol.AdminPasswordEscrowRequest
+	if !decode(w, r, &req, maxCheckinBody) {
+		return
+	}
+	if h.LAPS == nil {
+		writeError(w, http.StatusNotFound, "not_found", "this server doesn't take admin passwords")
+		return
+	}
+	err := h.LAPS.Escrow(r.Context(), a.Device.ID, req)
+	switch {
+	case err == nil:
+		writeNoContent(w)
+	case errors.Is(err, laps.ErrBadRequest):
+		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
+	case errors.Is(err, laps.ErrNotFound):
+		writeError(w, http.StatusNotFound, "command_not_found", "unknown command")
+	case errors.Is(err, laps.ErrConflict):
+		writeError(w, http.StatusConflict, "conflict", err.Error())
+	default:
+		h.Log.Error("escrow admin password", "device_id", a.Device.ID, "command_id", req.CommandID, "error", err)
 		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
 	}
 }

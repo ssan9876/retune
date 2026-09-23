@@ -17,7 +17,34 @@ const (
 	CommandCollectLogs = "collect_logs"
 	// CommandWipe resets the device to factory settings, removing everything.
 	CommandWipe = "wipe"
+	// CommandRotateAdminPassword sets a new random password on a local
+	// administrator account, escrowing it with the server first.
+	CommandRotateAdminPassword = "rotate_local_admin_password"
 )
+
+// Bounds on rotate_local_admin_password.
+const (
+	MinAdminPasswordLength     = 20
+	MaxAdminPasswordLength     = 64
+	DefaultAdminPasswordLength = 24
+)
+
+// RotateAdminPasswordPayload configures CommandRotateAdminPassword.
+type RotateAdminPasswordPayload struct {
+	// Account is a local account name; empty means the built-in
+	// Administrator (RID 500), whatever it has been renamed to.
+	Account string `json:"account,omitempty"`
+	Length  int    `json:"length"`
+}
+
+// AdminPasswordEscrowRequest is POSTed to /api/agent/v1/admin-passwords
+// before the password is set: a password set but never escrowed would lock
+// everyone out of the account.
+type AdminPasswordEscrowRequest struct {
+	CommandID string `json:"command_id"`
+	Account   string `json:"account"`
+	Password  string `json:"password"`
+}
 
 // Bounds on collect_logs.
 const (

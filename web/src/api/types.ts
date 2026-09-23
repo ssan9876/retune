@@ -307,6 +307,17 @@ export interface BitLockerKey {
   updated_at: string;
 }
 
+export interface AdminPassword {
+  id: string;
+  device_id: string;
+  hostname: string;
+  account: string;
+  state: "pending" | "active" | "superseded" | "abandoned";
+  command_id: string;
+  created_at: string;
+  activated_at?: string;
+}
+
 export interface Profile {
   id: string;
   name: string;

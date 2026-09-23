@@ -39,7 +39,7 @@ func commandCmd(ctx context.Context, args []string, getenv func(string) string, 
 func commandQueue(ctx context.Context, args []string, getenv func(string) string, out io.Writer) error {
 	fs := flag.NewFlagSet("command queue", flag.ContinueOnError)
 	device := fs.String("device", "", "device ID")
-	typ := fs.String("type", "", "run_powershell | restart | refresh_inventory | lock | collect_logs | wipe")
+	typ := fs.String("type", "", "run_powershell | restart | refresh_inventory | lock | collect_logs | wipe | rotate_local_admin_password")
 	script := fs.String("script", "", "PowerShell script text")
 	scriptFile := fs.String("script-file", "", "path to a .ps1 file")
 	timeout := fs.Duration("timeout", commands.DefaultScriptTimeout, "script timeout")
@@ -50,6 +50,8 @@ func commandQueue(ctx context.Context, args []string, getenv func(string) string
 	protected := fs.Bool("protected", false, "wipe: also remove what a reset keeps for recovery")
 	confirm := fs.String("confirm-hostname", "", "wipe: the device's hostname, to confirm")
 	reason := fs.String("reason", "", "wipe: why")
+	account := fs.String("account", "", "rotate_local_admin_password: the account; empty for the built-in Administrator")
+	length := fs.Int("length", protocol.DefaultAdminPasswordLength, "rotate_local_admin_password: password length")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -77,8 +79,10 @@ func commandQueue(ctx context.Context, args []string, getenv func(string) string
 		payload, err = json.Marshal(protocol.CollectLogsPayload{Hours: *hours})
 	case protocol.CommandWipe:
 		payload, err = json.Marshal(protocol.WipePayload{Protected: *protected})
+	case protocol.CommandRotateAdminPassword:
+		payload, err = json.Marshal(protocol.RotateAdminPasswordPayload{Account: *account, Length: *length})
 	default:
-		return errors.New("--type must be one of run_powershell, restart, refresh_inventory, lock, collect_logs, wipe")
+		return errors.New("--type must be one of run_powershell, restart, refresh_inventory, lock, collect_logs, wipe, rotate_local_admin_password")
 	}
 	if err != nil {
 		return err
