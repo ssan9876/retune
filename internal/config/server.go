@@ -87,7 +87,18 @@ type OIDCConfig struct {
 	// DisableLocalLogin refuses password sign-in, leaving SSO as the only
 	// way into the console. bootstrap-admin still works from the command line.
 	DisableLocalLogin bool
+	// ScopeGroups maps an identity-provider group to the Retune device groups
+	// its members may manage. When set, every SSO sign-in sets the person's
+	// scope from their groups, and the console can no longer change it.
+	ScopeGroups map[string][]string
+	// FleetGroups are the identity-provider groups whose members manage the
+	// whole fleet when ScopeGroups is set.
+	FleetGroups []string
 }
+
+// ManagesScopes reports whether the identity provider decides SSO accounts'
+// device scopes.
+func (o OIDCConfig) ManagesScopes() bool { return len(o.ScopeGroups) > 0 }
 
 // Enabled reports whether SSO is configured.
 func (o OIDCConfig) Enabled() bool { return o.Issuer != "" }
@@ -347,6 +358,14 @@ func loadOIDC(lookup func(string) string) (OIDCConfig, error) {
 		ReadOnlyGroups: splitList(lookup("OIDC_READONLY_GROUPS")),
 		DisplayName:    or(strings.TrimSpace(lookup("OIDC_DISPLAY_NAME")), "Sign in with SSO"),
 	}
+	scopes, err := parseScopeGroups(lookup("OIDC_SCOPE_GROUPS"))
+	if err != nil {
+		return OIDCConfig{}, err
+	}
+	o.ScopeGroups, o.FleetGroups = scopes, splitList(lookup("OIDC_FLEET_GROUPS"))
+	if len(o.FleetGroups) > 0 && len(o.ScopeGroups) == 0 {
+		return OIDCConfig{}, errors.New("OIDC_FLEET_GROUPS only means something with OIDC_SCOPE_GROUPS")
+	}
 	if v := lookup("OIDC_DISABLE_LOCAL_LOGIN"); v != "" {
 		b, err := strconv.ParseBool(v)
 		if err != nil {
@@ -365,6 +384,9 @@ func loadOIDC(lookup func(string) string) (OIDCConfig, error) {
 		if o.DisableLocalLogin {
 			return OIDCConfig{}, errors.New("OIDC_DISABLE_LOCAL_LOGIN needs SSO configured, or nobody could sign in")
 		}
+		if o.ManagesScopes() {
+			return OIDCConfig{}, errors.New("OIDC_SCOPE_GROUPS needs SSO configured")
+		}
 		return OIDCConfig{DisplayName: o.DisplayName, GroupsClaim: o.GroupsClaim}, nil
 	case set < 3:
 		return OIDCConfig{}, errors.New("SSO needs all of OIDC_ISSUER, OIDC_CLIENT_ID and OIDC_CLIENT_SECRET")
@@ -381,6 +403,29 @@ func loadOIDC(lookup func(string) string) (OIDCConfig, error) {
 		return OIDCConfig{}, errors.New("SSO needs OIDC_ADMIN_GROUPS or OIDC_READONLY_GROUPS, or nobody could ever be let in")
 	}
 	return o, nil
+}
+
+// parseScopeGroups reads "idp-group=Device group;other=Another, Third". Pairs
+// are separated by semicolons, because device group names may contain commas;
+// one identity-provider group may map to several device groups by repeating
+// it.
+func parseScopeGroups(s string) (map[string][]string, error) {
+	if strings.TrimSpace(s) == "" {
+		return nil, nil
+	}
+	out := map[string][]string{}
+	for _, pair := range strings.Split(s, ";") {
+		if strings.TrimSpace(pair) == "" {
+			continue
+		}
+		idp, group, ok := strings.Cut(pair, "=")
+		idp, group = strings.TrimSpace(idp), strings.TrimSpace(group)
+		if !ok || idp == "" || group == "" {
+			return nil, fmt.Errorf("OIDC_SCOPE_GROUPS: %q should look like idp-group=Device group", strings.TrimSpace(pair))
+		}
+		out[idp] = append(out[idp], group)
+	}
+	return out, nil
 }
 
 func splitList(s string) []string {

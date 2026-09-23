@@ -362,3 +362,50 @@ func TestAuditStream(t *testing.T) {
 		}
 	}
 }
+
+func TestOIDCScopeGroups(t *testing.T) {
+	load := func(extra map[string]string) (Server, error) {
+		m := map[string]string{
+			"DATABASE_URL": "postgres://x", "PUBLIC_URL": "https://h",
+			"OIDC_ISSUER": "https://idp.example.com", "OIDC_CLIENT_ID": "a", "OIDC_CLIENT_SECRET": "b",
+			"OIDC_ADMIN_GROUPS": "it-admins",
+		}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return LoadServer(env(m))
+	}
+	c, err := load(map[string]string{
+		"OIDC_SCOPE_GROUPS": " helpdesk-emea = EMEA laptops, desktops ; helpdesk-emea=Kiosks;helpdesk-us=US laptops; ",
+		"OIDC_FLEET_GROUPS": "it-admins",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := c.OIDC
+	emea := o.ScopeGroups["helpdesk-emea"]
+	if !o.ManagesScopes() || len(emea) != 2 || emea[0] != "EMEA laptops, desktops" || emea[1] != "Kiosks" ||
+		len(o.ScopeGroups["helpdesk-us"]) != 1 || len(o.FleetGroups) != 1 {
+		t.Fatalf("config = %+v", o)
+	}
+	if c, err := load(nil); err != nil || c.OIDC.ManagesScopes() {
+		t.Fatalf("no mapping: %+v %v", c.OIDC, err)
+	}
+
+	for name, tc := range map[string]struct {
+		set     map[string]string
+		mention string
+	}{
+		"no equals":         {map[string]string{"OIDC_SCOPE_GROUPS": "helpdesk-emea"}, "idp-group=Device group"},
+		"empty group":       {map[string]string{"OIDC_SCOPE_GROUPS": "helpdesk-emea="}, "idp-group=Device group"},
+		"fleet without map": {map[string]string{"OIDC_FLEET_GROUPS": "it-admins"}, "OIDC_SCOPE_GROUPS"},
+		"map without SSO": {map[string]string{
+			"OIDC_ISSUER": "", "OIDC_CLIENT_ID": "", "OIDC_CLIENT_SECRET": "", "OIDC_SCOPE_GROUPS": "a=b",
+		}, "needs SSO"},
+	} {
+		if _, err := load(tc.set); err == nil || !strings.Contains(err.Error(), tc.mention) {
+			t.Errorf("%s: want an error mentioning %q, got %v", name, tc.mention, err)
+		}
+	}
+}
+

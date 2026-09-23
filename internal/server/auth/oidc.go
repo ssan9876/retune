@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -234,8 +235,42 @@ func (o *OIDC) Finish(ctx context.Context, cookie, state, code string) (store.Ad
 	if email == "" {
 		return store.Admin{}, refuse(SSONoEmail, "the ID token has neither email nor preferred_username")
 	}
-	role := o.role(listClaim(claims, o.Config.GroupsClaim))
-	return o.signIn(ctx, idToken.Issuer, idToken.Subject, email, role)
+	groups := listClaim(claims, o.Config.GroupsClaim)
+	return o.signIn(ctx, idToken.Issuer, idToken.Subject, email, o.role(groups), o.scope(groups))
+}
+
+// ssoScope is what a person's groups say about which devices they may
+// manage, when the identity provider decides that.
+type ssoScope struct {
+	managed bool     // the provider decides scopes at all
+	fleet   bool     // the whole fleet
+	groups  []string // otherwise, these Retune device groups by name
+}
+
+// scope maps the groups a person is in to the device groups they manage.
+// A fleet group wins; otherwise it is every device group their groups map
+// to, and none at all is a refusal, never the whole fleet by default.
+func (o *OIDC) scope(groups []string) ssoScope {
+	if !o.Config.ManagesScopes() {
+		return ssoScope{}
+	}
+	for _, g := range groups {
+		if slices.Contains(o.Config.FleetGroups, g) {
+			return ssoScope{managed: true, fleet: true}
+		}
+	}
+	seen := map[string]bool{}
+	var names []string
+	for _, g := range groups {
+		for _, name := range o.Config.ScopeGroups[g] {
+			if !seen[strings.ToLower(name)] {
+				seen[strings.ToLower(name)] = true
+				names = append(names, name)
+			}
+		}
+	}
+	sort.Strings(names)
+	return ssoScope{managed: true, groups: names}
 }
 
 // role maps the groups a person is in to a role: admin wins over read-only,
@@ -257,7 +292,7 @@ func (o *OIDC) role(groups []string) string {
 // signIn finds or creates the account and records the sign-in. A refusal is
 // still written to the audit log, so the transaction returns it as a value
 // and it becomes an error only once the audit entry has committed.
-func (o *OIDC) signIn(ctx context.Context, issuer, subject, email, role string) (store.Admin, error) {
+func (o *OIDC) signIn(ctx context.Context, issuer, subject, email, role string, scope ssoScope) (store.Admin, error) {
 	now := o.now()
 	var admin store.Admin
 	var refusal error
@@ -289,6 +324,14 @@ func (o *OIDC) signIn(ctx context.Context, issuer, subject, email, role string) 
 				}
 			}
 			return refused(q, SSOUnauthorized, "not in any group mapped to a Retune role", target)
+		}
+		if scope.managed && !scope.fleet && len(scope.groups) == 0 {
+			if found {
+				if err := q.DeleteSessionsForAdmin(ctx, existing.ID); err != nil {
+					return err
+				}
+			}
+			return refused(q, SSOUnauthorized, "not in any group mapped to devices", target)
 		}
 		if found && existing.DisabledAt != nil {
 			return refused(q, SSODisabled, "the account is disabled in Retune", target)
@@ -335,6 +378,11 @@ func (o *OIDC) signIn(ctx context.Context, issuer, subject, email, role string) 
 				return err
 			}
 		}
+		if scope.managed {
+			if err := applySSOScope(ctx, q, admin, scope, email); err != nil {
+				return err
+			}
+		}
 		if err := q.RecordAdminLogin(ctx, store.DefaultTenantID, admin.ID, now); err != nil {
 			return err
 		}
@@ -374,4 +422,65 @@ func listClaim(claims map[string]any, name string) []string {
 		return out
 	}
 	return nil
+}
+
+// applySSOScope sets an SSO account's device scope from its groups, and
+// records a change. Device groups are named in the configuration; one that
+// doesn't exist is skipped and noted, so a typo narrows access rather than
+// widening it.
+func applySSOScope(ctx context.Context, q *store.Queries, admin store.Admin, scope ssoScope, actor string) error {
+	var want store.DeviceScope // nil: the whole fleet
+	var names, missing []string
+	if !scope.fleet {
+		want = store.DeviceScope{}
+		for _, name := range scope.groups {
+			g, err := q.GetGroupByName(ctx, name)
+			if errors.Is(err, store.ErrNotFound) {
+				missing = append(missing, name)
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			want = append(want, g.ID)
+			names = append(names, g.Name)
+		}
+	}
+	have, err := q.AdminScope(ctx, store.DefaultTenantID, admin.ID)
+	if err != nil {
+		return err
+	}
+	if sameScope(have, want) {
+		return nil
+	}
+	if err := q.SetAdminScope(ctx, store.DefaultTenantID, admin.ID, want); err != nil {
+		return err
+	}
+	details := map[string]any{"email": admin.Email, "scoped": want != nil, "method": store.AuthOIDC}
+	if want != nil {
+		details["groups"] = names
+	}
+	if len(missing) > 0 {
+		details["unknown_groups"] = missing
+	}
+	return q.InsertAudit(ctx, store.AuditEntry{
+		Actor: actor, Action: "admin.scope_changed", TargetKind: "admin", TargetID: admin.ID.String(),
+		Details: details,
+	})
+}
+
+func sameScope(a, b store.DeviceScope) bool {
+	if (a == nil) != (b == nil) || len(a) != len(b) {
+		return false
+	}
+	set := map[uuid.UUID]bool{}
+	for _, id := range a {
+		set[id] = true
+	}
+	for _, id := range b {
+		if !set[id] {
+			return false
+		}
+	}
+	return true
 }

@@ -103,6 +103,8 @@ session_ttl_hours: 12
 | `audit_webhook_header` | — | one header sent with each webhook post, as `Name: value`, e.g. an `Authorization` header |
 | `oidc_issuer`, `oidc_client_id`, `oidc_client_secret` | — | turn on single sign-on; all three or none |
 | `oidc_admin_groups`, `oidc_readonly_groups` | — | comma-separated group names that grant each role |
+| `oidc_scope_groups` | — | identity-provider groups mapped to the device groups their members manage, as `group=Device group;other=Another` |
+| `oidc_fleet_groups` | — | with `oidc_scope_groups`, the identity-provider groups whose members manage the whole fleet |
 | `oidc_groups_claim` | `groups` | the ID token claim that lists a person's groups |
 | `oidc_display_name` | `Sign in with SSO` | the sign-in button's text |
 | `oidc_disable_local_login` | `false` | refuse password sign-in, leaving SSO the only way in |
@@ -239,6 +241,32 @@ the whole fleet — groups themselves, enrollment tokens, alerting, the audit lo
 admins and API tokens — is refused. An API token acts with its maker's limits as
 they are now. Retune never lets the last admin who can manage the whole fleet be
 limited or disabled.
+
+### From the identity provider
+
+With single sign-on, the identity provider can decide this instead of the
+console. Map its groups to Retune device groups, by name:
+
+```
+OIDC_SCOPE_GROUPS=helpdesk-emea=EMEA laptops;helpdesk-emea=EMEA kiosks;helpdesk-us=US laptops
+OIDC_FLEET_GROUPS=it-admins
+```
+
+Pairs are separated by semicolons, since a device group's name may contain a
+comma; repeat a group to give it several device groups. At every sign-in, an
+SSO account's devices are set from the groups it is in now:
+
+- in any `OIDC_FLEET_GROUPS` group: the whole fleet;
+- otherwise, every device group its groups map to;
+- in none of them: sign-in is refused, and its open sessions end — never the
+  whole fleet by default.
+
+A change is written to the audit log as `admin.scope_changed`. A mapped device
+group that doesn't exist is skipped and named there (`unknown_groups`), so a
+typo narrows access rather than widening it. While the mapping is set, an SSO
+account's devices can't be changed on **Admins**; accounts that sign in with a
+password are still limited there as before. Like a role, a change at the
+provider takes effect at the person's next sign-in.
 
 ## API tokens
 

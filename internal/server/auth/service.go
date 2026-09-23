@@ -83,6 +83,9 @@ type Service struct {
 	Issuer     string
 	// LocalLoginDisabled refuses every password sign-in.
 	LocalLoginDisabled bool
+	// SSOScopesManaged says the identity provider sets SSO accounts'
+	// device scopes at each sign-in, so they can't be edited here.
+	SSOScopesManaged bool
 	// Key seals authenticator secrets at rest. Turning TOTP on, and signing in
 	// with it, need it.
 	Key *secrets.Key
@@ -307,6 +310,9 @@ func (s *Service) SetScope(ctx context.Context, id uuid.UUID, groups []uuid.UUID
 		}
 		if err != nil {
 			return err
+		}
+		if s.SSOScopesManaged && admin.AuthSource == store.AuthOIDC {
+			return fmt.Errorf("%w: this account's devices come from its groups in the identity provider", ErrBadRequest)
 		}
 		if groups != nil && isFleetAdmin(admin) {
 			all, err := q.ListAdmins(ctx)
