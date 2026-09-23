@@ -26,18 +26,21 @@ var ErrBadRules = errors.New("invalid rules")
 
 // The rule types: twelve from M12's design, and three from M15's.
 const (
-	RuleOSBuildMin        = "os_build_min"
-	RuleAgentVersionMin   = "agent_version_min"
-	RuleBitLocker         = "bitlocker"
-	RuleTPM               = "tpm"
-	RuleCheckedInWithin   = "checked_in_within"
-	RuleInventoryWithin   = "inventory_within"
-	RuleUpdatesWithin     = "updates_within"
-	RuleNoPendingReboot   = "no_pending_reboot"
-	RuleMaxLocalAdmins    = "max_local_admins"
-	RuleForbiddenSoftware = "forbidden_software"
-	RuleRequiredSoftware  = "required_software"
-	RuleProfileApplied    = "profile_applied"
+	RuleOSBuildMin = "os_build_min"
+	// RuleOSBuildMinPerRelease is os_build_min for a mixed fleet: a minimum
+	// patched build for each feature release, such as 26100.2605 for 24H2.
+	RuleOSBuildMinPerRelease = "os_build_min_per_release"
+	RuleAgentVersionMin      = "agent_version_min"
+	RuleBitLocker            = "bitlocker"
+	RuleTPM                  = "tpm"
+	RuleCheckedInWithin      = "checked_in_within"
+	RuleInventoryWithin      = "inventory_within"
+	RuleUpdatesWithin        = "updates_within"
+	RuleNoPendingReboot      = "no_pending_reboot"
+	RuleMaxLocalAdmins       = "max_local_admins"
+	RuleForbiddenSoftware    = "forbidden_software"
+	RuleRequiredSoftware     = "required_software"
+	RuleProfileApplied       = "profile_applied"
 
 	RuleDefenderRealtime         = "defender_realtime"
 	RuleDefenderSignaturesWithin = "defender_signatures_within"
@@ -95,7 +98,10 @@ const (
 type Rule struct {
 	Type string
 
-	Build      string    // os_build_min
+	Build string // os_build_min
+	// Minimums maps a feature release's base build to the lowest patched
+	// build accepted on it, for os_build_min_per_release.
+	Minimums   map[string]string
 	Version    string    // agent_version_min
 	Volumes    string    // bitlocker
 	MinVersion string    // tpm, optional
@@ -143,6 +149,8 @@ func allowedFields(ruleType string) (fields map[string]bool, ok bool) {
 	switch ruleType {
 	case RuleOSBuildMin:
 		return one("build"), true
+	case RuleOSBuildMinPerRelease:
+		return one("minimums"), true
 	case RuleAgentVersionMin:
 		return one("version"), true
 	case RuleBitLocker:
@@ -213,6 +221,28 @@ func parseRule(raw json.RawMessage) (Rule, error) {
 			return Rule{}, fmt.Errorf("%w: build must be digits, optionally dotted, not %q", ErrBadRules, build)
 		}
 		return Rule{Type: ruleType, Build: build}, nil
+
+	case RuleOSBuildMinPerRelease:
+		raw, ok := m["minimums"]
+		if !ok {
+			return Rule{}, fmt.Errorf("%w: minimums is required", ErrBadRules)
+		}
+		var minimums map[string]string
+		if err := json.Unmarshal(raw, &minimums); err != nil {
+			return Rule{}, fmt.Errorf("%w: minimums must map a base build to a minimum build: %v", ErrBadRules, err)
+		}
+		if len(minimums) < 1 || len(minimums) > 20 {
+			return Rule{}, fmt.Errorf("%w: minimums needs between 1 and 20 releases", ErrBadRules)
+		}
+		for base, min := range minimums {
+			parts, ok := splitDotted(min)
+			if !ok || len(parts) != 2 || !dottedNumeric(base) || strings.Contains(base, ".") ||
+				!strings.HasPrefix(min, base+".") {
+				return Rule{}, fmt.Errorf("%w: minimums entries look like \"26100\": \"26100.2605\", not %q: %q",
+					ErrBadRules, base, min)
+			}
+		}
+		return Rule{Type: ruleType, Minimums: minimums}, nil
 
 	case RuleAgentVersionMin:
 		version, _, err := stringField(m, "version")
@@ -385,6 +415,12 @@ func (r Rule) MarshalJSON() ([]byte, error) {
 			Build string `json:"build"`
 		}{r.Type, r.Build})
 
+	case RuleOSBuildMinPerRelease:
+		return json.Marshal(struct {
+			Type     string            `json:"type"`
+			Minimums map[string]string `json:"minimums"`
+		}{r.Type, r.Minimums})
+
 	case RuleAgentVersionMin:
 		return json.Marshal(struct {
 			Type    string `json:"type"`
@@ -529,6 +565,8 @@ func evaluateRule(r Rule, f Facts, now time.Time) (Failure, bool) {
 	switch r.Type {
 	case RuleOSBuildMin:
 		return evalOSBuildMin(r, f)
+	case RuleOSBuildMinPerRelease:
+		return evalOSBuildMinPerRelease(r, f)
 	case RuleAgentVersionMin:
 		return evalAgentVersionMin(r, f)
 	case RuleBitLocker:
@@ -575,6 +613,33 @@ func evalOSBuildMin(r Rule, f Facts) (Failure, bool) {
 	}
 	if cmp < 0 {
 		return nonCompliant(r.Type, fmt.Sprintf("the OS build is %s, below the required %s", build, r.Build)), true
+	}
+	return Failure{}, false
+}
+
+// evalOSBuildMinPerRelease compares the device's patched build, such as
+// 26100.2605, with the minimum for its feature release. A release the rule
+// doesn't list is unknown, not a failure: whoever keeps the table decides what
+// each release needs, and Retune doesn't guess.
+func evalOSBuildMinPerRelease(r Rule, f Facts) (Failure, bool) {
+	if f.Inventory == nil || f.Inventory.OS.Build == "" {
+		return unknownFailure(r.Type, "the device has not reported an OS build"), true
+	}
+	base := f.Inventory.OS.Build
+	if f.Inventory.OS.UBR == nil {
+		return unknownFailure(r.Type, "the device has not reported its patch level; its agent may predate this rule"), true
+	}
+	full := fmt.Sprintf("%s.%d", base, *f.Inventory.OS.UBR)
+	min, ok := r.Minimums[base]
+	if !ok {
+		return unknownFailure(r.Type, fmt.Sprintf("no minimum is set for build %s (the device is at %s)", base, full)), true
+	}
+	cmp, ok := CompareDotted(full, min)
+	if !ok {
+		return unknownFailure(r.Type, fmt.Sprintf("the build %q could not be compared to %q", full, min)), true
+	}
+	if cmp < 0 {
+		return nonCompliant(r.Type, fmt.Sprintf("the OS build is %s, below the required %s", full, min)), true
 	}
 	return Failure{}, false
 }

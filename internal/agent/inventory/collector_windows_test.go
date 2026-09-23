@@ -22,6 +22,10 @@ func TestCollectOnThisMachine(t *testing.T) {
 	if !strings.Contains(inv.OS.Name, "Windows") || inv.OS.Build == "" || inv.OS.Version == "" {
 		t.Fatalf("OS = %+v", inv.OS)
 	}
+	// Every supported Windows has been patched past its release build.
+	if inv.OS.UBR == nil || *inv.OS.UBR <= 0 {
+		t.Fatalf("UBR = %v, want the update build revision", inv.OS.UBR)
+	}
 	if inv.Hardware.RAMBytes == 0 || inv.Hardware.CPU == "" || inv.Hardware.CPULogical == 0 {
 		t.Fatalf("hardware = %+v", inv.Hardware)
 	}

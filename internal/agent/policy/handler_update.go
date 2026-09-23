@@ -36,20 +36,36 @@ func (h WindowsUpdateHandler) registry() Handler {
 // hours.
 func UpdatePolicyValues(s protocol.Setting) []protocol.Setting {
 	var out []protocol.Setting
-	dword := func(name string, value int) {
+	seen := map[string]bool{}
+	value := func(name, typ, data string) {
+		if seen[name] {
+			return
+		}
+		seen[name] = true
 		out = append(out, protocol.Setting{
 			Kind: protocol.KindRegistry, Hive: "HKLM", Key: updatePolicyKey,
-			Name: name, Type: protocol.RegDWord, Data: strconv.Itoa(value),
+			Name: name, Type: typ, Data: data,
 		})
 	}
+	dword := func(name string, v int) { value(name, protocol.RegDWord, strconv.Itoa(v)) }
+	text := func(name, v string) { value(name, protocol.RegSZ, v) }
 
-	if s.QualityDeferralDays != nil {
+	// Pausing is part of the same policy as deferring: the pause date only
+	// counts while the deferral policy is on, so a pause with no deferral
+	// of its own turns deferral on at zero days, which is the default.
+	if s.QualityDeferralDays != nil || s.PauseQualityFrom != "" {
 		dword("DeferQualityUpdates", 1)
-		dword("DeferQualityUpdatesPeriodInDays", *s.QualityDeferralDays)
+		dword("DeferQualityUpdatesPeriodInDays", valueOr(s.QualityDeferralDays, 0))
 	}
-	if s.FeatureDeferralDays != nil {
+	if s.PauseQualityFrom != "" {
+		text("PauseQualityUpdatesStartTime", s.PauseQualityFrom)
+	}
+	if s.FeatureDeferralDays != nil || s.PauseFeatureFrom != "" {
 		dword("DeferFeatureUpdates", 1)
-		dword("DeferFeatureUpdatesPeriodInDays", *s.FeatureDeferralDays)
+		dword("DeferFeatureUpdatesPeriodInDays", valueOr(s.FeatureDeferralDays, 0))
+	}
+	if s.PauseFeatureFrom != "" {
+		text("PauseFeatureUpdatesStartTime", s.PauseFeatureFrom)
 	}
 	if s.ActiveHoursStart != nil && s.ActiveHoursEnd != nil {
 		dword("SetActiveHours", 1)
@@ -59,13 +75,38 @@ func UpdatePolicyValues(s protocol.Setting) []protocol.Setting {
 	if s.AutoRestart != nil {
 		// The policy is phrased the other way round: 1 means do not reboot
 		// while someone is signed in.
-		value := 1
+		v := 1
 		if *s.AutoRestart {
-			value = 0
+			v = 0
 		}
-		dword("NoAutoRebootWithLoggedOnUsers", value)
+		dword("NoAutoRebootWithLoggedOnUsers", v)
+	}
+	if s.QualityDeadlineDays != nil || s.FeatureDeadlineDays != nil {
+		dword("SetComplianceDeadline", 1)
+		if s.QualityDeadlineDays != nil {
+			dword("ConfigureDeadlineForQualityUpdates", *s.QualityDeadlineDays)
+		}
+		if s.FeatureDeadlineDays != nil {
+			dword("ConfigureDeadlineForFeatureUpdates", *s.FeatureDeadlineDays)
+		}
+		if s.DeadlineGraceDays != nil {
+			dword("ConfigureDeadlineGracePeriod", *s.DeadlineGraceDays)
+			dword("ConfigureDeadlineGracePeriodForFeatureUpdates", *s.DeadlineGraceDays)
+		}
+	}
+	if s.TargetProduct != "" && s.TargetVersion != "" {
+		dword("TargetReleaseVersion", 1)
+		text("ProductVersion", s.TargetProduct)
+		text("TargetReleaseVersionInfo", s.TargetVersion)
 	}
 	return out
+}
+
+func valueOr(p *int, fallback int) int {
+	if p == nil {
+		return fallback
+	}
+	return *p
 }
 
 // updateState is what the policy looked like before, one entry per value.

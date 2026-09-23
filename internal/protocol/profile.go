@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ItemKindProfile is the assignment kind for configuration profiles.
@@ -193,6 +195,20 @@ type Setting struct {
 	ActiveHoursStart    *int  `json:"active_hours_start,omitempty"`
 	ActiveHoursEnd      *int  `json:"active_hours_end,omitempty"`
 	AutoRestart         *bool `json:"auto_restart,omitempty"`
+	// Deadlines force an offered update to install, and restart, this many
+	// days after it is offered; the grace period gives a machine that was
+	// off that many days more once it comes back.
+	QualityDeadlineDays *int `json:"quality_deadline_days,omitempty"`
+	FeatureDeadlineDays *int `json:"feature_deadline_days,omitempty"`
+	DeadlineGraceDays   *int `json:"deadline_grace_days,omitempty"`
+	// PauseQualityFrom and PauseFeatureFrom pause that kind of update from a
+	// date, YYYY-MM-DD. Windows ends a pause on its own 35 days later.
+	PauseQualityFrom string `json:"pause_quality_from,omitempty"`
+	PauseFeatureFrom string `json:"pause_feature_from,omitempty"`
+	// TargetProduct and TargetVersion hold a machine on one feature release,
+	// such as "Windows 11" and "24H2".
+	TargetProduct string `json:"target_product,omitempty"`
+	TargetVersion string `json:"target_version,omitempty"`
 
 	// BitLocker.
 	RequireEncryption bool   `json:"require_encryption,omitempty"`
@@ -538,12 +554,52 @@ func (s Setting) validateWindowsUpdate() error {
 	if s.ActiveHoursStart != nil && *s.ActiveHoursStart == *s.ActiveHoursEnd {
 		return fmt.Errorf("%w: active hours cannot start and end at the same hour", ErrBadSetting)
 	}
+	for _, d := range []struct {
+		field string
+		value *int
+		high  int
+	}{
+		{"quality_deadline_days", s.QualityDeadlineDays, 30},
+		{"feature_deadline_days", s.FeatureDeadlineDays, 30},
+		{"deadline_grace_days", s.DeadlineGraceDays, 7},
+	} {
+		if err := inRange(d.field, d.value, 0, d.high); err != nil {
+			return err
+		}
+	}
+	if s.DeadlineGraceDays != nil && s.QualityDeadlineDays == nil && s.FeatureDeadlineDays == nil {
+		return fmt.Errorf("%w: a deadline grace period needs a deadline", ErrBadSetting)
+	}
+	for field, value := range map[string]string{"pause_quality_from": s.PauseQualityFrom, "pause_feature_from": s.PauseFeatureFrom} {
+		if value == "" {
+			continue
+		}
+		if _, err := time.Parse(time.DateOnly, value); err != nil {
+			return fmt.Errorf("%w: %s must be a date, YYYY-MM-DD", ErrBadSetting, field)
+		}
+	}
+	if (s.TargetProduct == "") != (s.TargetVersion == "") {
+		return fmt.Errorf("%w: a target release needs both a product and a version", ErrBadSetting)
+	}
+	if s.TargetProduct != "" {
+		if s.TargetProduct != "Windows 10" && s.TargetProduct != "Windows 11" {
+			return fmt.Errorf("%w: target_product must be \"Windows 10\" or \"Windows 11\"", ErrBadSetting)
+		}
+		if !releasePattern.MatchString(s.TargetVersion) {
+			return fmt.Errorf("%w: target_version must be a release such as 24H2", ErrBadSetting)
+		}
+	}
 	if s.QualityDeferralDays == nil && s.FeatureDeferralDays == nil &&
-		s.ActiveHoursStart == nil && s.AutoRestart == nil {
+		s.ActiveHoursStart == nil && s.AutoRestart == nil &&
+		s.QualityDeadlineDays == nil && s.FeatureDeadlineDays == nil &&
+		s.PauseQualityFrom == "" && s.PauseFeatureFrom == "" && s.TargetProduct == "" {
 		return fmt.Errorf("%w: a windows_update setting with nothing set does nothing", ErrBadSetting)
 	}
 	return nil
 }
+
+// releasePattern is a Windows feature release name, such as 22H2 or 24H2.
+var releasePattern = regexp.MustCompile(`^[0-9]{2}H[12]$`)
 
 func inRange(field string, value *int, low, high int) error {
 	if value == nil {

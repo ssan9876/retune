@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import Profiles from "./Profiles";
+import Profiles, { pauseEnds, today } from "./Profiles";
 
 const fetchMock = vi.fn();
 
@@ -233,5 +233,16 @@ describe("Profiles: the M8 setting kinds", () => {
     await userEvent.click(screen.getByRole("button", { name: "Create profile" }));
 
     expect(posted[0].settings).toEqual([{ kind: "defender", realtime_monitoring: true, cloud_block_level: "high" }]);
+  });
+});
+
+describe("update ring helpers", () => {
+  it("formats today's date the way the policy wants it", () => {
+    expect(today(new Date(2026, 8, 5))).toBe("2026-09-05");
+  });
+
+  it("knows a pause ends 35 days after it starts, across a month end", () => {
+    expect(pauseEnds("2026-09-22")).toBe("2026-10-27");
+    expect(pauseEnds("2026-12-30")).toBe("2027-02-03");
   });
 });

@@ -19,6 +19,7 @@ const DOTTED = /^\d+(\.\d+)*$/;
 
 const RULE_TYPES = [
   { value: "os_build_min", label: "Minimum OS build" },
+  { value: "os_build_min_per_release", label: "Patched to at least, per release" },
   { value: "agent_version_min", label: "Minimum agent version" },
   { value: "bitlocker", label: "BitLocker" },
   { value: "tpm", label: "TPM present" },
@@ -41,6 +42,8 @@ function blankRule(type: string): ComplianceRule {
   switch (type) {
     case "os_build_min":
       return { type, build: "" };
+    case "os_build_min_per_release":
+      return { type, minimums: {} };
     case "agent_version_min":
       return { type, version: "" };
     case "bitlocker":
@@ -81,6 +84,14 @@ function ruleError(rule: ComplianceRule): string | undefined {
   switch (rule.type) {
     case "os_build_min":
       return DOTTED.test(rule.build ?? "") ? undefined : "Digits only, optionally dotted (e.g. 26100 or 22631.1).";
+    case "os_build_min_per_release": {
+      const entries = Object.entries(rule.minimums ?? {});
+      if (entries.length === 0) return "Add at least one build, such as 26100.2605.";
+      if (entries.length > 20) return "At most 20 releases.";
+      return entries.every(([base, min]) => /^\d+$/.test(base) && new RegExp(`^${base}\\.\\d+$`).test(min))
+        ? undefined
+        : "One build per line, a release and its patch level, such as 26100.2605.";
+    }
     case "agent_version_min":
       return DOTTED.test(rule.version ?? "") ? undefined : "A dotted numeric version, e.g. 1.4.0.";
     case "bitlocker":
@@ -127,6 +138,51 @@ function ruleError(rule: ComplianceRule): string | undefined {
   }
 }
 
+/** parseMinimums reads one patched build per line, such as 26100.2605, into
+ * the per-release map the rule stores. A line that isn't one is kept with an
+ * empty minimum, so ruleError flags it rather than it silently vanishing. */
+export function parseMinimums(text: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const m = /^(\d+)\.\d+$/.exec(line);
+    if (m) out[m[1]] = line;
+    else out[line] = "";
+  }
+  return out;
+}
+
+/** MinimumsField edits os_build_min_per_release's table as lines of text. */
+function MinimumsField({
+  minimums,
+  error,
+  onChange,
+}: {
+  minimums: Record<string, string>;
+  error?: string;
+  onChange: (next: Record<string, string>) => void;
+}) {
+  const [text, setText] = useState(() => Object.values(minimums).join("\n"));
+  return (
+    <Field
+      label="Minimum patched builds"
+      hint="One per line, for each Windows release in the fleet: e.g. 26100.2605 for 24H2 and 22631.4751 for 23H2. A device on a release not listed is reported unknown. Keeping this current each month is up to you."
+      error={error}
+    >
+      <textarea
+        className="mono"
+        rows={4}
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          onChange(parseMinimums(e.target.value));
+        }}
+      />
+    </Field>
+  );
+}
+
 /** RuleFields renders the typed inputs one rule type needs, and nothing
  * else, the same idiom Profiles' SettingFields uses for setting kinds. */
 function RuleFields({
@@ -142,6 +198,8 @@ function RuleFields({
   const err = ruleError(rule);
 
   switch (rule.type) {
+    case "os_build_min_per_release":
+      return <MinimumsField minimums={rule.minimums ?? {}} error={err} onChange={(minimums) => set({ minimums })} />;
     case "os_build_min":
       return (
         <Field label="Minimum OS build" hint="Digits, optionally dotted, e.g. 26100 or 22631.1." error={err}>

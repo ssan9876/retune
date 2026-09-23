@@ -699,7 +699,7 @@ scripts and assigned to groups the same way.
 | `file` | a file's contents, or its absence (up to 1 MB) |
 | `firewall_profile` | whether the domain, private or public firewall is on |
 | `firewall_rule` | a named inbound or outbound rule |
-| `windows_update` | update deferrals, active hours and restart behaviour |
+| `windows_update` | update deferrals, deadlines, pauses, the feature release to stay on, active hours and restart behaviour |
 | `bitlocker` | requiring the system drive to be encrypted, and escrowing its recovery key |
 | `defender` | Microsoft Defender's real-time monitoring, cloud protection, sample submission, PUA protection and cloud block level |
 
@@ -753,6 +753,33 @@ never part of that listing: showing one is a separate, deliberate action that
 requires the admin role and is written to the audit log every time, with who
 asked and why. A read-only account can see that a key exists and cannot have it.
 
+### Update rings
+
+A ring is a profile with one `windows_update` setting, assigned to a group:
+a pilot group on a short deferral, the broad fleet a week behind it. Beyond
+deferrals, the setting can:
+
+- **Set deadlines.** Once an update is offered it installs, restarting if it
+  must, within 0–30 days, whatever the user does. A grace period of up to 7
+  days spares a machine that was off when the deadline passed from restarting
+  the moment it comes back.
+- **Pause.** Stops quality or feature updates from a date. Windows lifts a
+  pause on its own after 35 days, and the console shows when that will be.
+  Remove the pause from the profile to lift it sooner.
+- **Hold a feature release.** Keeps machines on, say, Windows 11 24H2. They
+  still get that release's monthly updates until you name a newer one.
+
+These are the Windows Update for Business policies under
+`HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate`, written and put
+back like any registry setting. They need an agent from this release: an
+older one ignores the fields it doesn't know.
+
+To check patching, use the `os_build_min_per_release` compliance rule with
+this month's minimum build for each release in your fleet, and
+`updates_within` for "installed something recently". Retune doesn't fetch
+Microsoft's release information, so updating the minimums each month is up
+to you.
+
 ## Compliance
 
 A **compliance policy** states what a healthy device looks like, as a list of
@@ -768,6 +795,7 @@ than holding the request open for a fleet's worth of work.
 | Rule | Checks |
 |---|---|
 | `os_build_min`, `agent_version_min` | a minimum OS build or agent version |
+| `os_build_min_per_release` | patched to at least a given build on each Windows release, such as `26100.2605` for 24H2 |
 | `bitlocker` | the system drive, or every fixed volume, encrypted |
 | `tpm` | a TPM present, optionally at a minimum version |
 | `checked_in_within`, `inventory_within` | recent check-in or inventory, in hours |
