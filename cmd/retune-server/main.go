@@ -117,6 +117,7 @@ func serve(ctx context.Context, getenv func(string) string) error {
 		Jobs: append(sweeper.DefaultJobs(cfg.SweepInterval),
 			sweeper.GroupJob(a.Groups), sweeper.ComplianceJob(a.Compliance),
 			sweeper.AlertJob(a.Alerts), sweeper.PackagePruneJob(a.Apps), sweeper.ArtifactPruneJob(a.Commands),
+			sweeper.ReportJob(a.Reports),
 			sweeper.RetentionJob(sweeper.Retention{
 				Audit: cfg.Retention.Audit, Commands: cfg.Retention.Commands,
 				ScriptRuns: cfg.Retention.ScriptRuns, AppInstalls: cfg.Retention.AppInstalls,

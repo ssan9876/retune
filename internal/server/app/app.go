@@ -31,6 +31,7 @@ import (
 	"retune/internal/server/inventory"
 	"retune/internal/server/laps"
 	"retune/internal/server/profiles"
+	"retune/internal/server/reports"
 	"retune/internal/server/scripts"
 	"retune/internal/server/secrets"
 	"retune/internal/server/store"
@@ -63,6 +64,9 @@ type App struct {
 	Sweeps *sweeper.Stats
 	// SSO is nil unless single sign-on is configured.
 	SSO *auth.OIDC
+	// Reports sends scheduled reports; the caller that runs the sweeper
+	// gives it its job.
+	Reports *reports.Service
 
 	// releaseRunning lets go of the lock that says this server is running.
 	releaseRunning func()
@@ -158,6 +162,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		},
 	}
 	dev := &devices.Service{Store: st}
+	reporter := &reports.Service{Store: st, Mailer: alerter.AttachmentMailer(), Now: time.Now, Log: log}
 	authSvc := &auth.Service{
 		Store: st, Now: time.Now, SessionTTL: cfg.SessionTTL, MaxSessionLifetime: cfg.SessionMaxLifetime,
 		Limiter: auth.NewLimiter(10, 15*time.Minute, time.Now), Issuer: "Retune", Key: secretKey,
@@ -187,7 +192,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		Auth: authSvc, Store: st, Commands: cmd, Devices: dev, Enroll: svc, Groups: grp, Scripts: scr, Profiles: prof, Apps: appSvc, Compliance: comp, AgentVersions: agentVers, BitLocker: locker, LAPS: adminPasswords, Alerts: alerter,
 		SSO: sso, SSOName: cfg.OIDC.DisplayName, SigningRequired: len(cfg.OperationsKeys) > 0,
 		ApprovalsRequired: cfg.Approvals.Required, ApprovalThreshold: cfg.Approvals.DeviceThreshold,
-		Now: time.Now, Log: log,
+		Now: time.Now, Log: log, Reports: reporter,
 	}
 	root := http.NewServeMux()
 	mountHealth(root, st, log)
@@ -213,6 +218,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		Groups:        grp,
 		Compliance:    comp,
 		Alerts:        alerter,
+		Reports:       reporter,
 		Auth:          authSvc,
 		Handler:       root,
 		TLSConfig:     tlsCfg,

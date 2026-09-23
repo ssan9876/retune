@@ -113,6 +113,13 @@ func (h *Handler) mountResources(mux *http.ServeMux, base string) {
 
 	h.handle(mux, "GET "+base+"/items/{kind}/{id}/status", h.read(h.itemStatus))
 
+	h.handle(mux, "GET "+base+"/reports", h.readFleet(h.listReports))
+	h.handle(mux, "POST "+base+"/reports", h.writeFleet(h.createReport))
+	h.handle(mux, "GET "+base+"/reports/{id}", h.readFleet(h.getReport))
+	h.handle(mux, "POST "+base+"/reports/{id}", h.writeFleet(h.updateReport))
+	h.handle(mux, "DELETE "+base+"/reports/{id}", h.writeFleet(h.deleteReport))
+	h.handle(mux, "POST "+base+"/reports/{id}/send", h.writeFleet(h.sendReport))
+
 	h.handle(mux, "GET "+base+"/maintenance-windows", h.read(h.listWindows))
 	h.handle(mux, "POST "+base+"/maintenance-windows", h.writeFleet(h.createWindow))
 	h.handle(mux, "GET "+base+"/maintenance-windows/{id}", h.read(h.getWindow))

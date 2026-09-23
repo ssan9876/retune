@@ -39,7 +39,8 @@ Go agent runs on each machine.
 - **Alerts.** Rules over the same conditions the dashboard counts, delivered
   to email or a webhook, deduplicated so a fleet-wide fault is one message.
 - **Overview dashboard and CSV export.** A fleet-wide landing page, and CSV
-  export of the device list and of one policy's results.
+  export of the device list and of one policy's results, on demand or emailed
+  on a schedule.
 - **Metrics and retention.** A Prometheus endpoint over fleet state and the
   server's own background jobs, and history pruned after a horizon you set.
 - **Packaging.** A container image and Compose stack for the server, and an MSI
@@ -1224,6 +1225,24 @@ link (`GET /devices/export.csv`, `GET
 would otherwise start with `=`, `+`, `-`, `@`, a tab or a carriage return is
 given a leading apostrophe first, so a hostname or failure detail a device
 reported can never be read as a spreadsheet formula by whoever opens the file.
+
+### Scheduled reports
+
+Either export can be emailed on a schedule to people who need the numbers but
+not a console account — auditors, managers, a security team. On **Scheduled
+reports**, choose the device list or one compliance policy's results (all of
+them, or only the non-compliant devices, say), up to 20 recipients, and daily
+or weekly at an hour in a time zone: `Every Monday at 07:00 Europe/London`.
+
+The report arrives as a CSV attachment, the same file the console's export
+would give you, covering the whole fleet. It goes through the mail relay
+alerts use, so it needs `SMTP_HOST` and `SMTP_FROM` set; without them a report
+is refused when you create it rather than silently never arriving. **Send
+now** sends one immediately, to check it gets through. A send that fails is
+shown on the report and tried again at its next scheduled time, not every few
+minutes until the relay recovers. A CSV over 10 MB isn't attached; the email
+says to download it from the console instead. Reports are sent by one server
+at a time, so a second replica never sends them twice.
 
 ## Command-line reference
 

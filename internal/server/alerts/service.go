@@ -103,6 +103,18 @@ func (s *Service) client() *http.Client {
 	return s.fallback
 }
 
+// AttachmentMailer is the mailer scheduled reports send through: the relay
+// alerts use.
+func (s *Service) AttachmentMailer() AttachmentMailer {
+	if m, ok := s.Mailer.(AttachmentMailer); ok {
+		return m
+	}
+	return SMTPMailer{Config: s.SMTP}
+}
+
+// SMTPConfigured reports whether email can be sent at all.
+func (s *Service) SMTPConfigured() bool { return s.Mailer != nil || s.SMTP.Configured() }
+
 func (s *Service) mailer() Mailer {
 	if s.Mailer != nil {
 		return s.Mailer

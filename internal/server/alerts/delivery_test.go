@@ -211,7 +211,7 @@ func TestMessageHeadersCannotBeSplit(t *testing.T) {
 	// A hostname is device-reported text, and a newline in a Subject line is
 	// how one header becomes two.
 	raw := message("retune@example.com", []string{"ops@example.com"},
-		"Retune: PC-A\r\nBcc: attacker@example.com", "body")
+		"Retune: PC-A\r\nBcc: attacker@example.com", "body", nil)
 	headers, _, _ := strings.Cut(raw, "\r\n\r\n")
 	// Folded into the Subject's own value is fine; a line of its own is not.
 	for _, line := range strings.Split(headers, "\r\n") {

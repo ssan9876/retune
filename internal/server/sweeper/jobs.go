@@ -18,6 +18,7 @@ const (
 	lockAuditStream        = 5274007
 	lockPrunePackages      = 5274008
 	lockPruneArtifacts     = 5274009
+	lockSendReports        = 5274011
 )
 
 // GroupEvaluator recomputes dynamic group membership.
@@ -65,6 +66,22 @@ func ArtifactPruneJob(p ArtifactPruner) Job {
 		Name: "commands.prune_artifacts", LockID: lockPruneArtifacts, Interval: time.Hour,
 		Run: func(ctx context.Context, _ *store.Queries, now time.Time) (int64, error) {
 			return p.PruneArtifacts(ctx, now)
+		},
+	}
+}
+
+// ReportSender emails the scheduled reports that are due.
+type ReportSender interface {
+	SendDue(ctx context.Context) (int64, error)
+}
+
+// ReportJob sends due reports every five minutes: reports are scheduled to
+// the hour, and this is prompt enough without polling the table constantly.
+func ReportJob(r ReportSender) Job {
+	return Job{
+		Name: "reports.send", LockID: lockSendReports, Interval: 5 * time.Minute,
+		Run: func(ctx context.Context, _ *store.Queries, _ time.Time) (int64, error) {
+			return r.SendDue(ctx)
 		},
 	}
 }
