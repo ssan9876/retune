@@ -80,18 +80,6 @@ button {
   font: inherit;
 }
 
-/* Tables carry identifiers and timestamps that cannot wrap, so on a narrow
-   screen they scroll sideways inside their own box instead of widening the
-   page. Every table in the console sits in one of these. The scroller is
-   confined to narrow screens because overflow-x also makes the box a vertical
-   scroll container, which would stop the sticky headers below from sticking to
-   the top of the window as the page scrolls. */
-@media (max-width: 720px) {
-  .table-scroll {
-    overflow-x: auto;
-  }
-}
-
 /* A list sits on its own white pane over the page's grey, the way every list
    in the admin centre does: the pane is the boundary of the data, so a table
    never floats loose on the background. */
@@ -103,6 +91,21 @@ button {
   /* The header's tint has square corners of its own; without this it pokes
      out past the pane's rounded ones. */
   overflow: hidden;
+}
+
+/* Tables carry identifiers and timestamps that cannot wrap, so on a narrow
+   screen they scroll sideways inside their own box instead of widening the
+   page. Every table in the console sits in one of these. The scroller is
+   confined to narrow screens because overflow-x also makes the box a vertical
+   scroll container, which would stop the sticky headers below from sticking to
+   the top of the window as the page scrolls. It must come after the rule
+   above: both have the same specificity, so whichever is later wins, and
+   with this one first the pane's overflow: hidden clipped wide tables on a
+   phone instead of letting them scroll. */
+@media (max-width: 720px) {
+  .table-scroll {
+    overflow-x: auto;
+  }
 }
 
 table {

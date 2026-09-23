@@ -384,7 +384,9 @@
 @media (max-width: 720px) {
   .shell,
   .shell--collapsed {
-    grid-template-columns: 1fr;
+    /* minmax(0, …) rather than 1fr, whose minimum is its content's: one
+       stubborn child would otherwise widen the whole page past the screen. */
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: var(--topbar-height) auto 1fr;
     grid-template-areas:
       "topbar"
@@ -392,9 +394,13 @@
       "content";
   }
 
+  /* A flex item will not shrink below its content by default, and the input
+     inside has a browser-default width that is wider than a phone leaves for
+     it, so without min-width the bar ran about 20px off a 390px screen. */
   .topbar__search {
     width: auto;
     flex: 1;
+    min-width: 0;
   }
 
   .rail {
