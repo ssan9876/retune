@@ -78,5 +78,9 @@ func setSecurityHeaders(w http.ResponseWriter) {
 		"default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "+
 			"object-src 'none'; frame-ancestors 'none'; base-uri 'none'")
 	h.Set("X-Content-Type-Options", "nosniff")
+	// The console is only ever served over TLS, directly or behind a proxy
+	// that terminates it; this tells a browser never to try plain HTTP, so a
+	// network attacker cannot strip it on the first request of a visit.
+	h.Set("Strict-Transport-Security", "max-age=31536000")
 	h.Set("Referrer-Policy", "same-origin")
 }

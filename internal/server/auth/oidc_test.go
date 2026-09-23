@@ -267,6 +267,10 @@ func TestSSORefusesBadProtocol(t *testing.T) {
 			_, err := f.sso.Finish(ctx, cookie, state, code)
 			return err
 		}, auth.SSOExchange},
+		"unverified email": {func() error {
+			_, err := f.signIn(t, person, map[string]any{"email_verified": false})
+			return err
+		}, auth.SSOUnverified},
 		"no email": {func() error {
 			_, err := f.signIn(t, oidctest.Person{Subject: "u-7", Groups: []string{"it-admins"}}, nil)
 			return err

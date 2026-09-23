@@ -14,6 +14,7 @@ const SSO_ERRORS: Record<string, string> = {
     "A Retune account with a password already uses your email address, so single sign-on cannot take it " +
     "over. Ask an administrator to change or remove that account.",
   disabled: "Your Retune account is disabled.",
+  email_unverified: "Your identity provider says your email address is not verified. Verify it there, then try again.",
   no_email:
     "The identity provider did not say who you are. Ask an administrator to check that it sends an email claim.",
   state: "That sign-in took too long or was started in another window. Try again.",
