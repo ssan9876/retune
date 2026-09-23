@@ -264,6 +264,62 @@ describe("Compliance", () => {
     expect(screen.getByText(/No parameters/)).toBeInTheDocument();
   });
 
+  it("sends firewall profiles only when some are unticked, and the Defender rules", async () => {
+    const posted: Record<string, unknown>[] = [];
+    fetchMock.mockImplementation((_url: string, init?: { method?: string; body?: string }) => {
+      if (init?.method === "POST") {
+        posted.push(JSON.parse(init.body ?? "{}"));
+        return Promise.resolve(json({ ...policy, id: "pol-3" }, 201));
+      }
+      return Promise.resolve(list([]));
+    });
+    render_();
+    await screen.findByText("No compliance policies yet.");
+
+    await userEvent.click(screen.getByRole("button", { name: "New policy" }));
+    await userEvent.type(screen.getByLabelText("Name"), "Protected");
+
+    await userEvent.click(screen.getByRole("button", { name: "Add a rule" }));
+    await userEvent.selectOptions(screen.getByLabelText("Rule 1 type"), "firewall_enabled");
+    // Every profile starts ticked; unticking one writes an explicit list.
+    await userEvent.click(screen.getByLabelText("domain"));
+
+    await userEvent.click(screen.getByRole("button", { name: "Add a rule" }));
+    await userEvent.selectOptions(screen.getByLabelText("Rule 2 type"), "firewall_enabled");
+
+    await userEvent.click(screen.getByRole("button", { name: "Add a rule" }));
+    await userEvent.selectOptions(screen.getByLabelText("Rule 3 type"), "defender_signatures_within");
+    const days = screen.getByLabelText("Signatures updated within (days)");
+    await userEvent.clear(days);
+    await userEvent.type(days, "2");
+
+    await userEvent.click(screen.getByRole("button", { name: "Add a rule" }));
+    await userEvent.selectOptions(screen.getByLabelText("Rule 4 type"), "defender_realtime");
+
+    await userEvent.click(screen.getByRole("button", { name: "Create policy" }));
+    expect(posted[0].rules).toEqual([
+      { type: "firewall_enabled", profiles: ["private", "public"] },
+      { type: "firewall_enabled" },
+      { type: "defender_signatures_within", days: 2 },
+      { type: "defender_realtime" },
+    ]);
+  });
+
+  it("will not let every firewall profile be unticked", async () => {
+    listOnly();
+    render_();
+    await screen.findByText("Baseline security");
+    await userEvent.click(screen.getByRole("button", { name: "New policy" }));
+    await userEvent.type(screen.getByLabelText("Name"), "Nothing");
+    await userEvent.click(screen.getByRole("button", { name: "Add a rule" }));
+    await userEvent.selectOptions(screen.getByLabelText("Rule 1 type"), "firewall_enabled");
+    for (const name of ["domain", "private", "public"]) {
+      await userEvent.click(screen.getByLabelText(name));
+    }
+    expect(screen.getByText("Choose at least one profile.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create policy" })).toBeDisabled();
+  });
+
   it("rejects an out-of-bounds value before the request is ever sent", async () => {
     listOnly();
     render_();
