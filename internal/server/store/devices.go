@@ -93,13 +93,13 @@ func (q *Queries) ListDevices(ctx context.Context) ([]Device, error) {
 // "how long since last seen" definition the device list's own Stale flag
 // uses, rather than a second copy of the threshold living in SQL. The three
 // always partition every device, so their sum is the total device count.
-func (q *Queries) DeviceBucketCounts(ctx context.Context, cutoff time.Time) (active, stale, retired int, err error) {
+func (q *Queries) DeviceBucketCounts(ctx context.Context, cutoff time.Time, scope DeviceScope) (active, stale, retired int, err error) {
 	err = q.db.QueryRow(ctx, `
 		SELECT
 			count(*) FILTER (WHERE status = $2 AND last_seen_at >= $3),
 			count(*) FILTER (WHERE status = $2 AND (last_seen_at IS NULL OR last_seen_at < $3)),
 			count(*) FILTER (WHERE status <> $2)
-		FROM devices WHERE tenant_id = $1`, DefaultTenantID, DeviceActive, cutoff).Scan(&active, &stale, &retired)
+		FROM devices WHERE tenant_id = $1 AND `+scopeSQL("id", 4)+``, DefaultTenantID, DeviceActive, cutoff, scope.arg()).Scan(&active, &stale, &retired)
 	return active, stale, retired, err
 }
 
@@ -108,11 +108,11 @@ func (q *Queries) DeviceBucketCounts(ctx context.Context, cutoff time.Time) (act
 // does need one row per device, but only two narrow columns of it
 // (agent_version here, os_build in ActiveOSBuildCounts) rather than the full
 // device row ListDevices returns.
-func (q *Queries) ActiveAgentVersionCounts(ctx context.Context) (map[string]int, error) {
+func (q *Queries) ActiveAgentVersionCounts(ctx context.Context, scope DeviceScope) (map[string]int, error) {
 	rows, err := q.db.Query(ctx, `
 		SELECT agent_version, count(*) FROM devices
-		WHERE tenant_id = $1 AND status = $2 AND agent_version <> ''
-		GROUP BY agent_version`, DefaultTenantID, DeviceActive)
+		WHERE tenant_id = $1 AND status = $2 AND agent_version <> '' AND `+scopeSQL("id", 3)+`
+		GROUP BY agent_version`, DefaultTenantID, DeviceActive, scope.arg())
 	if err != nil {
 		return nil, err
 	}
@@ -131,11 +131,11 @@ func (q *Queries) ActiveAgentVersionCounts(ctx context.Context) (map[string]int,
 
 // ActiveOSBuildCounts groups active devices by their reported OS build, for
 // the dashboard's top-10 list. See ActiveAgentVersionCounts.
-func (q *Queries) ActiveOSBuildCounts(ctx context.Context) (map[string]int, error) {
+func (q *Queries) ActiveOSBuildCounts(ctx context.Context, scope DeviceScope) (map[string]int, error) {
 	rows, err := q.db.Query(ctx, `
 		SELECT os_build, count(*) FROM devices
-		WHERE tenant_id = $1 AND status = $2 AND os_build <> ''
-		GROUP BY os_build`, DefaultTenantID, DeviceActive)
+		WHERE tenant_id = $1 AND status = $2 AND os_build <> '' AND `+scopeSQL("id", 3)+`
+		GROUP BY os_build`, DefaultTenantID, DeviceActive, scope.arg())
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +167,7 @@ type DayCount struct {
 // timezone: the server, the database and the browser can each be somewhere
 // different, and a bucket that depends on which one is asking is a bucket
 // that moves a device into yesterday.
-func (q *Queries) EnrollmentTrend(ctx context.Context, since time.Time) ([]DayCount, error) {
+func (q *Queries) EnrollmentTrend(ctx context.Context, since time.Time, scope DeviceScope) ([]DayCount, error) {
 	rows, err := q.db.Query(ctx, `
 		SELECT d.day, count(v.id)
 		FROM generate_series(
@@ -175,9 +175,9 @@ func (q *Queries) EnrollmentTrend(ctx context.Context, since time.Time) ([]DayCo
 		         date_trunc('day', now() AT TIME ZONE 'UTC'),
 		         interval '1 day') AS d(day)
 		LEFT JOIN devices v
-		  ON v.tenant_id = $1 AND date_trunc('day', v.enrolled_at AT TIME ZONE 'UTC') = d.day
+		  ON v.tenant_id = $1 AND date_trunc('day', v.enrolled_at AT TIME ZONE 'UTC') = d.day AND `+scopeSQL("v.id", 3)+`
 		GROUP BY d.day
-		ORDER BY d.day`, DefaultTenantID, since)
+		ORDER BY d.day`, DefaultTenantID, since, scope.arg())
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +197,7 @@ func (q *Queries) EnrollmentTrend(ctx context.Context, since time.Time) ([]DayCo
 // The buckets are cumulative in intent but exclusive in fact - a device counted
 // in "day" is one that checked in within a day but not within an hour - so they
 // sum to the active fleet and can be drawn as one bar.
-func (q *Queries) CheckInRecency(ctx context.Context, now time.Time) (hour, day, week, older, never int, err error) {
+func (q *Queries) CheckInRecency(ctx context.Context, now time.Time, scope DeviceScope) (hour, day, week, older, never int, err error) {
 	err = q.db.QueryRow(ctx, `
 		SELECT
 			count(*) FILTER (WHERE last_seen_at >= $3),
@@ -206,9 +206,9 @@ func (q *Queries) CheckInRecency(ctx context.Context, now time.Time) (hour, day,
 			count(*) FILTER (WHERE last_seen_at IS NOT NULL AND last_seen_at < $5),
 			count(*) FILTER (WHERE last_seen_at IS NULL)
 		FROM devices
-		WHERE tenant_id = $1 AND status = $2`,
+		WHERE tenant_id = $1 AND status = $2 AND `+scopeSQL("id", 6)+``,
 		DefaultTenantID, DeviceActive,
-		now.Add(-time.Hour), now.Add(-24*time.Hour), now.Add(-7*24*time.Hour)).
+		now.Add(-time.Hour), now.Add(-24*time.Hour), now.Add(-7*24*time.Hour), scope.arg()).
 		Scan(&hour, &day, &week, &older, &never)
 	return hour, day, week, older, never, err
 }

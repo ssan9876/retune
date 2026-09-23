@@ -80,44 +80,46 @@ const enrollmentTrendDays = 30
 // active devices only, matching ComplianceCounts.
 func (h *Handler) dashboard(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	// A scoped admin's dashboard is their devices', every number of it.
+	scope := caller(r).Scope
 
 	// Same cutoff newDeviceJSON's Stale flag uses (now - StaleAfter), so the
 	// dashboard and the device list's FleetBar never disagree about one device.
-	active, stale, retired, err := h.Store.Q().DeviceBucketCounts(ctx, h.Now().Add(-StaleAfter))
+	active, stale, retired, err := h.Store.Q().DeviceBucketCounts(ctx, h.Now().Add(-StaleAfter), scope)
 	if err != nil {
 		h.internal(w, "device bucket counts", err)
 		return
 	}
 	devices := dashboardDevicesJSON{Active: active, Stale: stale, Retired: retired, Total: active + stale + retired}
 
-	agentVersions, err := h.Store.Q().ActiveAgentVersionCounts(ctx)
+	agentVersions, err := h.Store.Q().ActiveAgentVersionCounts(ctx, scope)
 	if err != nil {
 		h.internal(w, "active agent version counts", err)
 		return
 	}
-	osBuilds, err := h.Store.Q().ActiveOSBuildCounts(ctx)
+	osBuilds, err := h.Store.Q().ActiveOSBuildCounts(ctx, scope)
 	if err != nil {
 		h.internal(w, "active os build counts", err)
 		return
 	}
 
-	complianceCounts, err := h.Store.Q().ComplianceCounts(ctx)
+	complianceCounts, err := h.Store.Q().ComplianceCounts(ctx, scope)
 	if err != nil {
 		h.internal(w, "compliance counts", err)
 		return
 	}
-	failed, err := h.Store.Q().FailedDeploymentCounts(ctx)
+	failed, err := h.Store.Q().FailedDeploymentCounts(ctx, scope)
 	if err != nil {
 		h.internal(w, "failed deployment counts", err)
 		return
 	}
 	now := h.Now()
-	hour, day, week, older, never, err := h.Store.Q().CheckInRecency(ctx, now)
+	hour, day, week, older, never, err := h.Store.Q().CheckInRecency(ctx, now, scope)
 	if err != nil {
 		h.internal(w, "check-in recency", err)
 		return
 	}
-	trend, err := h.Store.Q().EnrollmentTrend(ctx, now.AddDate(0, 0, -(enrollmentTrendDays-1)))
+	trend, err := h.Store.Q().EnrollmentTrend(ctx, now.AddDate(0, 0, -(enrollmentTrendDays-1)), scope)
 	if err != nil {
 		h.internal(w, "enrollment trend", err)
 		return

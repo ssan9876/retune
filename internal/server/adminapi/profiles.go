@@ -176,13 +176,13 @@ func (h *Handler) profileSettingStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	rollup, err := h.Store.Q().SettingStatusRollup(ctx, id)
+	rollup, err := h.Store.Q().SettingStatusRollup(ctx, id, caller(r).Scope)
 	if err != nil {
 		h.internal(w, "setting status rollup", err)
 		return
 	}
 	page := pageFrom(r)
-	rows, total, err := h.Store.Q().ListSettingStatus(ctx, id, r.URL.Query().Get("status"), page)
+	rows, total, err := h.Store.Q().ListSettingStatus(ctx, id, r.URL.Query().Get("status"), page, caller(r).Scope)
 	if err != nil {
 		h.internal(w, "list setting status", err)
 		return

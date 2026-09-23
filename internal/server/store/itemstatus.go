@@ -61,11 +61,11 @@ func (q *Queries) MarkItemSucceededOnce(ctx context.Context, s ItemStatus) error
 
 // ItemStatusRollup counts devices by status for one item, for the console's
 // per-item summary.
-func (q *Queries) ItemStatusRollup(ctx context.Context, itemKind string, itemID uuid.UUID) (map[string]int, error) {
+func (q *Queries) ItemStatusRollup(ctx context.Context, itemKind string, itemID uuid.UUID, scope DeviceScope) (map[string]int, error) {
 	rows, err := q.db.Query(ctx, `
 		SELECT status, count(*) FROM device_item_status
-		WHERE tenant_id = $1 AND item_kind = $2 AND item_id = $3
-		GROUP BY status`, DefaultTenantID, itemKind, itemID)
+		WHERE tenant_id = $1 AND item_kind = $2 AND item_id = $3 AND `+scopeSQL("device_id", 4)+`
+		GROUP BY status`, DefaultTenantID, itemKind, itemID, scope.arg())
 	if err != nil {
 		return nil, err
 	}
@@ -140,13 +140,13 @@ func (q *Queries) ListDeviceItemStatus(ctx context.Context, deviceID uuid.UUID, 
 // attention", not "how many failing rows exist". The result also carries
 // whatever other kinds (e.g. "compliance") happen to have failed rows; the
 // dashboard simply reads the four keys it cares about and ignores the rest.
-func (q *Queries) FailedDeploymentCounts(ctx context.Context) (map[string]int, error) {
+func (q *Queries) FailedDeploymentCounts(ctx context.Context, scope DeviceScope) (map[string]int, error) {
 	rows, err := q.db.Query(ctx, `
 		SELECT s.item_kind, count(DISTINCT s.device_id)
 		FROM device_item_status s
 		JOIN devices d ON d.id = s.device_id AND d.tenant_id = s.tenant_id
-		WHERE s.tenant_id = $1 AND d.status = $2 AND s.status = $3
-		GROUP BY s.item_kind`, DefaultTenantID, DeviceActive, ItemFailed)
+		WHERE s.tenant_id = $1 AND d.status = $2 AND s.status = $3 AND `+scopeSQL("s.device_id", 4)+`
+		GROUP BY s.item_kind`, DefaultTenantID, DeviceActive, ItemFailed, scope.arg())
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +165,7 @@ func (q *Queries) FailedDeploymentCounts(ctx context.Context) (map[string]int, e
 
 // ListItemStatus returns one page of devices for an item, optionally narrowed
 // to a single status, for drilling into a rollup.
-func (q *Queries) ListItemStatus(ctx context.Context, itemKind string, itemID uuid.UUID, status string, page Page) ([]ItemStatus, int, error) {
+func (q *Queries) ListItemStatus(ctx context.Context, itemKind string, itemID uuid.UUID, status string, page Page, scope DeviceScope) ([]ItemStatus, int, error) {
 	p := page.Normalized()
 	rows, err := q.db.Query(ctx, `
 		SELECT s.device_id, d.hostname, s.item_kind, s.item_id, s.status, s.detail, s.version, s.updated_at,
@@ -173,9 +173,9 @@ func (q *Queries) ListItemStatus(ctx context.Context, itemKind string, itemID uu
 		FROM device_item_status s
 		JOIN devices d ON d.id = s.device_id
 		WHERE s.tenant_id = $1 AND s.item_kind = $2 AND s.item_id = $3
-		  AND ($4 = '' OR s.status = $4)
+		  AND ($4 = '' OR s.status = $4) AND `+scopeSQL("s.device_id", 7)+`
 		ORDER BY lower(d.hostname)
-		LIMIT $5 OFFSET $6`, DefaultTenantID, itemKind, itemID, status, p.Limit, p.Offset)
+		LIMIT $5 OFFSET $6`, DefaultTenantID, itemKind, itemID, status, p.Limit, p.Offset, scope.arg())
 	if err != nil {
 		return nil, 0, err
 	}

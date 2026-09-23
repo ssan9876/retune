@@ -99,7 +99,7 @@ func (h *Handler) exportDevices(w http.ResponseWriter, r *http.Request) {
 	offset := 0
 	for {
 		rows, total, err := h.Store.Q().ListDevicesPage(ctx, store.DeviceFilter{
-			Page: store.Page{Limit: exportPageSize, Offset: offset},
+			Page: store.Page{Limit: exportPageSize, Offset: offset}, Scope: caller(r).Scope,
 		})
 		if err != nil {
 			h.logExportErr("export devices", err)
@@ -173,7 +173,7 @@ func (h *Handler) exportPolicyDevices(w http.ResponseWriter, r *http.Request) {
 
 	offset := 0
 	for {
-		rows, total, err := h.Store.Q().ListPolicyCompliance(ctx, id, state, store.Page{Limit: exportPageSize, Offset: offset})
+		rows, total, err := h.Store.Q().ListPolicyCompliance(ctx, id, state, store.Page{Limit: exportPageSize, Offset: offset}, caller(r).Scope)
 		if err != nil {
 			h.logExportErr("export policy devices", err)
 			return

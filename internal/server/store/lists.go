@@ -38,6 +38,7 @@ type DeviceFilter struct {
 	Search string
 	Status string
 	Page   Page
+	Scope  DeviceScope
 }
 
 // ListDevicesPage returns one page of devices and the total number of matches.
@@ -49,8 +50,9 @@ func (q *Queries) ListDevicesPage(ctx context.Context, f DeviceFilter) ([]Device
 		  AND ($2 = '' OR hostname ILIKE '%' || $2 || '%' OR serial ILIKE '%' || $2 || '%'
 		       OR smbios_uuid ILIKE '%' || $2 || '%' OR manufacturer ILIKE '%' || $2 || '%'
 		       OR model ILIKE '%' || $2 || '%')
+		  AND `+scopeSQL("id", 6)+`
 		ORDER BY lower(hostname), enrolled_at
-		LIMIT $3 OFFSET $4`, f.Status, f.Search, p.Limit, p.Offset, DefaultTenantID)
+		LIMIT $3 OFFSET $4`, f.Status, f.Search, p.Limit, p.Offset, DefaultTenantID, f.Scope.arg())
 	if err != nil {
 		return nil, 0, err
 	}
@@ -74,6 +76,7 @@ type CommandFilter struct {
 	DeviceID *uuid.UUID
 	Status   string
 	Page     Page
+	Scope    DeviceScope
 }
 
 // ListCommandsPage returns one page of commands, newest first, and the total.
@@ -82,9 +85,9 @@ func (q *Queries) ListCommandsPage(ctx context.Context, f CommandFilter) ([]Comm
 	rows, err := q.db.Query(ctx, `
 		SELECT `+commandCols+`, count(*) OVER () AS total FROM commands
 		WHERE tenant_id = $5 AND ($1::uuid IS NULL OR device_id = $1)
-		  AND ($2 = '' OR status = $2)
+		  AND ($2 = '' OR status = $2) AND `+scopeSQL("device_id", 6)+`
 		ORDER BY created_at DESC, id DESC
-		LIMIT $3 OFFSET $4`, f.DeviceID, f.Status, p.Limit, p.Offset, DefaultTenantID)
+		LIMIT $3 OFFSET $4`, f.DeviceID, f.Status, p.Limit, p.Offset, DefaultTenantID, f.Scope.arg())
 	if err != nil {
 		return nil, 0, err
 	}

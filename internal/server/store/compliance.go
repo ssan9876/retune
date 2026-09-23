@@ -193,7 +193,7 @@ func (q *Queries) ListDeviceCompliance(ctx context.Context, deviceID uuid.UUID) 
 
 // ListPolicyCompliance returns one page of device results for a policy,
 // optionally narrowed to a single state, for the policy's device list.
-func (q *Queries) ListPolicyCompliance(ctx context.Context, policyID uuid.UUID, state string, page Page) ([]DeviceCompliance, int, error) {
+func (q *Queries) ListPolicyCompliance(ctx context.Context, policyID uuid.UUID, state string, page Page, scope DeviceScope) ([]DeviceCompliance, int, error) {
 	p := page.Normalized()
 	rows, err := q.db.Query(ctx, `
 		SELECT dc.device_id, dc.policy_id, d.hostname, dc.state, dc.failures, dc.evaluated_at,
@@ -201,9 +201,9 @@ func (q *Queries) ListPolicyCompliance(ctx context.Context, policyID uuid.UUID, 
 		FROM device_compliance dc
 		JOIN devices d ON d.id = dc.device_id
 		WHERE dc.tenant_id = $1 AND dc.policy_id = $2
-		  AND ($3 = '' OR dc.state = $3)
+		  AND ($3 = '' OR dc.state = $3) AND `+scopeSQL("dc.device_id", 6)+`
 		ORDER BY lower(d.hostname)
-		LIMIT $4 OFFSET $5`, DefaultTenantID, policyID, state, p.Limit, p.Offset)
+		LIMIT $4 OFFSET $5`, DefaultTenantID, policyID, state, p.Limit, p.Offset, scope.arg())
 	if err != nil {
 		return nil, 0, err
 	}
@@ -229,7 +229,7 @@ func (q *Queries) ListPolicyCompliance(ctx context.Context, policyID uuid.UUID, 
 // or every device it once applied to has since been unassigned - comes back
 // with all three states at zero rather than being absent from the map, so a
 // caller never has to tell "zero" apart from "missing" for a real policy id.
-func (q *Queries) PolicyStateCounts(ctx context.Context, policyIDs []uuid.UUID) (map[uuid.UUID]map[string]int, error) {
+func (q *Queries) PolicyStateCounts(ctx context.Context, policyIDs []uuid.UUID, scope DeviceScope) (map[uuid.UUID]map[string]int, error) {
 	out := make(map[uuid.UUID]map[string]int, len(policyIDs))
 	for _, id := range policyIDs {
 		out[id] = map[string]int{
@@ -244,8 +244,8 @@ func (q *Queries) PolicyStateCounts(ctx context.Context, policyIDs []uuid.UUID) 
 	rows, err := q.db.Query(ctx, `
 		SELECT policy_id, state, count(*)
 		FROM device_compliance
-		WHERE tenant_id = $1 AND policy_id = ANY($2)
-		GROUP BY policy_id, state`, DefaultTenantID, policyIDs)
+		WHERE tenant_id = $1 AND policy_id = ANY($2) AND `+scopeSQL("device_id", 3)+`
+		GROUP BY policy_id, state`, DefaultTenantID, policyIDs, scope.arg())
 	if err != nil {
 		return nil, err
 	}
@@ -303,7 +303,7 @@ func (q *Queries) ComplianceOverall(ctx context.Context, deviceIDs []uuid.UUID) 
 // the console's device list and FleetBar: status = 'active' in the devices
 // table (a device is still active while merely stale, i.e. overdue to check
 // in; retired and replaced devices are excluded).
-func (q *Queries) ComplianceCounts(ctx context.Context) (map[string]int, error) {
+func (q *Queries) ComplianceCounts(ctx context.Context, scope DeviceScope) (map[string]int, error) {
 	// The rollup happens in SQL rather than in Go, the same way
 	// DeviceBucketCounts computes the bar beside this one: pulling a row per
 	// (device x policy) back to derive one verdict each is 100k rows on a
@@ -327,10 +327,10 @@ func (q *Queries) ComplianceCounts(ctx context.Context) (map[string]int, error) 
 			END AS overall
 			FROM devices d
 			LEFT JOIN device_compliance dc ON dc.device_id = d.id AND dc.tenant_id = d.tenant_id
-			WHERE d.tenant_id = $1 AND d.status = $2
+			WHERE d.tenant_id = $1 AND d.status = $2 AND `+scopeSQL("d.id", 3)+`
 			GROUP BY d.id
 		) per_device
-		GROUP BY overall`, DefaultTenantID, DeviceActive)
+		GROUP BY overall`, DefaultTenantID, DeviceActive, scope.arg())
 	if err != nil {
 		return nil, err
 	}

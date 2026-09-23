@@ -200,7 +200,7 @@ func (h *Handler) listScriptRuns(w http.ResponseWriter, r *http.Request) {
 		deviceID = &parsed
 	}
 	page := pageFrom(r)
-	rows, total, err := h.Store.Q().ListScriptRuns(r.Context(), id, deviceID, page)
+	rows, total, err := h.Store.Q().ListScriptRuns(r.Context(), id, deviceID, page, caller(r).Scope)
 	if err != nil {
 		h.internal(w, "list script runs", err)
 		return

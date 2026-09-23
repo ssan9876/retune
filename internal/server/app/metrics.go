@@ -68,7 +68,7 @@ var (
 func renderMetrics(ctx context.Context, q *store.Queries, stats *sweeper.Stats, now time.Time) ([]byte, error) {
 	var b bytes.Buffer
 
-	active, stale, retired, err := q.DeviceBucketCounts(ctx, now.Add(-adminapi.StaleAfter))
+	active, stale, retired, err := q.DeviceBucketCounts(ctx, now.Add(-adminapi.StaleAfter), store.Unscoped)
 	if err != nil {
 		return nil, fmt.Errorf("device counts: %w", err)
 	}
@@ -77,7 +77,7 @@ func renderMetrics(ctx context.Context, q *store.Queries, stats *sweeper.Stats, 
 	sample(&b, "retune_devices", "state", "stale", stale)
 	sample(&b, "retune_devices", "state", "retired", retired)
 
-	compliance, err := q.ComplianceCounts(ctx)
+	compliance, err := q.ComplianceCounts(ctx, store.Unscoped)
 	if err != nil {
 		return nil, fmt.Errorf("compliance counts: %w", err)
 	}
@@ -86,7 +86,7 @@ func renderMetrics(ctx context.Context, q *store.Queries, stats *sweeper.Stats, 
 		sample(&b, "retune_compliance_devices", "state", s, compliance[s])
 	}
 
-	failed, err := q.FailedDeploymentCounts(ctx)
+	failed, err := q.FailedDeploymentCounts(ctx, store.Unscoped)
 	if err != nil {
 		return nil, fmt.Errorf("failed deployments: %w", err)
 	}

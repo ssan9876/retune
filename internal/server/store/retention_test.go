@@ -127,10 +127,10 @@ func TestDeleteRunsAndInstallsBefore(t *testing.T) {
 	if n, err := q.DeleteAppInstallsBefore(ctx, cutoff, 5000); err != nil || n != 1 {
 		t.Errorf("app installs deleted %d, %v; want 1", n, err)
 	}
-	if runs, total, err := q.ListScriptRuns(ctx, scriptID, nil, store.Page{}); err != nil || total != 1 || len(runs) != 1 {
+	if runs, total, err := q.ListScriptRuns(ctx, scriptID, nil, store.Page{}, store.Unscoped); err != nil || total != 1 || len(runs) != 1 {
 		t.Errorf("the recent run should remain: %d %v", total, err)
 	}
-	if installs, total, err := q.ListAppInstalls(ctx, appID, nil, store.Page{}); err != nil || total != 1 || len(installs) != 1 {
+	if installs, total, err := q.ListAppInstalls(ctx, appID, nil, store.Page{}, store.Unscoped); err != nil || total != 1 || len(installs) != 1 {
 		t.Errorf("the recent install should remain: %d %v", total, err)
 	}
 }

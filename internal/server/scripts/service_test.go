@@ -143,14 +143,14 @@ func TestRecordRunUpdatesStatusAndHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rollup, err := st.Q().ItemStatusRollup(ctx, protocol.ItemKindScript, sc.ID)
+	rollup, err := st.Q().ItemStatusRollup(ctx, protocol.ItemKindScript, sc.ID, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if rollup[store.ItemSucceeded] != 1 {
 		t.Fatalf("rollup = %v", rollup)
 	}
-	statuses, _, err := st.Q().ListItemStatus(ctx, protocol.ItemKindScript, sc.ID, "", store.Page{})
+	statuses, _, err := st.Q().ListItemStatus(ctx, protocol.ItemKindScript, sc.ID, "", store.Page{}, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,14 +165,14 @@ func TestRecordRunUpdatesStatusAndHistory(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	rollup, err = st.Q().ItemStatusRollup(ctx, protocol.ItemKindScript, sc.ID)
+	rollup, err = st.Q().ItemStatusRollup(ctx, protocol.ItemKindScript, sc.ID, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if rollup[store.ItemFailed] != 1 || rollup[store.ItemSucceeded] != 0 {
 		t.Fatalf("the latest run should decide the status, got %v", rollup)
 	}
-	runs, total, err := st.Q().ListScriptRuns(ctx, sc.ID, nil, store.Page{})
+	runs, total, err := st.Q().ListScriptRuns(ctx, sc.ID, nil, store.Page{}, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestRecordRunUpdatesStatusAndHistory(t *testing.T) {
 	if runs[0].Phase != protocol.PhaseDetection || runs[0].ExitCode != 3 {
 		t.Fatalf("newest run = %+v", runs[0])
 	}
-	statuses, _, err = st.Q().ListItemStatus(ctx, protocol.ItemKindScript, sc.ID, "", store.Page{})
+	statuses, _, err = st.Q().ListItemStatus(ctx, protocol.ItemKindScript, sc.ID, "", store.Page{}, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func TestSetItemPending(t *testing.T) {
 	if err := svc.SetItemPending(ctx, d.ID, sc.ID, 1, "running as the logged-in user is not supported yet"); err != nil {
 		t.Fatal(err)
 	}
-	rollup, err := st.Q().ItemStatusRollup(ctx, protocol.ItemKindScript, sc.ID)
+	rollup, err := st.Q().ItemStatusRollup(ctx, protocol.ItemKindScript, sc.ID, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +280,7 @@ func TestDeleteRemovesAssignmentsButKeepsRuns(t *testing.T) {
 	if len(assignments) != 0 {
 		t.Errorf("its assignments should go with it, got %d", len(assignments))
 	}
-	if _, total, err := st.Q().ListScriptRuns(ctx, sc.ID, nil, store.Page{}); err != nil || total != 1 {
+	if _, total, err := st.Q().ListScriptRuns(ctx, sc.ID, nil, store.Page{}, store.Unscoped); err != nil || total != 1 {
 		t.Errorf("what happened on a machine stays true: total %d err %v", total, err)
 	}
 }

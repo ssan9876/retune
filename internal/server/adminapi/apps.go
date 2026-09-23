@@ -228,7 +228,7 @@ func (h *Handler) listAppInstalls(w http.ResponseWriter, r *http.Request) {
 		deviceID = &parsed
 	}
 	page := pageFrom(r)
-	rows, total, err := h.Store.Q().ListAppInstalls(r.Context(), id, deviceID, page)
+	rows, total, err := h.Store.Q().ListAppInstalls(r.Context(), id, deviceID, page, caller(r).Scope)
 	if err != nil {
 		h.internal(w, "list app installs", err)
 		return

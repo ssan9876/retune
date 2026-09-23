@@ -116,14 +116,14 @@ func TestRecordInstallWritesHistoryAndStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rollup, err := st.Q().ItemStatusRollup(ctx, protocol.ItemKindApp, a.ID)
+	rollup, err := st.Q().ItemStatusRollup(ctx, protocol.ItemKindApp, a.ID, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if rollup[store.ItemSucceeded] != 1 {
 		t.Fatalf("want one succeeded, got %v", rollup)
 	}
-	rows, _, err := st.Q().ListAppInstalls(ctx, a.ID, nil, store.Page{})
+	rows, _, err := st.Q().ListAppInstalls(ctx, a.ID, nil, store.Page{}, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestRecordInstallNamesThePackageInAFailureDetail(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rows, _, err := st.Q().ListAppInstalls(ctx, a.ID, nil, store.Page{})
+	rows, _, err := st.Q().ListAppInstalls(ctx, a.ID, nil, store.Page{}, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}

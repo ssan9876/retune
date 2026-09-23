@@ -167,7 +167,7 @@ func TestRecordStatusRollsUp(t *testing.T) {
 	}
 	itemStatus := func() (string, string) {
 		t.Helper()
-		rows, _, err := st.Q().ListItemStatus(ctx, protocol.ItemKindProfile, p.ID, "", store.Page{})
+		rows, _, err := st.Q().ListItemStatus(ctx, protocol.ItemKindProfile, p.ID, "", store.Page{}, store.Unscoped)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -208,7 +208,7 @@ func TestRecordStatusRollsUp(t *testing.T) {
 		t.Fatalf("status = %q, want conflict", status)
 	}
 
-	rollup, err := st.Q().SettingStatusRollup(ctx, p.ID)
+	rollup, err := st.Q().SettingStatusRollup(ctx, p.ID, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +246,7 @@ func TestRemovedSettingsStopBeingReported(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rows, total, err := st.Q().ListSettingStatus(ctx, p.ID, "", store.Page{})
+	rows, total, err := st.Q().ListSettingStatus(ctx, p.ID, "", store.Page{}, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +274,7 @@ func TestClearForDevice(t *testing.T) {
 	if err := svc.ClearForDevice(ctx, d.ID, p.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, total, err := st.Q().ListSettingStatus(ctx, p.ID, "", store.Page{}); err != nil || total != 0 {
+	if _, total, err := st.Q().ListSettingStatus(ctx, p.ID, "", store.Page{}, store.Unscoped); err != nil || total != 0 {
 		t.Fatalf("total %d err %v", total, err)
 	}
 }
@@ -328,7 +328,7 @@ func TestConflictDetailNamesProfiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rows, _, err := st.Q().ListSettingStatus(ctx, a.ID, "", store.Page{})
+	rows, _, err := st.Q().ListSettingStatus(ctx, a.ID, "", store.Page{}, store.Unscoped)
 	if err != nil {
 		t.Fatal(err)
 	}
