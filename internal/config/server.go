@@ -56,7 +56,21 @@ type Server struct {
 	// AuditStream is where the audit log is copied as it is written, for a
 	// SIEM. Its zero value streams nowhere.
 	AuditStream AuditStreamConfig
+	// Approvals is two-person approval. Its zero value is off.
+	Approvals ApprovalsConfig
 }
+
+// ApprovalsConfig says which requests wait for a second administrator.
+type ApprovalsConfig struct {
+	// Required holds every wipe, and ad-hoc PowerShell or an assignment that
+	// reaches more than DeviceThreshold devices, until another admin approves.
+	Required bool
+	// DeviceThreshold is how many devices a request may reach without one.
+	DeviceThreshold int
+}
+
+// defaultApprovalThreshold is APPROVAL_DEVICE_THRESHOLD unset.
+const defaultApprovalThreshold = 50
 
 // AuditStreamConfig names the audit log's destinations outside Retune. They
 // are process configuration, set by whoever runs the server, not something
@@ -193,6 +207,21 @@ func LoadServer(getenv func(string) string) (Server, error) {
 			return Server{}, errors.New("SWEEP_INTERVAL_SECONDS must be an integer >= 10")
 		}
 		c.SweepInterval = time.Duration(n) * time.Second
+	}
+	if v := lookup("APPROVALS_REQUIRED"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return Server{}, errors.New("APPROVALS_REQUIRED must be true or false")
+		}
+		c.Approvals.Required = b
+	}
+	c.Approvals.DeviceThreshold = defaultApprovalThreshold
+	if v := lookup("APPROVAL_DEVICE_THRESHOLD"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return Server{}, errors.New("APPROVAL_DEVICE_THRESHOLD must be an integer >= 0")
+		}
+		c.Approvals.DeviceThreshold = n
 	}
 	if v := lookup("OPERATIONS_KEYS"); v != "" {
 		keys, err := release.ParseTrustList(v)

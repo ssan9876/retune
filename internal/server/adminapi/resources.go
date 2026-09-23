@@ -19,6 +19,12 @@ func (h *Handler) mountResources(mux *http.ServeMux, base string) {
 	h.handle(mux, "GET "+base+"/commands/{id}", h.read(h.getCommand))
 	h.handle(mux, "GET "+base+"/commands/{id}/artifact", h.operate(h.downloadCommandArtifact))
 
+	// Deciding a held request is for an administrator of the whole fleet,
+	// signed in: a token can't approve anything.
+	h.handle(mux, "GET "+base+"/approvals", h.readAdmin(h.listApprovals))
+	h.handle(mux, "POST "+base+"/approvals/{id}/approve", h.writeAdmin(h.approveApproval))
+	h.handle(mux, "POST "+base+"/approvals/{id}/reject", h.writeAdmin(h.rejectApproval))
+
 	h.handle(mux, "GET "+base+"/tokens", h.readFleet(h.listTokens))
 	h.handle(mux, "POST "+base+"/tokens", h.writeFleet(h.createToken))
 	h.handle(mux, "POST "+base+"/tokens/{id}/revoke", h.writeFleet(h.revokeToken))

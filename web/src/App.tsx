@@ -7,6 +7,7 @@ import ApiTokens from "./pages/ApiTokens";
 import AgentVersions from "./pages/AgentVersions";
 import Apps from "./pages/Apps";
 import Alerts from "./pages/Alerts";
+import Approvals from "./pages/Approvals";
 import Audit from "./pages/Audit";
 import Commands from "./pages/Commands";
 import Compliance from "./pages/Compliance";
@@ -38,6 +39,7 @@ export default function App() {
         <Route path="/compliance" element={<Compliance />} />
         <Route path="/commands" element={<Commands />} />
         <Route path="/tokens" element={<Tokens />} />
+        <Route path="/approvals" element={<Approvals />} />
         <Route path="/alerts" element={<Alerts />} />
         <Route path="/audit" element={<Audit />} />
         <Route path="/admins" element={<Admins />} />

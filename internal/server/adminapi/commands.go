@@ -1,6 +1,7 @@
 package adminapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -127,11 +128,6 @@ func (h *Handler) queueCommand(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	actor := caller(r).Admin.Email
-	type queued struct {
-		ID       string `json:"id"`
-		DeviceID string `json:"device_id"`
-	}
 	// Every device is parsed and checked against the caller's scope before
 	// any command is queued, so a request that names one device out of reach
 	// queues nothing rather than half of what it asked for.
@@ -147,31 +143,84 @@ func (h *Handler) queueCommand(w http.ResponseWriter, r *http.Request) {
 		}
 		ids = append(ids, deviceID)
 	}
-	out := make([]queued, 0, len(ids))
-	for _, deviceID := range ids {
-		c, err := h.Commands.Queue(r.Context(), commands.QueueOptions{
-			DeviceID: deviceID, Type: req.Type, Payload: payload, CreatedBy: actor,
-			TTL:             time.Duration(req.TTLHours) * time.Hour,
-			ConfirmHostname: req.ConfirmHostname, Reason: req.Reason,
-		})
-		switch {
-		case err == nil:
-			out = append(out, queued{ID: c.ID.String(), DeviceID: deviceID.String()})
-		case errors.Is(err, commands.ErrBadRequest):
-			writeError(w, http.StatusBadRequest, "bad_request", err.Error())
-			return
-		case errors.Is(err, commands.ErrNotFound):
-			writeError(w, http.StatusNotFound, "not_found", err.Error())
-			return
-		case errors.Is(err, commands.ErrDeviceNotActive):
-			writeError(w, http.StatusConflict, "device_not_active", err.Error())
-			return
-		default:
-			h.internal(w, "queue command", err)
-			return
+	actor := caller(r).Admin.Email
+	if h.commandNeedsApproval(req.Type, len(ids)) {
+		// Held requests are checked in full now, so nobody is asked to
+		// approve something that could never run.
+		for _, deviceID := range ids {
+			if err := h.Commands.Check(r.Context(), queueOptions(req, payload, deviceID, actor)); err != nil {
+				h.writeQueueError(w, err)
+				return
+			}
 		}
+		h.holdForApproval(w, r, store.ApprovalCommand, req, commandSummary(req, len(ids)))
+		return
+	}
+	out, err := h.queueCommands(r.Context(), req, payload, ids, actor)
+	if err != nil {
+		h.writeQueueError(w, err)
+		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"commands": out})
+}
+
+type queuedJSON struct {
+	ID       string `json:"id"`
+	DeviceID string `json:"device_id"`
+}
+
+func queueOptions(req queueRequest, payload json.RawMessage, deviceID uuid.UUID, actor string) commands.QueueOptions {
+	return commands.QueueOptions{
+		DeviceID: deviceID, Type: req.Type, Payload: payload, CreatedBy: actor,
+		TTL:             time.Duration(req.TTLHours) * time.Hour,
+		ConfirmHostname: req.ConfirmHostname, Reason: req.Reason,
+	}
+}
+
+// queueCommands queues req for each device, stopping at the first error with
+// what was queued before it.
+func (h *Handler) queueCommands(ctx context.Context, req queueRequest, payload json.RawMessage, ids []uuid.UUID, actor string) ([]queuedJSON, error) {
+	out := make([]queuedJSON, 0, len(ids))
+	for _, deviceID := range ids {
+		c, err := h.Commands.Queue(ctx, queueOptions(req, payload, deviceID, actor))
+		if err != nil {
+			return out, err
+		}
+		out = append(out, queuedJSON{ID: c.ID.String(), DeviceID: deviceID.String()})
+	}
+	return out, nil
+}
+
+func (h *Handler) writeQueueError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, commands.ErrBadRequest):
+		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
+	case errors.Is(err, commands.ErrNotFound):
+		writeError(w, http.StatusNotFound, "not_found", err.Error())
+	case errors.Is(err, commands.ErrDeviceNotActive):
+		writeError(w, http.StatusConflict, "device_not_active", err.Error())
+	default:
+		h.internal(w, "queue command", err)
+	}
+}
+
+// commandNeedsApproval: with approvals on, every wipe, and ad-hoc PowerShell
+// to more devices than the threshold, waits for a second administrator.
+func (h *Handler) commandNeedsApproval(typ string, devices int) bool {
+	if !h.ApprovalsRequired {
+		return false
+	}
+	return typ == protocol.CommandWipe || (typ == protocol.CommandRunPowerShell && devices > h.ApprovalThreshold)
+}
+
+func commandSummary(req queueRequest, devices int) string {
+	if req.Type == protocol.CommandWipe {
+		return fmt.Sprintf("wipe %s: %s", req.ConfirmHostname, req.Reason)
+	}
+	if devices == 1 {
+		return req.Type + " on 1 device"
+	}
+	return fmt.Sprintf("%s on %d devices", req.Type, devices)
 }
 
 // payloadFor builds the typed payload the command service expects.

@@ -32,6 +32,7 @@ type fileConfig struct {
 	SweepIntervalSeconds   int    `yaml:"sweep_interval_seconds"`
 	AgentReleaseKeys       string `yaml:"agent_release_keys"`
 	OperationsKeys         string `yaml:"operations_keys"`
+	ApprovalsRequired      *bool  `yaml:"approvals_required"`
 	SMTPHost               string `yaml:"smtp_host"`
 	SMTPPort               int    `yaml:"smtp_port"`
 	SMTPFrom               string `yaml:"smtp_from"`
@@ -59,6 +60,7 @@ type fileConfig struct {
 	CommandRetentionDays    *int `yaml:"command_retention_days"`
 	ScriptRunRetentionDays  *int `yaml:"script_run_retention_days"`
 	AppInstallRetentionDays *int `yaml:"app_install_retention_days"`
+	ApprovalDeviceThreshold *int `yaml:"approval_device_threshold"`
 }
 
 // DatabaseURL resolves the database connection string for commands that need
@@ -153,6 +155,12 @@ func loadConfigFile(getenv func(string) string) (map[string]string, error) {
 	}
 	set("AGENT_RELEASE_KEYS", f.AgentReleaseKeys)
 	set("OPERATIONS_KEYS", f.OperationsKeys)
+	if f.ApprovalsRequired != nil {
+		set("APPROVALS_REQUIRED", strconv.FormatBool(*f.ApprovalsRequired))
+	}
+	if f.ApprovalDeviceThreshold != nil {
+		set("APPROVAL_DEVICE_THRESHOLD", strconv.Itoa(*f.ApprovalDeviceThreshold))
+	}
 	set("SMTP_HOST", f.SMTPHost)
 	if f.SMTPPort != 0 {
 		set("SMTP_PORT", strconv.Itoa(f.SMTPPort))

@@ -70,6 +70,24 @@ const maxWipeReason = 500
 
 // Queue validates and stores a command for an active device.
 func (s *Service) Queue(ctx context.Context, o QueueOptions) (store.Command, error) {
+	return s.queue(ctx, o, false)
+}
+
+// errDryRun rolls back a Check once every test has passed.
+var errDryRun = errors.New("dry run")
+
+// Check makes every check Queue would - payload, signature, device, wipe
+// confirmation - without queueing anything, so a request held for approval
+// is known to be one that can run.
+func (s *Service) Check(ctx context.Context, o QueueOptions) error {
+	_, err := s.queue(ctx, o, true)
+	if errors.Is(err, errDryRun) {
+		return nil
+	}
+	return err
+}
+
+func (s *Service) queue(ctx context.Context, o QueueOptions, dry bool) (store.Command, error) {
 	payload, err := normalizePayload(o.Type, o.Payload)
 	if err != nil {
 		return store.Command{}, err
@@ -123,6 +141,9 @@ func (s *Service) Queue(ctx context.Context, o QueueOptions) (store.Command, err
 		}
 		if wipe && !strings.EqualFold(strings.TrimSpace(o.ConfirmHostname), d.Hostname) {
 			return fmt.Errorf("%w: to wipe this device, confirm_hostname must be its hostname, %s", ErrBadRequest, d.Hostname)
+		}
+		if dry {
+			return errDryRun
 		}
 		if err := q.CreateCommand(ctx, c); err != nil {
 			return err

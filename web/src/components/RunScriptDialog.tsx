@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
+import { heldForApproval } from "../api/approvals";
 import { api } from "../api/client";
 import { useSession } from "../session/SessionContext";
 import { SignatureField, parseSignature } from "./SignatureField";
-import { Button, Dialog, ErrorNote, Field } from "./ui";
+import { Button, Dialog, ErrorNote, Field, HeldNote } from "./ui";
 
 /** RunScriptDialog queues one PowerShell script on one or more devices. */
 export function RunScriptDialog({
@@ -23,13 +24,18 @@ export function RunScriptDialog({
   const [signatureText, setSignatureText] = useState("");
   const signature = parseSignature(signatureText);
   const [error, setError] = useState<unknown>(null);
+  const [held, setHeld] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (open) setHeld(false);
+  }, [open]);
 
   async function queue() {
     setBusy(true);
     setError(null);
     try {
-      await api.post("/commands", {
+      const res = await api.post("/commands", {
         device_ids: deviceIds,
         type: "run_powershell",
         script,
@@ -39,6 +45,10 @@ export function RunScriptDialog({
       setScript("");
       setSignatureText("");
       onQueued();
+      if (heldForApproval(res)) {
+        setHeld(true);
+        return;
+      }
       onClose();
     } catch (err) {
       setError(err);
@@ -73,6 +83,7 @@ export function RunScriptDialog({
         />
       ) : null}
       <ErrorNote error={error} />
+      {held ? <HeldNote /> : null}
       <div className="actions">
         <Button
           variant="primary"

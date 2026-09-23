@@ -54,6 +54,22 @@ describe("WipeDialog", () => {
     expect(onQueued).toHaveBeenCalled();
   });
 
+  it("stays open to say a wipe is waiting for approval", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ approval: { id: "a1", status: "pending" } }), {
+        status: 202,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const onClose = vi.fn();
+    render(<WipeDialog deviceId="d1" hostname="PC-1" open onClose={onClose} onQueued={() => {}} />);
+    await userEvent.type(screen.getByLabelText("Confirm hostname"), "PC-1");
+    await userEvent.type(screen.getByLabelText("Reason"), "lost");
+    await userEvent.click(screen.getByRole("button", { name: "Wipe PC-1" }));
+    expect(await screen.findByText(/Sent for approval/)).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("warns plainly what a wipe does", () => {
     render(<WipeDialog deviceId="d1" hostname="PC-1" open onClose={() => {}} onQueued={() => {}} />);
     expect(screen.getByRole("alert")).toHaveTextContent(/can't be undone/i);

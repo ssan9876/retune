@@ -155,3 +155,22 @@ smtp_starttls: false
 		t.Errorf("smtp = %+v", c.SMTP)
 	}
 }
+
+func TestConfigFileApprovals(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "retune-server.yaml")
+	body := "database_url: postgres://x/y\n" +
+		"public_url: https://mdm.example.com\n" +
+		"approvals_required: true\n" +
+		"approval_device_threshold: 0\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := LoadServer(env(map[string]string{"RETUNE_CONFIG": path}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.Approvals.Required || c.Approvals.DeviceThreshold != 0 {
+		t.Errorf("Approvals = %+v", c.Approvals)
+	}
+}

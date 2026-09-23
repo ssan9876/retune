@@ -89,6 +89,8 @@ session_ttl_hours: 12
 | `sweep_interval_seconds` | `300` | how often expired commands and sessions are cleared (minimum 10) |
 | `agent_release_keys` | — | comma-separated public keys that sign agent builds; uploads are refused until set |
 | `operations_keys` | — | comma-separated operations keys; when set, scripts and wipes without a valid signature are refused at once (see [Signed scripts and wipes](#signed-scripts-and-wipes)) |
+| `approvals_required` | `false` | hold wipes, and code sent to many devices, for a second administrator (see [Two-person approval](#two-person-approval)) |
+| `approval_device_threshold` | `50` | how many devices a script, app or ad-hoc PowerShell may reach without approval |
 | `smtp_host`, `smtp_port` | — / `587` | the relay alert email is sent through |
 | `smtp_from` | — | the address alert email comes from; required with `smtp_host` |
 | `smtp_username`, `smtp_password` | — | credentials for that relay, if it wants them |
@@ -102,7 +104,7 @@ session_ttl_hours: 12
 | `audit_webhook_url` | — | send the audit log to an HTTPS endpoint as newline-delimited JSON |
 | `audit_webhook_header` | — | one header sent with each webhook post, as `Name: value`, e.g. an `Authorization` header |
 | `oidc_issuer`, `oidc_client_id`, `oidc_client_secret` | — | turn on single sign-on; all three or none |
-| `oidc_admin_groups`, `oidc_readonly_groups` | — | comma-separated group names that grant each role |
+| `oidc_admin_groups`, `oidc_helpdesk_groups`, `oidc_readonly_groups` | — | comma-separated group names that grant each role |
 | `oidc_scope_groups` | — | identity-provider groups mapped to the device groups their members manage, as `group=Device group;other=Another` |
 | `oidc_fleet_groups` | — | with `oidc_scope_groups`, the identity-provider groups whose members manage the whole fleet |
 | `oidc_groups_claim` | `groups` | the ID token claim that lists a person's groups |
@@ -746,6 +748,41 @@ Then:
 
 Everything else — profiles, apps, lock, logs, password rotation — works as
 before: those run through fixed, bounded handlers rather than arbitrary code.
+
+## Two-person approval
+
+Signing puts a second key between the server and the fleet. Two-person
+approval puts a second person between one administrator and the fleet, with
+nothing to build: set `APPROVALS_REQUIRED=true`, and these wait on the
+**Approvals** page until another administrator approves them:
+
+- **every wipe;**
+- **ad-hoc PowerShell** sent to more devices than `APPROVAL_DEVICE_THRESHOLD`
+  (50 unless set);
+- **assigning** a script, app, configuration profile or agent build to a
+  static group of more devices than that, or to any dynamic group or All
+  devices, which can grow to any size once approved. Excluding something, and
+  assigning a compliance policy, which only reports, never wait.
+
+The request is checked in full when it is made — hostname, reason, signature,
+that the device is still enrolled — so nobody is asked to approve something
+that could never run. It answers `202 Accepted` with the held request rather
+than `201 Created`. Approving carries it out at once, as the person who asked:
+the command or assignment is theirs in the audit log, and `approval.approved`
+says who let it through. If it can no longer be done — the device was retired
+in the meantime — the approval is marked `failed`, with why.
+
+The rules:
+
+- Nobody approves their own request, including one sent with an API token
+  they made. They can withdraw it (reject it) instead.
+- Approving and rejecting need an administrator of the whole fleet, signed in
+  to the console: an API token can ask, but cannot decide.
+- A request not decided within a day expires.
+
+`GET /api/admin/v1/approvals?status=pending` lists what is waiting;
+`POST /api/admin/v1/approvals/{id}/approve` and `…/reject` decide, with an
+optional `{"reason": "…"}`.
 
 ## Updating the agent
 

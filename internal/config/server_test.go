@@ -408,3 +408,27 @@ func TestOIDCScopeGroups(t *testing.T) {
 		}
 	}
 }
+
+func TestApprovals(t *testing.T) {
+	load := func(extra map[string]string) (Server, error) {
+		m := map[string]string{"DATABASE_URL": "postgres://x", "PUBLIC_URL": "https://h"}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return LoadServer(env(m))
+	}
+	if c, err := load(nil); err != nil || c.Approvals.Required || c.Approvals.DeviceThreshold != 50 {
+		t.Fatalf("default = %+v, %v", c.Approvals, err)
+	}
+	c, err := load(map[string]string{"APPROVALS_REQUIRED": "true", "APPROVAL_DEVICE_THRESHOLD": "0"})
+	if err != nil || !c.Approvals.Required || c.Approvals.DeviceThreshold != 0 {
+		t.Fatalf("set = %+v, %v", c.Approvals, err)
+	}
+	for _, bad := range []map[string]string{
+		{"APPROVALS_REQUIRED": "maybe"}, {"APPROVAL_DEVICE_THRESHOLD": "-1"}, {"APPROVAL_DEVICE_THRESHOLD": "x"},
+	} {
+		if _, err := load(bad); err == nil {
+			t.Errorf("%v should be refused", bad)
+		}
+	}
+}
