@@ -408,4 +408,3 @@ func TestOIDCScopeGroups(t *testing.T) {
 		}
 	}
 }
-
