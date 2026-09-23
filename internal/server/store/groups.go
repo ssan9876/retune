@@ -48,6 +48,15 @@ type Assignment struct {
 	CreatedBy string
 	// Options configure the deployment; their shape depends on the kind.
 	Options []byte
+	// Rollout phases an include in over its group; zero is all of it.
+	Rollout Rollout
+}
+
+func (a Assignment) rolloutPercent() int {
+	if a.Rollout.Phased() {
+		return a.Rollout.Percent
+	}
+	return 100
 }
 
 // Item identifies one assigned thing, with the options of the assignment that
@@ -354,16 +363,21 @@ func (q *Queries) ActiveDeviceIDs(ctx context.Context) ([]uuid.UUID, error) {
 func (q *Queries) CreateAssignment(ctx context.Context, a Assignment) (uuid.UUID, error) {
 	var id uuid.UUID
 	err := q.db.QueryRow(ctx, `
-		INSERT INTO assignments (id, tenant_id, item_kind, item_id, group_id, mode, created_at, created_by, options)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, coalesce($9, '{}'::jsonb))
+		INSERT INTO assignments (id, tenant_id, item_kind, item_id, group_id, mode, created_at, created_by, options,
+		                         rollout_percent, rollout_step_percent, rollout_step_hours)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, coalesce($9, '{}'::jsonb), $10, $11, $12)
 		ON CONFLICT (item_kind, item_id, group_id, mode)
 		-- Overwriting created_at here is intended, not a wart: EffectiveItems
 		-- picks the newest include's options by created_at, so a re-assignment
 		-- must become the newest row or its changed options would never win
 		-- over an older, stale include of the same item.
-		DO UPDATE SET options = EXCLUDED.options, created_at = EXCLUDED.created_at, created_by = EXCLUDED.created_by
+		-- A replaced rollout starts again from its new percentage, now.
+		DO UPDATE SET options = EXCLUDED.options, created_at = EXCLUDED.created_at, created_by = EXCLUDED.created_by,
+		              rollout_percent = EXCLUDED.rollout_percent, rollout_step_percent = EXCLUDED.rollout_step_percent,
+		              rollout_step_hours = EXCLUDED.rollout_step_hours
 		RETURNING id`,
-		a.ID, DefaultTenantID, a.ItemKind, a.ItemID, a.GroupID, a.Mode, a.CreatedAt, a.CreatedBy, a.Options).
+		a.ID, DefaultTenantID, a.ItemKind, a.ItemID, a.GroupID, a.Mode, a.CreatedAt, a.CreatedBy, a.Options,
+		a.rolloutPercent(), a.Rollout.StepPercent, a.Rollout.StepHours).
 		Scan(&id)
 	return id, err
 }
@@ -383,19 +397,14 @@ func (q *Queries) DeleteAssignment(ctx context.Context, tenantID, id uuid.UUID) 
 }
 
 func (q *Queries) GetAssignment(ctx context.Context, tenantID, id uuid.UUID) (Assignment, error) {
-	var a Assignment
-	err := q.db.QueryRow(ctx, `
-		SELECT id, item_kind, item_id, group_id, mode, created_at, created_by, options
-		FROM assignments WHERE tenant_id = $1 AND id = $2`, tenantID, id).
-		Scan(&a.ID, &a.ItemKind, &a.ItemID, &a.GroupID, &a.Mode, &a.CreatedAt, &a.CreatedBy, &a.Options)
-	return a, notFound(err)
+	return scanAssignment(q.db.QueryRow(ctx, `
+		SELECT `+assignmentCols+` FROM assignments WHERE tenant_id = $1 AND id = $2`, tenantID, id))
 }
 
 // ListAssignments returns the assignments for one item.
 func (q *Queries) ListAssignments(ctx context.Context, itemKind string, itemID uuid.UUID) ([]Assignment, error) {
 	rows, err := q.db.Query(ctx, `
-		SELECT id, item_kind, item_id, group_id, mode, created_at, created_by, options
-		FROM assignments
+		SELECT `+assignmentCols+` FROM assignments
 		WHERE tenant_id = $1 AND item_kind = $2 AND item_id = $3
 		ORDER BY mode, created_at`, DefaultTenantID, itemKind, itemID)
 	if err != nil {
@@ -404,9 +413,8 @@ func (q *Queries) ListAssignments(ctx context.Context, itemKind string, itemID u
 	defer rows.Close()
 	var out []Assignment
 	for rows.Next() {
-		var a Assignment
-		if err := rows.Scan(&a.ID, &a.ItemKind, &a.ItemID, &a.GroupID, &a.Mode,
-			&a.CreatedAt, &a.CreatedBy, &a.Options); err != nil {
+		a, err := scanAssignment(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, a)
@@ -414,15 +422,27 @@ func (q *Queries) ListAssignments(ctx context.Context, itemKind string, itemID u
 	return out, rows.Err()
 }
 
-// EffectiveItems returns the items assigned to a device: everything included
-// through one of its groups and excluded through none of them. Exclude always
-// wins, whichever group it came from.
-func (q *Queries) EffectiveItems(ctx context.Context, deviceID uuid.UUID) ([]Item, error) {
-	// DISTINCT ON with the ordering below is the conflict rule: when the same
-	// item reaches a device through several groups, the most recently created
-	// include assignment supplies the options.
+const assignmentCols = `id, item_kind, item_id, group_id, mode, created_at, created_by, options,
+	rollout_percent, rollout_step_percent, rollout_step_hours`
+
+func scanAssignment(row pgx.Row) (Assignment, error) {
+	var a Assignment
+	err := row.Scan(&a.ID, &a.ItemKind, &a.ItemID, &a.GroupID, &a.Mode, &a.CreatedAt, &a.CreatedBy, &a.Options,
+		&a.Rollout.Percent, &a.Rollout.StepPercent, &a.Rollout.StepHours)
+	return a, notFound(err)
+}
+
+// EffectiveItems returns the items assigned to a device at now: everything
+// included through one of its groups, with the device inside that include's
+// rollout, and excluded through none of them. Exclude always wins, whichever
+// group it came from.
+func (q *Queries) EffectiveItems(ctx context.Context, deviceID uuid.UUID, now time.Time) ([]Item, error) {
+	// The ordering below is the conflict rule: when the same item reaches a
+	// device through several groups, the most recently created include
+	// assignment that admits the device supplies the options.
 	rows, err := q.db.Query(ctx, `
-		SELECT DISTINCT ON (a.item_kind, a.item_id) a.item_kind, a.item_id, a.options
+		SELECT a.item_kind, a.item_id, a.options, a.created_at,
+		       a.rollout_percent, a.rollout_step_percent, a.rollout_step_hours
 		FROM assignments a
 		JOIN group_members gm ON gm.group_id = a.group_id AND gm.device_id = $2
 		WHERE a.tenant_id = $1 AND a.mode = 'include'
@@ -437,11 +457,23 @@ func (q *Queries) EffectiveItems(ctx context.Context, deviceID uuid.UUID) ([]Ite
 	}
 	defer rows.Close()
 	var out []Item
+	type key struct {
+		kind string
+		id   uuid.UUID
+	}
+	seen := map[key]bool{}
 	for rows.Next() {
 		var it Item
-		if err := rows.Scan(&it.Kind, &it.ID, &it.Options); err != nil {
+		var since time.Time
+		var r Rollout
+		if err := rows.Scan(&it.Kind, &it.ID, &it.Options, &since, &r.Percent, &r.StepPercent, &r.StepHours); err != nil {
 			return nil, err
 		}
+		k := key{it.Kind, it.ID}
+		if seen[k] || !RolloutAdmits(it.ID, deviceID, r.Current(since, now)) {
+			continue
+		}
+		seen[k] = true
 		out = append(out, it)
 	}
 	return out, rows.Err()

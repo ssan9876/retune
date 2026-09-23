@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 import { heldForApproval } from "../api/approvals";
 import { api } from "../api/client";
 import type { App, AppInstall, DetectionRule, Group } from "../api/types";
+import { AssignedTo, RolloutFields, rolloutBody } from "../components/Assignments";
+import type { Rollout } from "../components/Assignments";
 import { StatusDot } from "../components/StatusDot";
 import { Button, Dialog, EmptyState, ErrorNote, Field, HeldNote, Spinner } from "../components/ui";
 import { useList } from "../hooks/useList";
@@ -366,6 +368,7 @@ function AssignDialog({
   const [groups, setGroups] = useState<Group[]>([]);
   const [groupID, setGroupID] = useState("");
   const [mode, setMode] = useState("include");
+  const [rollout, setRollout] = useState<Rollout | null>(null);
   const [intent, setIntent] = useState("install");
   const [timeoutSeconds, setTimeoutSeconds] = useState(900);
   const [error, setError] = useState<unknown>(null);
@@ -395,6 +398,7 @@ function AssignDialog({
         group_id: groupID,
         mode,
         options: mode === "include" ? { intent, timeout_seconds: timeoutSeconds } : undefined,
+        rollout: rolloutBody(mode, rollout),
       });
       onAssigned();
       if (heldForApproval(res)) {
@@ -454,6 +458,7 @@ function AssignDialog({
         </>
       ) : null}
 
+      {mode === "include" ? <RolloutFields value={rollout} onChange={setRollout} /> : null}
       <ErrorNote error={error} />
       {held ? <HeldNote /> : null}
       <div className="actions">
@@ -484,6 +489,7 @@ function AppDetail({ app }: { app: App }) {
   return (
     <section className="app__detail">
       <h2>{app.name}</h2>
+      <AssignedTo kind={ITEM_KIND} id={app.id} />
       {counts.length > 0 ? (
         <p className="app__rollup">
           {counts.map(([status, count]) => (

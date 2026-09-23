@@ -4,6 +4,8 @@ import { heldForApproval } from "../api/approvals";
 import { api } from "../api/client";
 import type { Group, Script, ScriptRun } from "../api/types";
 import { SignatureField, parseSignature } from "../components/SignatureField";
+import { AssignedTo, RolloutFields, rolloutBody } from "../components/Assignments";
+import type { Rollout } from "../components/Assignments";
 import { StatusDot } from "../components/StatusDot";
 import { Button, Dialog, EmptyState, ErrorNote, Field, HeldNote, Spinner } from "../components/ui";
 import { useList } from "../hooks/useList";
@@ -138,6 +140,7 @@ function AssignDialog({
   const [groups, setGroups] = useState<Group[]>([]);
   const [groupID, setGroupID] = useState("");
   const [mode, setMode] = useState("include");
+  const [rollout, setRollout] = useState<Rollout | null>(null);
   const [frequency, setFrequency] = useState("once");
   const [intervalHours, setIntervalHours] = useState(24);
   const [runAs, setRunAs] = useState("system");
@@ -177,6 +180,7 @@ function AssignDialog({
                 timeout_seconds: timeoutSeconds,
               }
             : undefined,
+        rollout: rolloutBody(mode, rollout),
       });
       onAssigned();
       if (heldForApproval(res)) {
@@ -252,6 +256,7 @@ function AssignDialog({
         </>
       ) : null}
 
+      {mode === "include" ? <RolloutFields value={rollout} onChange={setRollout} /> : null}
       <ErrorNote error={error} />
       {held ? <HeldNote /> : null}
       <div className="actions">
@@ -282,6 +287,7 @@ function ScriptDetail({ script }: { script: Script }) {
   return (
     <section className="script__detail">
       <h2>{script.name}</h2>
+      <AssignedTo kind={ITEM_KIND} id={script.id} />
       {counts.length > 0 ? (
         <p className="script__rollup">
           {counts.map(([status, count]) => (

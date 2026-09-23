@@ -223,7 +223,7 @@ func (s *Service) EvaluateDevice(ctx context.Context, deviceID uuid.UUID) error 
 		if err != nil {
 			return err
 		}
-		items, err := q.EffectiveItems(ctx, deviceID)
+		items, err := q.EffectiveItems(ctx, deviceID, now)
 		if err != nil {
 			return err
 		}

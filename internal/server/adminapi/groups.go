@@ -275,6 +275,37 @@ type assignmentJSON struct {
 	Options   json.RawMessage `json:"options,omitempty"`
 	CreatedAt time.Time       `json:"created_at"`
 	CreatedBy string          `json:"created_by"`
+	// Rollout is present only for a phased include.
+	Rollout *rolloutJSON `json:"rollout,omitempty"`
+}
+
+type rolloutJSON struct {
+	Percent     int `json:"percent"`
+	StepPercent int `json:"step_percent,omitempty"`
+	StepHours   int `json:"step_hours,omitempty"`
+	// CurrentPercent is how much of the group it reaches now, and FullAt when
+	// it will reach all of it (absent if it won't without a change).
+	CurrentPercent int        `json:"current_percent,omitempty"`
+	FullAt         *time.Time `json:"full_at,omitempty"`
+}
+
+func newAssignmentJSON(a store.Assignment, groupName string, now time.Time) assignmentJSON {
+	out := assignmentJSON{
+		ID: a.ID.String(), ItemKind: a.ItemKind, ItemID: a.ItemID.String(),
+		GroupID: a.GroupID.String(), GroupName: groupName, Mode: a.Mode,
+		Options:   json.RawMessage(a.Options),
+		CreatedAt: a.CreatedAt, CreatedBy: a.CreatedBy,
+	}
+	if r := a.Rollout; r.Phased() {
+		out.Rollout = &rolloutJSON{
+			Percent: r.Percent, StepPercent: r.StepPercent, StepHours: r.StepHours,
+			CurrentPercent: r.Current(a.CreatedAt, now),
+		}
+		if full := r.FullAt(a.CreatedAt); !full.IsZero() {
+			out.Rollout.FullAt = &full
+		}
+	}
+	return out
 }
 
 type assignmentRequest struct {
@@ -283,6 +314,7 @@ type assignmentRequest struct {
 	GroupID  string          `json:"group_id"`
 	Mode     string          `json:"mode"`
 	Options  json.RawMessage `json:"options"`
+	Rollout  *rolloutJSON    `json:"rollout,omitempty"`
 }
 
 func (h *Handler) listAssignments(w http.ResponseWriter, r *http.Request) {
@@ -310,12 +342,7 @@ func (h *Handler) listAssignments(w http.ResponseWriter, r *http.Request) {
 		if g, err := h.Store.Q().GetGroup(ctx, store.DefaultTenantID, a.GroupID); err == nil {
 			name = g.Name
 		}
-		items = append(items, assignmentJSON{
-			ID: a.ID.String(), ItemKind: a.ItemKind, ItemID: a.ItemID.String(),
-			GroupID: a.GroupID.String(), GroupName: name, Mode: a.Mode,
-			Options:   json.RawMessage(a.Options),
-			CreatedAt: a.CreatedAt, CreatedBy: a.CreatedBy,
-		})
+		items = append(items, newAssignmentJSON(a, name, h.Now()))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
@@ -399,11 +426,38 @@ func parseAssignment(req assignmentRequest, actor string, now time.Time) (store.
 		}
 		options = encoded
 	}
+	rollout, rerr := parseRollout(req)
+	if rerr != nil {
+		return store.Assignment{}, rerr
+	}
 	return store.Assignment{
 		ID: uuid.Must(uuid.NewV7()), ItemKind: req.ItemKind, ItemID: itemID,
 		GroupID: groupID, Mode: req.Mode, CreatedAt: now, CreatedBy: actor,
-		Options: options,
+		Options: options, Rollout: rollout,
 	}, nil
+}
+
+// parseRollout checks a phased rollout. Only something a device installs or
+// runs can be phased in: an exclusion, a compliance policy and a maintenance
+// window apply to the whole group or not at all.
+func parseRollout(req assignmentRequest) (store.Rollout, *requestError) {
+	r := req.Rollout
+	if r == nil || (r.Percent == 100 && r.StepPercent == 0 && r.StepHours == 0) {
+		return store.Rollout{}, nil
+	}
+	if req.Mode != store.ModeInclude || req.ItemKind == compliance.ItemKindCompliance || req.ItemKind == protocol.ItemKindWindow {
+		return store.Rollout{}, badRequest("bad_request", "only an include of a script, app, profile or agent build can be rolled out in phases")
+	}
+	if r.Percent < 1 || r.Percent > 100 {
+		return store.Rollout{}, badRequest("bad_request", "rollout.percent must be between 1 and 100")
+	}
+	if r.StepPercent < 0 || r.StepPercent > 100 || r.StepHours < 0 || r.StepHours > 720 {
+		return store.Rollout{}, badRequest("bad_request", "rollout.step_percent must be between 0 and 100, and rollout.step_hours between 0 and 720")
+	}
+	if (r.StepPercent == 0) != (r.StepHours == 0) {
+		return store.Rollout{}, badRequest("bad_request", "rollout.step_percent and rollout.step_hours go together: both, or neither")
+	}
+	return store.Rollout{Percent: r.Percent, StepPercent: r.StepPercent, StepHours: r.StepHours}, nil
 }
 
 // assignmentNeedsApproval: with approvals on, including something in a group
@@ -464,12 +518,8 @@ func (h *Handler) saveAssignment(ctx context.Context, a store.Assignment) (assig
 	if err != nil {
 		return assignmentJSON{}, err
 	}
-	return assignmentJSON{
-		ID: resultID.String(), ItemKind: a.ItemKind, ItemID: a.ItemID.String(),
-		GroupID: a.GroupID.String(), GroupName: groupName, Mode: a.Mode,
-		Options:   json.RawMessage(a.Options),
-		CreatedAt: a.CreatedAt, CreatedBy: a.CreatedBy,
-	}, nil
+	a.ID = resultID
+	return newAssignmentJSON(a, groupName, h.Now()), nil
 }
 
 func (h *Handler) deleteAssignment(w http.ResponseWriter, r *http.Request) {

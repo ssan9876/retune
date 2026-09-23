@@ -312,7 +312,7 @@ func TestEffectiveItemsUsesTheNewestIncludeOptions(t *testing.T) {
 		}
 	}
 
-	items, err := st.Q().EffectiveItems(ctx, d.ID)
+	items, err := st.Q().EffectiveItems(ctx, d.ID, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}

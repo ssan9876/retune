@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { heldForApproval } from "../api/approvals";
 import { api } from "../api/client";
 import type { Group, Profile, Setting, SettingStatus } from "../api/types";
+import { AssignedTo, RolloutFields, rolloutBody } from "../components/Assignments";
+import type { Rollout } from "../components/Assignments";
 import { StatusDot } from "../components/StatusDot";
 import { Button, Dialog, EmptyState, ErrorNote, Field, HeldNote, Spinner } from "../components/ui";
 import { useList } from "../hooks/useList";
@@ -904,6 +906,7 @@ function AssignDialog({
   const [groups, setGroups] = useState<Group[]>([]);
   const [groupID, setGroupID] = useState("");
   const [mode, setMode] = useState("include");
+  const [rollout, setRollout] = useState<Rollout | null>(null);
   const [revert, setRevert] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [held, setHeld] = useState(false);
@@ -930,6 +933,7 @@ function AssignDialog({
         group_id: groupID,
         mode,
         options: mode === "include" ? { revert_on_removal: revert } : undefined,
+        rollout: rolloutBody(mode, rollout),
       });
       onAssigned();
       if (heldForApproval(res)) {
@@ -970,6 +974,7 @@ function AssignDialog({
           </select>
         </Field>
       ) : null}
+      {mode === "include" ? <RolloutFields value={rollout} onChange={setRollout} /> : null}
       <ErrorNote error={error} />
       {held ? <HeldNote /> : null}
       <div className="actions">
@@ -1001,6 +1006,7 @@ function ProfileDetail({ profile }: { profile: Profile }) {
   return (
     <section className="profile__detail">
       <h2>{profile.name}</h2>
+      <AssignedTo kind={ITEM_KIND} id={profile.id} />
       {counts.length > 0 ? (
         <p className="profile__rollup">
           {counts.map(([status, count]) => (

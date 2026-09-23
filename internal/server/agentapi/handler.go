@@ -192,7 +192,7 @@ func (h *Handler) checkin(w http.ResponseWriter, r *http.Request) {
 	// The effective set is computed per check-in rather than cached, so a
 	// membership or assignment change takes effect on the next check-in with
 	// no invalidation to get wrong.
-	assigned, err := h.Store.Q().EffectiveItems(ctx, a.Device.ID)
+	assigned, err := h.Store.Q().EffectiveItems(ctx, a.Device.ID, h.Now())
 	if err != nil {
 		h.Log.Error("effective items", "device_id", a.Device.ID, "error", err)
 		writeError(w, http.StatusInternalServerError, "internal", "internal server error")

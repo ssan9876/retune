@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { heldForApproval } from "../api/approvals";
 import { api } from "../api/client";
 import type { AgentVersion, Group } from "../api/types";
+import { AssignedTo, RolloutFields, rolloutBody } from "../components/Assignments";
+import type { Rollout } from "../components/Assignments";
 import { StatusDot } from "../components/StatusDot";
 import { Button, Dialog, EmptyState, ErrorNote, Field, HeldNote, Spinner } from "../components/ui";
 import { useList } from "../hooks/useList";
@@ -143,6 +145,7 @@ function AssignDialog({
   const [groups, setGroups] = useState<Group[]>([]);
   const [groupID, setGroupID] = useState("");
   const [mode, setMode] = useState("include");
+  const [rollout, setRollout] = useState<Rollout | null>(null);
   const [deadlineSeconds, setDeadlineSeconds] = useState(DEFAULT_DEADLINE_SECONDS);
   const [error, setError] = useState<unknown>(null);
   const [held, setHeld] = useState(false);
@@ -173,6 +176,7 @@ function AssignDialog({
         group_id: groupID,
         mode,
         options: mode === "include" ? { deadline_seconds: deadlineSeconds } : undefined,
+        rollout: rolloutBody(mode, rollout),
       });
       onAssigned();
       if (heldForApproval(res)) {
@@ -224,6 +228,7 @@ function AssignDialog({
         </Field>
       ) : null}
 
+      {mode === "include" ? <RolloutFields value={rollout} onChange={setRollout} /> : null}
       <ErrorNote error={error} />
       {held ? <HeldNote /> : null}
       <div className="actions">
@@ -254,6 +259,7 @@ function AgentVersionDetail({ build }: { build: AgentVersion }) {
   return (
     <section className="agent-versions__detail">
       <h2>{build.version}</h2>
+      <AssignedTo kind={ITEM_KIND} id={build.id} />
       <p className="agent-versions__sha mono">{build.sha256}</p>
       {build.notes ? <p>{build.notes}</p> : null}
       {counts.length > 0 ? (
