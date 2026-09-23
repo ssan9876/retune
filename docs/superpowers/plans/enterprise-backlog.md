@@ -30,6 +30,7 @@ The working list for making Retune usable by an enterprise, started on 2026-09-2
 | An OpenAPI document for the admin API | #27 |
 | Server key rotation | #28 |
 | Scheduled email reports | #29 |
+| High availability guide, and CA creation safe for replicas starting together | #30 |
 
 ## To do, in order (round two)
 
@@ -44,7 +45,7 @@ The first list is done. These are the gaps an enterprise would still hit, limite
 | 15 | **An OpenAPI document for the admin API**, checked against the routes | integrations are built from a contract | done, #27 |
 | 16 | **Server key rotation**: re-seal every stored secret under a new `secret.key` | a key suspected of exposure can be retired | done, #28 |
 | 17 | **Scheduled reports by email**: compliance and inventory CSVs | auditors and managers get the numbers without a console account | done, #29 |
-| 18 | **High availability guide**: two replicas, shared storage, what is already safe | no single point of failure | docs, plus a check that shared state is |
+| 18 | **High availability guide**: two replicas, shared storage, what is already safe | no single point of failure | done, #30 |
 | 19 | **Enterprise (802.1X) Wi-Fi** | most corporate networks | needs a VM and a RADIUS server to verify |
 
 ## Can't be done from here

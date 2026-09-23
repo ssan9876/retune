@@ -1,6 +1,7 @@
 package ca
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -173,5 +175,32 @@ func TestLoadDoesNotCreate(t *testing.T) {
 	_, err := Load(context.Background(), FileKeyStore{Dir: t.TempDir()})
 	if !errors.Is(err, ErrNotExist) {
 		t.Fatalf("want ErrNotExist, got %v", err)
+	}
+}
+
+// Servers sharing a directory and starting together all end up with the one
+// CA, rather than the losers failing to start.
+func TestLoadOrCreateRace(t *testing.T) {
+	for range 20 {
+		ks := FileKeyStore{Dir: t.TempDir()}
+		var wg sync.WaitGroup
+		cas := make([]*CA, 8)
+		errs := make([]error, 8)
+		for i := range cas {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				cas[i], errs[i] = LoadOrCreate(context.Background(), ks, time.Now())
+			}()
+		}
+		wg.Wait()
+		for i := range cas {
+			if errs[i] != nil {
+				t.Fatalf("server %d: %v", i, errs[i])
+			}
+			if !bytes.Equal(cas[i].Cert().Raw, cas[0].Cert().Raw) {
+				t.Fatalf("server %d has a different CA", i)
+			}
+		}
 	}
 }
