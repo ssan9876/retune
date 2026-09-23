@@ -49,6 +49,8 @@ type Device struct {
 
 // AuditEntry records an administrative or security-relevant action.
 type AuditEntry struct {
+	// ID is set on entries read back; InsertAudit makes its own.
+	ID         uuid.UUID
 	Actor      string
 	Action     string
 	TargetKind string

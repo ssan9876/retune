@@ -49,7 +49,27 @@ type Server struct {
 	MetricsToken string
 	// OIDC is single sign-on. Its zero value is SSO off.
 	OIDC OIDCConfig
+	// AuditStream is where the audit log is copied as it is written, for a
+	// SIEM. Its zero value streams nowhere.
+	AuditStream AuditStreamConfig
 }
+
+// AuditStreamConfig names the audit log's destinations outside Retune. They
+// are process configuration, set by whoever runs the server, not something
+// the console can change: where the record of what admins did is sent must
+// not be editable by those admins.
+type AuditStreamConfig struct {
+	// SyslogNetwork is "udp", "tcp" or "tls"; SyslogAddress is host:port.
+	SyslogNetwork string
+	SyslogAddress string
+	// WebhookURL receives newline-delimited JSON; WebhookHeader, "Name:
+	// value", is sent with it - an Authorization header, typically.
+	WebhookURL    string
+	WebhookHeader string
+}
+
+// Enabled reports whether the audit log goes anywhere.
+func (a AuditStreamConfig) Enabled() bool { return a.SyslogAddress != "" || a.WebhookURL != "" }
 
 // OIDCConfig is the identity provider the console signs people in with.
 type OIDCConfig struct {
@@ -176,6 +196,9 @@ func LoadServer(getenv func(string) string) (Server, error) {
 	if c.OIDC, err = loadOIDC(lookup); err != nil {
 		return Server{}, err
 	}
+	if c.AuditStream, err = loadAuditStream(lookup); err != nil {
+		return Server{}, err
+	}
 	c.MetricsToken = strings.TrimSpace(lookup("METRICS_TOKEN"))
 	if c.MetricsToken != "" && len(c.MetricsToken) < minMetricsToken {
 		return Server{}, fmt.Errorf("METRICS_TOKEN must be at least %d characters", minMetricsToken)
@@ -261,6 +284,42 @@ func loadSMTP(lookup func(string) string) (SMTPConfig, error) {
 		return SMTPConfig{}, errors.New("SMTP_PASSWORD needs SMTP_USERNAME")
 	}
 	return cfg, nil
+}
+
+// loadAuditStream reads the audit destinations. The syslog address is a URL
+// (udp://, tcp:// or tls://host:port) so one setting says both how and where.
+func loadAuditStream(lookup func(string) string) (AuditStreamConfig, error) {
+	var a AuditStreamConfig
+	if v := strings.TrimSpace(lookup("AUDIT_SYSLOG_ADDRESS")); v != "" {
+		u, err := url.Parse(v)
+		if err != nil || u.Host == "" || u.Port() == "" {
+			return a, errors.New("AUDIT_SYSLOG_ADDRESS must look like tcp://host:514, udp://host:514 or tls://host:6514")
+		}
+		switch u.Scheme {
+		case "udp", "tcp", "tls":
+		default:
+			return a, errors.New("AUDIT_SYSLOG_ADDRESS must use udp://, tcp:// or tls://")
+		}
+		a.SyslogNetwork, a.SyslogAddress = u.Scheme, u.Host
+	}
+	if v := strings.TrimSpace(lookup("AUDIT_WEBHOOK_URL")); v != "" {
+		u, err := url.Parse(v)
+		if err != nil || u.Scheme != "https" || u.Host == "" {
+			return a, errors.New("AUDIT_WEBHOOK_URL must be an https URL")
+		}
+		a.WebhookURL = v
+	}
+	if v := strings.TrimSpace(lookup("AUDIT_WEBHOOK_HEADER")); v != "" {
+		name, value, ok := strings.Cut(v, ":")
+		if !ok || strings.TrimSpace(name) == "" || strings.TrimSpace(value) == "" || strings.ContainsAny(v, "\r\n") {
+			return a, errors.New("AUDIT_WEBHOOK_HEADER must look like \"Name: value\"")
+		}
+		if a.WebhookURL == "" {
+			return a, errors.New("AUDIT_WEBHOOK_HEADER needs AUDIT_WEBHOOK_URL")
+		}
+		a.WebhookHeader = v
+	}
+	return a, nil
 }
 
 // loadOIDC reads the SSO settings. They are all-or-nothing in the ways that

@@ -19,6 +19,7 @@ import (
 	"retune/internal/config"
 	"retune/internal/pki"
 	"retune/internal/server/app"
+	"retune/internal/server/auditstream"
 	"retune/internal/server/ca"
 	"retune/internal/server/enroll"
 	"retune/internal/server/store"
@@ -120,6 +121,12 @@ func serve(ctx context.Context, getenv func(string) string) error {
 		Log:   log,
 		Now:   time.Now,
 		Stats: a.Sweeps,
+	}
+	if sinks := auditstream.FromConfig(cfg.AuditStream); len(sinks) > 0 {
+		sweep.Jobs = append(sweep.Jobs, sweeper.AuditStreamJob(sinks...))
+		for _, sink := range sinks {
+			log.Info("streaming the audit log", "to", sink.Name())
+		}
 	}
 	sweep.Start(ctx)
 

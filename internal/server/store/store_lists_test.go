@@ -124,7 +124,7 @@ func TestListCommandsAndTokensAndAudit(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	page, total, err := q.ListAuditPage(ctx, store.Page{Limit: 2})
+	page, total, err := q.ListAuditPage(ctx, store.AuditFilter{Page: store.Page{Limit: 2}})
 	if err != nil || len(page) != 2 || total != 3 {
 		t.Fatalf("audit page = %d rows, total = %d, err = %v", len(page), total, err)
 	}

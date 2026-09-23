@@ -119,7 +119,7 @@ func TestUploadRefusesADuplicateVersion(t *testing.T) {
 // count entries the way TestUploadRejections does.
 func assertRejectionAudited(t *testing.T, st *store.Store, ctx context.Context) {
 	t.Helper()
-	entries, _, err := st.Q().ListAuditPage(ctx, store.Page{})
+	entries, _, err := st.Q().ListAuditPage(ctx, store.AuditFilter{Page: store.Page{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestUploadAuditsABadVersionFromPut(t *testing.T) {
 // under test.
 func countRejections(t *testing.T, st *store.Store, ctx context.Context) int {
 	t.Helper()
-	entries, _, err := st.Q().ListAuditPage(ctx, store.Page{})
+	entries, _, err := st.Q().ListAuditPage(ctx, store.AuditFilter{Page: store.Page{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,7 +299,7 @@ func TestUploadRejections(t *testing.T) {
 
 	// Every rejection is audited: a refused upload is the event signing exists
 	// to notice.
-	entries, _, err := st.Q().ListAuditPage(ctx, store.Page{})
+	entries, _, err := st.Q().ListAuditPage(ctx, store.AuditFilter{Page: store.Page{}})
 	if err != nil {
 		t.Fatal(err)
 	}

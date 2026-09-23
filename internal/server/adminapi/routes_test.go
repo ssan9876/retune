@@ -40,6 +40,7 @@ var expectedRoutes = map[string]string{
 	"GET /api/admin/v1/apps/{id}/installs":                          "scoped",
 	"GET /api/admin/v1/apps/{id}/versions":                          "scoped",
 	"GET /api/admin/v1/assignments":                                 "scoped",
+	"GET /api/admin/v1/audit/export.csv":                            "fleet",
 	"GET /api/admin/v1/audit":                                       "fleet",
 	"GET /api/admin/v1/commands":                                    "scoped",
 	"GET /api/admin/v1/commands/{id}":                               "scoped",
