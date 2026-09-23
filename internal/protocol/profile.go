@@ -223,6 +223,10 @@ type Setting struct {
 	SampleSubmission   string `json:"sample_submission,omitempty"`
 	PUAProtection      string `json:"pua_protection,omitempty"`
 	CloudBlockLevel    string `json:"cloud_block_level,omitempty"`
+
+	// Certificate: which machine store, and the certificate as PEM.
+	Store          string `json:"store,omitempty"`
+	CertificatePEM string `json:"certificate_pem,omitempty"`
 }
 
 // Identity is the key two profiles must agree on to be setting the same thing.
@@ -255,6 +259,10 @@ func (s Setting) Identity() string {
 		// identity per field would let two half-policies combine into a
 		// configuration nobody wrote.
 		return "defender:preferences"
+	case KindCertificate:
+		// The same certificate in the same store is the same setting;
+		// different certificates never conflict.
+		return "certificate:" + s.Store + ":" + s.CertificateThumbprint()
 	}
 	return s.Kind + ":"
 }
@@ -308,6 +316,8 @@ func (s Setting) Validate() error {
 		return s.validateBitLocker()
 	case KindDefender:
 		return s.validateDefender()
+	case KindCertificate:
+		return s.validateCertificate()
 	case "":
 		return fmt.Errorf("%w: every setting needs a kind", ErrBadSetting)
 	}

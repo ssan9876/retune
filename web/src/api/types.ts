@@ -299,6 +299,8 @@ export interface Setting {
   sample_submission?: string;
   pua_protection?: string;
   cloud_block_level?: string;
+  store?: string;
+  certificate_pem?: string;
 }
 
 export interface BitLockerKey {

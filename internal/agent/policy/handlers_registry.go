@@ -21,5 +21,6 @@ func Handlers(opts Options) []Handler {
 		FirewallRuleHandler{Run: opts.PowerShell},
 		BitLockerHandler{Run: opts.PowerShell, Escrow: opts.Escrow},
 		DefenderHandler{Run: opts.PowerShell},
+		CertificateHandler{Run: opts.PowerShell},
 	}
 }

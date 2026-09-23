@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import Profiles, { pauseEnds, today } from "./Profiles";
+import Profiles, { pauseEnds, pemProblem, today } from "./Profiles";
 
 const fetchMock = vi.fn();
 
@@ -244,5 +244,19 @@ describe("update ring helpers", () => {
   it("knows a pause ends 35 days after it starts, across a month end", () => {
     expect(pauseEnds("2026-09-22")).toBe("2026-10-27");
     expect(pauseEnds("2026-12-30")).toBe("2027-02-03");
+  });
+});
+
+describe("pemProblem", () => {
+  const cert = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----";
+  it("accepts one certificate", () => {
+    expect(pemProblem(cert)).toBeUndefined();
+    expect(pemProblem("")).toBeUndefined();
+  });
+  it("catches the usual mistakes", () => {
+    expect(pemProblem(cert + "\n-----BEGIN PRIVATE KEY-----\nX\n-----END PRIVATE KEY-----")).toMatch(/private key/);
+    expect(pemProblem(cert + "\n" + cert)).toMatch(/One certificate/);
+    expect(pemProblem("MIIB")).toMatch(/PEM/);
+    expect(pemProblem("-----BEGIN CERTIFICATE REQUEST-----\nX")).toMatch(/Only a CERTIFICATE/);
   });
 });
