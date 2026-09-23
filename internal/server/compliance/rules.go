@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -23,7 +24,7 @@ import (
 // wrong number of rules.
 var ErrBadRules = errors.New("invalid rules")
 
-// The twelve rule types, exactly as named in the design's rule table.
+// The rule types: twelve from M12's design, and three from M15's.
 const (
 	RuleOSBuildMin        = "os_build_min"
 	RuleAgentVersionMin   = "agent_version_min"
@@ -37,7 +38,22 @@ const (
 	RuleForbiddenSoftware = "forbidden_software"
 	RuleRequiredSoftware  = "required_software"
 	RuleProfileApplied    = "profile_applied"
+
+	RuleDefenderRealtime         = "defender_realtime"
+	RuleDefenderSignaturesWithin = "defender_signatures_within"
+	RuleFirewallEnabled          = "firewall_enabled"
 )
+
+// defender_signatures_within's bound. A month-old definition set is already
+// badly out of date; a rule allowing more would not be protecting anything.
+const (
+	MinSignatureDays = 1
+	MaxSignatureDays = 30
+)
+
+// firewallProfiles are the profiles firewall_enabled can name, and what it
+// checks when it names none.
+var firewallProfiles = []string{protocol.FirewallDomain, protocol.FirewallPrivate, protocol.FirewallPublic}
 
 // bitlocker's volumes parameter.
 const (
@@ -88,6 +104,7 @@ type Rule struct {
 	Count      int       // max_local_admins
 	Name       string    // forbidden_software, required_software
 	ProfileID  uuid.UUID // profile_applied
+	Profiles   []string  // firewall_enabled; empty means all three
 }
 
 // ParseRules strictly decodes a policy's rules JSON: 1-50 objects, unknown
@@ -144,6 +161,12 @@ func allowedFields(ruleType string) (fields map[string]bool, ok bool) {
 		return one("name"), true
 	case RuleProfileApplied:
 		return one("profile_id"), true
+	case RuleDefenderRealtime:
+		return map[string]bool{}, true
+	case RuleDefenderSignaturesWithin:
+		return one("days"), true
+	case RuleFirewallEnabled:
+		return one("profiles"), true
 	}
 	return nil, false
 }
@@ -278,6 +301,45 @@ func parseRule(raw json.RawMessage) (Rule, error) {
 			return Rule{}, fmt.Errorf("%w: profile_id must be a uuid: %v", ErrBadRules, err)
 		}
 		return Rule{Type: ruleType, ProfileID: id}, nil
+
+	case RuleDefenderRealtime:
+		return Rule{Type: ruleType}, nil
+
+	case RuleDefenderSignaturesWithin:
+		days, present, err := intField(m, "days")
+		if err != nil {
+			return Rule{}, err
+		}
+		if !present || days < MinSignatureDays || days > MaxSignatureDays {
+			return Rule{}, fmt.Errorf("%w: days must be between %d and %d, not %d",
+				ErrBadRules, MinSignatureDays, MaxSignatureDays, days)
+		}
+		return Rule{Type: ruleType, Days: days}, nil
+
+	case RuleFirewallEnabled:
+		raw, present := m["profiles"]
+		if !present {
+			return Rule{Type: ruleType}, nil
+		}
+		var profiles []string
+		if err := json.Unmarshal(raw, &profiles); err != nil {
+			return Rule{}, fmt.Errorf("%w: profiles must be a list of strings: %v", ErrBadRules, err)
+		}
+		if len(profiles) == 0 {
+			return Rule{}, fmt.Errorf("%w: profiles, when given, must name at least one of %s",
+				ErrBadRules, strings.Join(firewallProfiles, ", "))
+		}
+		var out []string
+		for _, name := range profiles {
+			if !slices.Contains(firewallProfiles, name) {
+				return Rule{}, fmt.Errorf("%w: %q is not a firewall profile (%s)",
+					ErrBadRules, name, strings.Join(firewallProfiles, ", "))
+			}
+			if !slices.Contains(out, name) {
+				out = append(out, name)
+			}
+		}
+		return Rule{Type: ruleType, Profiles: out}, nil
 	}
 	// allowedFields already rejected any other ruleType.
 	panic("unreachable")
@@ -375,6 +437,23 @@ func (r Rule) MarshalJSON() ([]byte, error) {
 			Type      string    `json:"type"`
 			ProfileID uuid.UUID `json:"profile_id"`
 		}{r.Type, r.ProfileID})
+
+	case RuleDefenderRealtime:
+		return json.Marshal(struct {
+			Type string `json:"type"`
+		}{r.Type})
+
+	case RuleDefenderSignaturesWithin:
+		return json.Marshal(struct {
+			Type string `json:"type"`
+			Days int    `json:"days"`
+		}{r.Type, r.Days})
+
+	case RuleFirewallEnabled:
+		return json.Marshal(struct {
+			Type     string   `json:"type"`
+			Profiles []string `json:"profiles,omitempty"`
+		}{r.Type, r.Profiles})
 	}
 	return nil, fmt.Errorf("%w: unsupported rule type %q", ErrBadRules, r.Type)
 }
@@ -472,6 +551,12 @@ func evaluateRule(r Rule, f Facts, now time.Time) (Failure, bool) {
 		return evalRequiredSoftware(r, f)
 	case RuleProfileApplied:
 		return evalProfileApplied(r, f)
+	case RuleDefenderRealtime:
+		return evalDefenderRealtime(r, f)
+	case RuleDefenderSignaturesWithin:
+		return evalDefenderSignaturesWithin(r, f, now)
+	case RuleFirewallEnabled:
+		return evalFirewallEnabled(r, f)
 	}
 	// ParseRules never produces any other Type, so this is unreachable in
 	// practice; treat it the same as any other fact the evaluator cannot
@@ -808,4 +893,87 @@ func splitDotted(s string) ([]int, bool) {
 func dottedNumeric(s string) bool {
 	_, ok := splitDotted(s)
 	return ok
+}
+
+// evalDefenderRealtime asks whether Defender is actually protecting the
+// machine. In passive or EDR block mode another antivirus is the machine's
+// primary one, and Defender's own real-time switch says nothing either way
+// about whether the machine is protected, so the answer is unknown rather
+// than a failure nobody can fix from here.
+func evalDefenderRealtime(r Rule, f Facts) (Failure, bool) {
+	d := defenderOf(f)
+	if d == nil {
+		return unknownFailure(r.Type, "Defender status is not reported"), true
+	}
+	if d.RunningMode != protocol.DefenderNormalMode {
+		return unknownFailure(r.Type, fmt.Sprintf("Defender is in %q, so another antivirus is primary", d.RunningMode)), true
+	}
+	switch {
+	case !d.AntivirusEnabled:
+		return nonCompliant(r.Type, "Defender Antivirus is turned off"), true
+	case !d.RealtimeEnabled:
+		return nonCompliant(r.Type, "Defender real-time protection is off"), true
+	}
+	return Failure{}, false
+}
+
+// evalDefenderSignaturesWithin measures signature age from when they were
+// last updated to now, not from an age the agent reported: that number
+// freezes when a device goes quiet, and a machine nobody has heard from in a
+// month must not stay compliant on the strength of the day it went dark.
+func evalDefenderSignaturesWithin(r Rule, f Facts, now time.Time) (Failure, bool) {
+	d := defenderOf(f)
+	if d == nil {
+		return unknownFailure(r.Type, "Defender status is not reported"), true
+	}
+	if d.SignatureUpdatedAt == nil {
+		return unknownFailure(r.Type, "Defender has not reported when its signatures were updated"), true
+	}
+	elapsed := now.Sub(*d.SignatureUpdatedAt)
+	if elapsed > time.Duration(r.Days)*24*time.Hour {
+		return nonCompliant(r.Type, fmt.Sprintf("Defender signatures were last updated %s ago (limit %s)",
+			humanizeSince(elapsed), plural(r.Days, "day"))), true
+	}
+	return Failure{}, false
+}
+
+// evalFirewallEnabled checks each named profile, or all three. A profile that
+// is off makes the rule non-compliant even if another was not reported: what
+// is known to be wrong outranks what is not known.
+func evalFirewallEnabled(r Rule, f Facts) (Failure, bool) {
+	if f.Inventory == nil || f.Inventory.Firewall == nil {
+		return unknownFailure(r.Type, "firewall state is not reported"), true
+	}
+	state := map[string]bool{}
+	for _, p := range f.Inventory.Firewall {
+		state[p.Profile] = p.Enabled
+	}
+	names := r.Profiles
+	if len(names) == 0 {
+		names = firewallProfiles
+	}
+	var off, missing []string
+	for _, name := range names {
+		on, reported := state[name]
+		switch {
+		case !reported:
+			missing = append(missing, name)
+		case !on:
+			off = append(off, name)
+		}
+	}
+	if len(off) > 0 {
+		return nonCompliant(r.Type, "the firewall is off for: "+strings.Join(off, ", ")), true
+	}
+	if len(missing) > 0 {
+		return unknownFailure(r.Type, "firewall state is not reported for: "+strings.Join(missing, ", ")), true
+	}
+	return Failure{}, false
+}
+
+func defenderOf(f Facts) *protocol.DefenderStatus {
+	if f.Inventory == nil {
+		return nil
+	}
+	return f.Inventory.Defender
 }
