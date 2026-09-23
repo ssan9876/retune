@@ -45,8 +45,12 @@ type Handler struct {
 	AgentVersions *agentversions.Service
 	BitLocker     *bitlocker.Service
 	Enroll        *enroll.Service
-	Now           func() time.Time
-	Log           *slog.Logger
+	// SSO is nil when single sign-on is not configured.
+	SSO *auth.OIDC
+	// SSOName is the sign-in button's text.
+	SSOName string
+	Now     func() time.Time
+	Log     *slog.Logger
 }
 
 type authKey struct{}
@@ -66,6 +70,8 @@ func (h *Handler) Routes() *http.ServeMux {
 
 	mux.HandleFunc("GET "+base+"/setup", h.setup)
 	mux.HandleFunc("POST "+base+"/session", h.login)
+	mux.HandleFunc("GET "+base+"/oidc/start", h.oidcStart)
+	mux.HandleFunc("GET "+base+"/oidc/callback", h.oidcCallback)
 	mux.Handle("GET "+base+"/session", h.read(h.currentSession))
 	mux.Handle("DELETE "+base+"/session", h.read(h.logout))
 

@@ -19,13 +19,20 @@ type adminJSON struct {
 	Disabled    bool       `json:"disabled"`
 	CreatedAt   time.Time  `json:"created_at"`
 	LastLoginAt *time.Time `json:"last_login_at,omitempty"`
+	// AuthSource is "local" or "oidc": whether the account signs in with a
+	// password here or through the identity provider.
+	AuthSource string `json:"auth_source"`
 }
 
 func newAdminJSON(a store.Admin) adminJSON {
+	source := a.AuthSource
+	if source == "" {
+		source = store.AuthLocal
+	}
 	return adminJSON{
 		ID: a.ID.String(), Email: a.Email, Role: a.Role,
 		TOTPEnabled: a.TOTPSecret != "", Disabled: a.DisabledAt != nil,
-		CreatedAt: a.CreatedAt, LastLoginAt: a.LastLoginAt,
+		CreatedAt: a.CreatedAt, LastLoginAt: a.LastLoginAt, AuthSource: source,
 	}
 }
 
@@ -35,14 +42,31 @@ type sessionResponse struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-// setup tells the console whether the first admin still has to be created.
+type ssoSetup struct {
+	Enabled     bool   `json:"enabled"`
+	DisplayName string `json:"display_name,omitempty"`
+}
+
+type setupResponse struct {
+	NeedsSetup bool     `json:"needs_setup"`
+	SSO        ssoSetup `json:"sso"`
+	LocalLogin bool     `json:"local_login"`
+}
+
+// setup tells the sign-in page what to offer: whether the first admin still
+// has to be created, whether there is an SSO button, and whether there is a
+// password form.
 func (h *Handler) setup(w http.ResponseWriter, r *http.Request) {
 	has, err := h.Auth.HasAdmins(r.Context())
 	if err != nil {
 		h.internal(w, "count admins", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"needs_setup": !has})
+	resp := setupResponse{NeedsSetup: !has, LocalLogin: !h.Auth.LocalLoginDisabled}
+	if h.SSO != nil {
+		resp.SSO = ssoSetup{Enabled: true, DisplayName: h.SSOName}
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
@@ -72,6 +96,9 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, auth.ErrTooManyAttempts):
 		writeError(w, http.StatusTooManyRequests, "too_many_attempts", "too many failed attempts; try again later")
 		return
+	case errors.Is(err, auth.ErrLocalLoginDisabled):
+		writeError(w, http.StatusForbidden, "local_login_disabled", "password sign-in is turned off; sign in with SSO")
+		return
 	default:
 		h.internal(w, "authenticate", err)
 		return
@@ -82,12 +109,18 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		h.internal(w, "create session", err)
 		return
 	}
+	h.setSessionCookie(w, info)
+	writeJSON(w, http.StatusOK, sessionResponse{
+		Admin: newAdminJSON(admin), CSRFToken: info.CSRFToken, ExpiresAt: info.ExpiresAt,
+	})
+}
+
+// setSessionCookie is the one place the session cookie is issued, for a
+// password sign-in and an SSO one alike.
+func (h *Handler) setSessionCookie(w http.ResponseWriter, info auth.SessionInfo) {
 	http.SetCookie(w, &http.Cookie{
 		Name: SessionCookie, Value: info.Token, Path: "/",
 		Expires: info.ExpiresAt, HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode,
-	})
-	writeJSON(w, http.StatusOK, sessionResponse{
-		Admin: newAdminJSON(admin), CSRFToken: info.CSRFToken, ExpiresAt: info.ExpiresAt,
 	})
 }
 

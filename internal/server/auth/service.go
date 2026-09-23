@@ -26,7 +26,14 @@ var (
 	ErrNotFound           = errors.New("admin not found")
 	ErrBadRequest         = errors.New("bad request")
 	ErrLastAdmin          = errors.New("the last enabled admin cannot be disabled")
+	// ErrLocalLoginDisabled is password sign-in refused because SSO is the
+	// only way in.
+	ErrLocalLoginDisabled = errors.New("password sign-in is turned off; sign in with SSO")
 )
+
+// ssoOwned is the reason a password or authenticator change is refused for an
+// account that signs in through the identity provider: both belong there.
+const ssoOwned = "this account signs in through SSO; its password and MFA belong to the identity provider"
 
 // touchInterval is how stale a session's last_seen may get before the row is
 // updated, so a busy console does not write on every request.
@@ -39,6 +46,8 @@ type Service struct {
 	SessionTTL time.Duration
 	Limiter    *Limiter
 	Issuer     string
+	// LocalLoginDisabled refuses every password sign-in.
+	LocalLoginDisabled bool
 }
 
 // SessionInfo is a freshly created session.
@@ -67,6 +76,9 @@ var dummyHash = sync.OnceValue(func() string {
 
 // Authenticate checks an email, password and (when enabled) TOTP code.
 func (s *Service) Authenticate(ctx context.Context, email, password, totpCode string) (store.Admin, error) {
+	if s.LocalLoginDisabled {
+		return store.Admin{}, ErrLocalLoginDisabled
+	}
 	key := strings.ToLower(strings.TrimSpace(email))
 	if s.Limiter != nil && !s.Limiter.Allowed(key) {
 		return store.Admin{}, ErrTooManyAttempts
@@ -79,6 +91,14 @@ func (s *Service) Authenticate(ctx context.Context, email, password, totpCode st
 	}
 	if err != nil {
 		return store.Admin{}, err
+	}
+	if admin.AuthSource == store.AuthOIDC {
+		// An SSO account has no password, and checking against an empty
+		// hash returns at once: without the dummy check, the timing alone
+		// would say which addresses belong to SSO accounts.
+		VerifyPassword(dummyHash(), password)
+		s.fail(key)
+		return store.Admin{}, ErrInvalidCredentials
 	}
 	if !VerifyPassword(admin.PasswordHash, password) {
 		s.fail(key)
@@ -106,6 +126,7 @@ func (s *Service) Authenticate(ctx context.Context, email, password, totpCode st
 		}
 		return q.InsertAudit(ctx, store.AuditEntry{
 			Actor: admin.Email, Action: "admin.login", TargetKind: "admin", TargetID: admin.ID.String(),
+			Details: map[string]any{"method": store.AuthLocal},
 		})
 	})
 	if err != nil {
@@ -230,6 +251,9 @@ func (s *Service) SetPassword(ctx context.Context, id uuid.UUID, password, actor
 		if err != nil {
 			return err
 		}
+		if admin.AuthSource == store.AuthOIDC {
+			return fmt.Errorf("%w: %s", ErrBadRequest, ssoOwned)
+		}
 		if err := q.UpdateAdminPassword(ctx, store.DefaultTenantID, id, hash); err != nil {
 			return err
 		}
@@ -254,6 +278,9 @@ func (s *Service) EnableTOTP(ctx context.Context, id uuid.UUID, actor string) (s
 		if err != nil {
 			return err
 		}
+		if admin.AuthSource == store.AuthOIDC {
+			return fmt.Errorf("%w: %s", ErrBadRequest, ssoOwned)
+		}
 		if secret, url, err = NewTOTPSecret(s.Issuer, admin.Email); err != nil {
 			return err
 		}
@@ -273,10 +300,14 @@ func (s *Service) EnableTOTP(ctx context.Context, id uuid.UUID, actor string) (s
 // DisableTOTP turns two-factor authentication off for an admin.
 func (s *Service) DisableTOTP(ctx context.Context, id uuid.UUID, actor string) error {
 	return s.Store.InTx(ctx, func(q *store.Queries) error {
-		if _, err := q.GetAdmin(ctx, store.DefaultTenantID, id); errors.Is(err, store.ErrNotFound) {
+		admin, err := q.GetAdmin(ctx, store.DefaultTenantID, id)
+		if errors.Is(err, store.ErrNotFound) {
 			return fmt.Errorf("%w: %s", ErrNotFound, id)
 		} else if err != nil {
 			return err
+		}
+		if admin.AuthSource == store.AuthOIDC {
+			return fmt.Errorf("%w: %s", ErrBadRequest, ssoOwned)
 		}
 		if err := q.UpdateAdminTOTP(ctx, store.DefaultTenantID, id, ""); err != nil {
 			return err

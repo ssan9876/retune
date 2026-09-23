@@ -250,3 +250,51 @@ func TestMetricsToken(t *testing.T) {
 		t.Fatalf("a short token should be refused, got %v", err)
 	}
 }
+
+func TestOIDC(t *testing.T) {
+	load := func(extra map[string]string) (Server, error) {
+		m := map[string]string{"DATABASE_URL": "postgres://x", "PUBLIC_URL": "https://h"}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return LoadServer(env(m))
+	}
+	full := map[string]string{
+		"OIDC_ISSUER": "https://login.example.com/tenant/", "OIDC_CLIENT_ID": "retune",
+		"OIDC_CLIENT_SECRET": "s3cret", "OIDC_ADMIN_GROUPS": "it-admins, helpdesk-leads",
+	}
+	c, err := load(nil)
+	if err != nil || c.OIDC.Enabled() {
+		t.Fatalf("unset: %+v %v", c.OIDC, err)
+	}
+	c, err = load(full)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := c.OIDC
+	if !o.Enabled() || o.Issuer != "https://login.example.com/tenant" || o.GroupsClaim != "groups" ||
+		len(o.AdminGroups) != 2 || o.AdminGroups[1] != "helpdesk-leads" || o.DisplayName != "Sign in with SSO" {
+		t.Fatalf("config = %+v", o)
+	}
+
+	for name, tc := range map[string]struct {
+		set     map[string]string
+		mention string
+	}{
+		"half configured": {map[string]string{"OIDC_ISSUER": "https://idp"}, "all of OIDC_ISSUER"},
+		"no groups": {map[string]string{"OIDC_ISSUER": "https://idp", "OIDC_CLIENT_ID": "a", "OIDC_CLIENT_SECRET": "b"},
+			"OIDC_ADMIN_GROUPS or OIDC_READONLY_GROUPS"},
+		"plain http": {map[string]string{"OIDC_ISSUER": "http://idp.example.com", "OIDC_CLIENT_ID": "a",
+			"OIDC_CLIENT_SECRET": "b", "OIDC_ADMIN_GROUPS": "x"}, "must be https"},
+		"local login off without SSO": {map[string]string{"OIDC_DISABLE_LOCAL_LOGIN": "true"}, "nobody could sign in"},
+	} {
+		if _, err := load(tc.set); err == nil || !strings.Contains(err.Error(), tc.mention) {
+			t.Errorf("%s: want an error mentioning %q, got %v", name, tc.mention, err)
+		}
+	}
+	local := map[string]string{"OIDC_ISSUER": "http://localhost:5556", "OIDC_CLIENT_ID": "a",
+		"OIDC_CLIENT_SECRET": "b", "OIDC_READONLY_GROUPS": "x", "OIDC_DISABLE_LOCAL_LOGIN": "true"}
+	if c, err := load(local); err != nil || !c.OIDC.DisableLocalLogin {
+		t.Fatalf("http on localhost is allowed for trying things out: %+v %v", c.OIDC, err)
+	}
+}

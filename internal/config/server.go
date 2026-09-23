@@ -44,7 +44,26 @@ type Server struct {
 	// MetricsToken turns on GET /metrics and is the bearer token a scraper
 	// must send. Empty leaves the endpoint off.
 	MetricsToken string
+	// OIDC is single sign-on. Its zero value is SSO off.
+	OIDC OIDCConfig
 }
+
+// OIDCConfig is the identity provider the console signs people in with.
+type OIDCConfig struct {
+	Issuer         string
+	ClientID       string
+	ClientSecret   string
+	GroupsClaim    string
+	AdminGroups    []string
+	ReadOnlyGroups []string
+	DisplayName    string
+	// DisableLocalLogin refuses password sign-in, leaving SSO as the only
+	// way into the console. bootstrap-admin still works from the command line.
+	DisableLocalLogin bool
+}
+
+// Enabled reports whether SSO is configured.
+func (o OIDCConfig) Enabled() bool { return o.Issuer != "" }
 
 // Retention is how long each kind of history is kept. A zero duration keeps
 // that history forever; the defaults are set in LoadServer.
@@ -137,6 +156,9 @@ func LoadServer(getenv func(string) string) (Server, error) {
 	if c.Retention, err = loadRetention(lookup); err != nil {
 		return Server{}, err
 	}
+	if c.OIDC, err = loadOIDC(lookup); err != nil {
+		return Server{}, err
+	}
 	c.MetricsToken = strings.TrimSpace(lookup("METRICS_TOKEN"))
 	if c.MetricsToken != "" && len(c.MetricsToken) < minMetricsToken {
 		return Server{}, fmt.Errorf("METRICS_TOKEN must be at least %d characters", minMetricsToken)
@@ -222,6 +244,66 @@ func loadSMTP(lookup func(string) string) (SMTPConfig, error) {
 		return SMTPConfig{}, errors.New("SMTP_PASSWORD needs SMTP_USERNAME")
 	}
 	return cfg, nil
+}
+
+// loadOIDC reads the SSO settings. They are all-or-nothing in the ways that
+// matter: a half-configured client, a provider nobody can be mapped from, or
+// local login switched off with nothing to replace it would each start a
+// server nobody can sign in to, so each is refused at startup instead.
+func loadOIDC(lookup func(string) string) (OIDCConfig, error) {
+	o := OIDCConfig{
+		Issuer:         strings.TrimRight(strings.TrimSpace(lookup("OIDC_ISSUER")), "/"),
+		ClientID:       strings.TrimSpace(lookup("OIDC_CLIENT_ID")),
+		ClientSecret:   lookup("OIDC_CLIENT_SECRET"),
+		GroupsClaim:    or(strings.TrimSpace(lookup("OIDC_GROUPS_CLAIM")), "groups"),
+		AdminGroups:    splitList(lookup("OIDC_ADMIN_GROUPS")),
+		ReadOnlyGroups: splitList(lookup("OIDC_READONLY_GROUPS")),
+		DisplayName:    or(strings.TrimSpace(lookup("OIDC_DISPLAY_NAME")), "Sign in with SSO"),
+	}
+	if v := lookup("OIDC_DISABLE_LOCAL_LOGIN"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return OIDCConfig{}, errors.New("OIDC_DISABLE_LOCAL_LOGIN must be true or false")
+		}
+		o.DisableLocalLogin = b
+	}
+	set := 0
+	for _, v := range []string{o.Issuer, o.ClientID, o.ClientSecret} {
+		if v != "" {
+			set++
+		}
+	}
+	switch {
+	case set == 0:
+		if o.DisableLocalLogin {
+			return OIDCConfig{}, errors.New("OIDC_DISABLE_LOCAL_LOGIN needs SSO configured, or nobody could sign in")
+		}
+		return OIDCConfig{DisplayName: o.DisplayName, GroupsClaim: o.GroupsClaim}, nil
+	case set < 3:
+		return OIDCConfig{}, errors.New("SSO needs all of OIDC_ISSUER, OIDC_CLIENT_ID and OIDC_CLIENT_SECRET")
+	}
+	u, err := url.Parse(o.Issuer)
+	if err != nil || u.Host == "" {
+		return OIDCConfig{}, errors.New("OIDC_ISSUER must be a URL")
+	}
+	local := u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1"
+	if u.Scheme != "https" && !(u.Scheme == "http" && local) {
+		return OIDCConfig{}, errors.New("OIDC_ISSUER must be https (http is allowed only for localhost)")
+	}
+	if len(o.AdminGroups) == 0 && len(o.ReadOnlyGroups) == 0 {
+		return OIDCConfig{}, errors.New("SSO needs OIDC_ADMIN_GROUPS or OIDC_READONLY_GROUPS, or nobody could ever be let in")
+	}
+	return o, nil
+}
+
+func splitList(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }
 
 // loadRetention reads the four history horizons. Each is a number of days:
