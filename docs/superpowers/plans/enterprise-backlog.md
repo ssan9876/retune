@@ -15,13 +15,13 @@ The working list for making Retune usable by an enterprise, started on 2026-09-2
 | Authenticator hardening: one use per TOTP code, secrets sealed at rest | #12 |
 | Uploaded MSI/EXE apps with detection rules and in-app upgrades | #13 |
 | Windows Update rings: deadlines, pauses, target release, patch compliance | #14 |
+| Remote actions: lock, collect logs, wipe | #15 |
 
 ## To do, in order
 
 | # | item | why an enterprise needs it | notes |
 |---|---|---|---|
-| 5a | **Remote actions**: lock, collect logs, wipe | lost or stolen devices, helpdesk support | in progress; lock and wipe built against fakes, need a VM to verify |
-| 5b | **Local admin password rotation** (LAPS-style), escrowed like BitLocker keys | a shared local admin password is a lateral-movement risk | draft: `drafts/remote-actions-spec.md` §4 |
+| 5b | **Local admin password rotation** (LAPS-style), escrowed like BitLocker keys | a shared local admin password is a lateral-movement risk | in progress; setting the password needs a VM to verify |
 | 6 | **Signed command payloads**: scripts and wipes signed by an operations key the agent trusts | a compromised server can't run arbitrary code | draft: `drafts/signed-commands-spec.md` |
 | 7 | **Certificate, Wi-Fi and VPN profiles** | network access on managed devices | draft: `drafts/network-profiles-spec.md` |
 | 8 | **SSO group → scope mapping**: an identity-provider group can grant a device-group scope | scoped admins managed where the users are | builds on M16 and M18 |

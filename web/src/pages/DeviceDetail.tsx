@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { DeviceCompliance, DeviceDetail as Detail } from "../api/types";
+import { AdminPasswords } from "../components/AdminPasswords";
 import { RecoveryKeys } from "../components/RecoveryKeys";
 import { CollectLogsDialog, WipeDialog } from "../components/RemoteActionDialogs";
 import { RunScriptDialog } from "../components/RunScriptDialog";
@@ -24,6 +25,7 @@ export default function DeviceDetail() {
   const [scriptOpen, setScriptOpen] = useState(false);
   const [logsOpen, setLogsOpen] = useState(false);
   const [wipeOpen, setWipeOpen] = useState(false);
+  const [passwordsToken, setPasswordsToken] = useState(0);
 
   const load = useCallback(() => {
     api
@@ -167,6 +169,16 @@ export default function DeviceDetail() {
             Lock
           </Button>
           <Button onClick={() => setLogsOpen(true)}>Collect logs</Button>
+          <Button
+            onClick={() =>
+              void queueSimple(
+                "rotate_local_admin_password",
+                `Set a new random password on ${device.hostname}'s built-in Administrator account? The old one stops working; the new one is kept here.`,
+              ).then(() => setPasswordsToken((n) => n + 1))
+            }
+          >
+            Rotate admin password
+          </Button>
           <Button variant="danger" onClick={() => setWipeOpen(true)}>
             Wipe…
           </Button>
@@ -249,6 +261,7 @@ export default function DeviceDetail() {
       )}
 
       <RecoveryKeys deviceId={device.id} />
+      <AdminPasswords deviceId={device.id} reloadToken={passwordsToken} />
 
       <RunScriptDialog
         deviceIds={[device.id]}

@@ -135,6 +135,7 @@ func Run(ctx context.Context, opts Options) error {
 			Now:       time.Now,
 			Locker:    executor.DefaultLocker(),
 			Wiper:     executor.DefaultWiper(scriptRunner),
+			Passwords: executor.DefaultPasswords(),
 			Logs: executor.LogSources{
 				Dir: opts.DataDir, Channels: []string{"System", "Application"},
 				Events: executor.DefaultEventExporter(),

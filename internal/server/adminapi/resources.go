@@ -59,6 +59,8 @@ func (h *Handler) mountResources(mux *http.ServeMux, base string) {
 	// Revealing a recovery key is a write: it is a deliberate act, restricted
 	// to the admin role, and audited every time.
 	h.handle(mux, "POST "+base+"/bitlocker-keys/{id}/reveal", h.writeSession(h.revealBitLockerKey))
+	h.handle(mux, "GET "+base+"/devices/{id}/admin-passwords", h.read(h.listAdminPasswords))
+	h.handle(mux, "POST "+base+"/admin-passwords/{id}/reveal", h.writeSession(h.revealAdminPassword))
 
 	h.handle(mux, "GET "+base+"/profiles", h.read(h.listProfiles))
 	h.handle(mux, "POST "+base+"/profiles", h.writeFleet(h.createProfile))

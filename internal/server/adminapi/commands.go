@@ -63,6 +63,9 @@ type queueRequest struct {
 	Protected       bool   `json:"protected"`
 	ConfirmHostname string `json:"confirm_hostname"`
 	Reason          string `json:"reason"`
+	// rotate_local_admin_password
+	Account string `json:"account"`
+	Length  int    `json:"length"`
 }
 
 func (h *Handler) listCommands(w http.ResponseWriter, r *http.Request) {
@@ -174,8 +177,10 @@ func payloadFor(req queueRequest) (json.RawMessage, error) {
 		return json.Marshal(protocol.CollectLogsPayload{Hours: req.Hours})
 	case protocol.CommandWipe:
 		return json.Marshal(protocol.WipePayload{Protected: req.Protected})
+	case protocol.CommandRotateAdminPassword:
+		return json.Marshal(protocol.RotateAdminPasswordPayload{Account: req.Account, Length: req.Length})
 	default:
-		return nil, errors.New("type must be run_powershell, restart, refresh_inventory, lock, collect_logs or wipe")
+		return nil, errors.New("type must be run_powershell, restart, refresh_inventory, lock, collect_logs, wipe or rotate_local_admin_password")
 	}
 }
 

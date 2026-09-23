@@ -116,6 +116,12 @@ func (c *Client) SubmitResult(ctx context.Context, id string, r protocol.Command
 	return c.do(ctx, http.MethodPost, "/api/agent/v1/commands/"+url.PathEscape(id)+"/result", r, nil)
 }
 
+// EscrowAdminPassword stores a local admin password with the server before
+// the agent sets it.
+func (c *Client) EscrowAdminPassword(ctx context.Context, req protocol.AdminPasswordEscrowRequest) error {
+	return c.do(ctx, http.MethodPost, "/api/agent/v1/admin-passwords", req, nil)
+}
+
 // UploadCommandArtifact sends the file a command produced, such as a logs
 // archive, as the raw body. It uses the download client, which has no
 // whole-request deadline, since 50 MiB can take a while on a slow link.
