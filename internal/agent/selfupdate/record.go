@@ -74,6 +74,11 @@ func ReadRecord(dir string) (Record, bool, error) {
 // rename: a half-written record is worse than none, since the supervisor
 // reads it to decide how to restore the service.
 func WriteRecord(dir string, r Record) error {
+	// A service with no arguments is written as [] rather than null, so a
+	// record reads back the same whichever way its caller spelled "none".
+	if r.FromArgs == nil {
+		r.FromArgs = []string{}
+	}
 	b, err := json.MarshalIndent(r, "", "  ")
 	if err != nil {
 		return err
@@ -83,7 +88,11 @@ func WriteRecord(dir string, r Record) error {
 	if err := os.WriteFile(tmp, b, 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // RemoveRecord deletes the update record, once an attempt is resolved.
