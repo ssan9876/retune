@@ -1,0 +1,7525 @@
+{
+  "components": {
+    "responses": {
+      "Error": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "An error."
+      }
+    },
+    "schemas": {
+      "Admin": {
+        "properties": {
+          "auth_source": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "disabled": {
+            "type": "boolean"
+          },
+          "email": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "last_login_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "scope": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "totp_enabled": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "AdminPassword": {
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "activated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "command_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "AgentVersion": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "key_id": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "AgentVersionCount": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "AlertRule": {
+        "properties": {
+          "channel_id": {
+            "type": "string"
+          },
+          "channel_kind": {
+            "type": "string"
+          },
+          "channel_name": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "params": {},
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "AlertRuleRequest": {
+        "properties": {
+          "channel_id": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "params": {}
+        },
+        "type": "object"
+      },
+      "ApiToken": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "last_used_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "revoked_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ApiTokenList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ApiToken"
+            },
+            "type": "array"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "App": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "current_version": {
+            "type": "integer"
+          },
+          "description": {
+            "type": "string"
+          },
+          "detection": {
+            "$ref": "#/components/schemas/DetectionRule"
+          },
+          "file_name": {
+            "type": "string"
+          },
+          "file_sha256": {
+            "type": "string"
+          },
+          "file_size": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "install_args": {
+            "type": "string"
+          },
+          "installer_type": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "package_id": {
+            "type": "string"
+          },
+          "pinned_version": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "success_exit_codes": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "uninstall_command": {
+            "type": "string"
+          },
+          "uninstall_previous": {
+            "type": "boolean"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "AppInstall": {
+        "properties": {
+          "detail": {
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "exit_code": {
+            "type": "integer"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "installed_version": {
+            "type": "string"
+          },
+          "intent": {
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "stderr": {
+            "type": "string"
+          },
+          "stderr_truncated": {
+            "type": "boolean"
+          },
+          "stdout": {
+            "type": "string"
+          },
+          "stdout_truncated": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "AppRequest": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "detection": {
+            "$ref": "#/components/schemas/DetectionRule"
+          },
+          "file_name": {
+            "type": "string"
+          },
+          "file_sha256": {
+            "type": "string"
+          },
+          "install_args": {
+            "type": "string"
+          },
+          "installer_type": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "package_id": {
+            "type": "string"
+          },
+          "pinned_version": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "success_exit_codes": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "uninstall_command": {
+            "type": "string"
+          },
+          "uninstall_previous": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "AppVersion": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "detection": {
+            "$ref": "#/components/schemas/DetectionRule"
+          },
+          "file_name": {
+            "type": "string"
+          },
+          "file_sha256": {
+            "type": "string"
+          },
+          "file_size": {
+            "type": "integer"
+          },
+          "hash": {
+            "type": "string"
+          },
+          "install_args": {
+            "type": "string"
+          },
+          "installer_type": {
+            "type": "string"
+          },
+          "package_id": {
+            "type": "string"
+          },
+          "pinned_version": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "success_exit_codes": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "uninstall_command": {
+            "type": "string"
+          },
+          "uninstall_previous": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "Approval": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "decided_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "decided_by": {
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "request": {},
+          "requested_by": {
+            "type": "string"
+          },
+          "result": {},
+          "status": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ApprovalEnvelope": {
+        "properties": {
+          "approval": {
+            "$ref": "#/components/schemas/Approval"
+          }
+        },
+        "type": "object"
+      },
+      "Assignment": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "group_id": {
+            "type": "string"
+          },
+          "group_name": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "item_kind": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "options": {},
+          "rollout": {
+            "$ref": "#/components/schemas/Rollout"
+          }
+        },
+        "type": "object"
+      },
+      "AssignmentRequest": {
+        "properties": {
+          "group_id": {
+            "type": "string"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "item_kind": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "options": {},
+          "rollout": {
+            "$ref": "#/components/schemas/Rollout"
+          }
+        },
+        "type": "object"
+      },
+      "Audit": {
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "actor": {
+            "type": "string"
+          },
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "details": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "id": {
+            "type": "string"
+          },
+          "target_id": {
+            "type": "string"
+          },
+          "target_kind": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "BitlockerKey": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "volume_id": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Channel": {
+        "properties": {
+          "config": {},
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "has_secret": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ChannelRequest": {
+        "properties": {
+          "config": {},
+          "enabled": {
+            "type": "boolean"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "secret": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ChannelTest": {
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "CheckinRecency": {
+        "properties": {
+          "day": {
+            "type": "integer"
+          },
+          "hour": {
+            "type": "integer"
+          },
+          "never": {
+            "type": "integer"
+          },
+          "older": {
+            "type": "integer"
+          },
+          "week": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "Command": {
+        "properties": {
+          "completed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "delivered_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "payload": {},
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CommandDetail": {
+        "properties": {
+          "command": {
+            "$ref": "#/components/schemas/Command"
+          },
+          "result": {
+            "$ref": "#/components/schemas/Result"
+          }
+        },
+        "type": "object"
+      },
+      "CompliancePolicy": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "device_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rules": {},
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CompliancePolicyRequest": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rules": {}
+        },
+        "type": "object"
+      },
+      "CreateAPITokenRequest": {
+        "properties": {
+          "expires_in_days": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CreateAdminRequest": {
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CreateTokenRequest": {
+        "properties": {
+          "expires_in_hours": {
+            "type": "integer"
+          },
+          "label": {
+            "type": "string"
+          },
+          "max_uses": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "CreatedAPIToken": {
+        "properties": {
+          "api_token": {
+            "$ref": "#/components/schemas/ApiToken"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CreatedEnrollmentToken": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "max_uses": {
+            "type": "integer"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Dashboard": {
+        "properties": {
+          "agent_versions": {
+            "items": {
+              "$ref": "#/components/schemas/AgentVersionCount"
+            },
+            "type": "array"
+          },
+          "checkin_recency": {
+            "$ref": "#/components/schemas/CheckinRecency"
+          },
+          "compliance": {
+            "$ref": "#/components/schemas/DashboardCompliance"
+          },
+          "devices": {
+            "$ref": "#/components/schemas/DashboardDevices"
+          },
+          "enrollment_trend": {
+            "items": {
+              "$ref": "#/components/schemas/DayCount"
+            },
+            "type": "array"
+          },
+          "failed_deployments": {
+            "$ref": "#/components/schemas/DashboardFailedDeployments"
+          },
+          "os_builds": {
+            "items": {
+              "$ref": "#/components/schemas/OsBuildCount"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "DashboardCompliance": {
+        "properties": {
+          "compliant": {
+            "type": "integer"
+          },
+          "non_compliant": {
+            "type": "integer"
+          },
+          "not_evaluated": {
+            "type": "integer"
+          },
+          "unknown": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "DashboardDevices": {
+        "properties": {
+          "active": {
+            "type": "integer"
+          },
+          "retired": {
+            "type": "integer"
+          },
+          "stale": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "DashboardFailedDeployments": {
+        "properties": {
+          "agent": {
+            "type": "integer"
+          },
+          "app": {
+            "type": "integer"
+          },
+          "profile": {
+            "type": "integer"
+          },
+          "script": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "DayCount": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "day": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "DecisionRequest": {
+        "properties": {
+          "reason": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Delivery": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "channel_name": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "firing": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "resolved": {
+            "type": "integer"
+          },
+          "rule_id": {
+            "type": "string"
+          },
+          "rule_name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "DetectionRule": {
+        "properties": {
+          "equals": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "product_code": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "version_at_least": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Device": {
+        "properties": {
+          "agent_version": {
+            "type": "string"
+          },
+          "cert_expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "compliance": {
+            "type": "string"
+          },
+          "enrolled_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "manufacturer": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "os_build": {
+            "type": "string"
+          },
+          "os_version": {
+            "type": "string"
+          },
+          "serial": {
+            "type": "string"
+          },
+          "smbios_uuid": {
+            "type": "string"
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "DeviceCompliance": {
+        "properties": {
+          "overall": {
+            "type": "string"
+          },
+          "policies": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceCompliancePolicy"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "DeviceCompliancePolicy": {
+        "properties": {
+          "evaluated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "failures": {
+            "items": {
+              "$ref": "#/components/schemas/Failure"
+            },
+            "type": "array"
+          },
+          "policy_id": {
+            "type": "string"
+          },
+          "policy_name": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "DeviceDetail": {
+        "properties": {
+          "commands": {
+            "items": {
+              "$ref": "#/components/schemas/Command"
+            },
+            "type": "array"
+          },
+          "device": {
+            "$ref": "#/components/schemas/Device"
+          },
+          "inventory": {
+            "$ref": "#/components/schemas/Inventory"
+          },
+          "software": {
+            "items": {
+              "$ref": "#/components/schemas/Software"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "DisabledRequest": {
+        "properties": {
+          "disabled": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "Error": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "EvaluationStarted": {
+        "properties": {
+          "device_count": {
+            "type": "integer"
+          },
+          "started": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "Failure": {
+        "properties": {
+          "detail": {
+            "type": "string"
+          },
+          "rule": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "FiringAlert": {
+        "properties": {
+          "firing_since": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "notified_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "rule_id": {
+            "type": "string"
+          },
+          "rule_kind": {
+            "type": "string"
+          },
+          "rule_name": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "subject_key": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Group": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "evaluated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "member_count": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rule": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "GroupRequest": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rule": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Inventory": {
+        "properties": {
+          "collected_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "disk_free_gb": {
+            "type": "number"
+          },
+          "document": {},
+          "ram_gb": {
+            "type": "number"
+          },
+          "received_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ItemStatusRow": {
+        "properties": {
+          "detail": {
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ItemsOfAdminPassword": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminPassword"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ItemsOfAlertRule": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AlertRule"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ItemsOfAppVersion": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AppVersion"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ItemsOfAssignment": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Assignment"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ItemsOfBitlockerKey": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BitlockerKey"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ItemsOfChannel": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Channel"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ItemsOfDelivery": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Delivery"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ItemsOfFiringAlert": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FiringAlert"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ItemsOfGroup": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Group"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ItemsOfProfileVersion": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileVersion"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ItemsOfScriptVersion": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ScriptVersion"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ListOfAdmin": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Admin"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ListOfAgentVersion": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AgentVersion"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ListOfApp": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/App"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ListOfAppInstall": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AppInstall"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ListOfApproval": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Approval"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ListOfAudit": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Audit"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ListOfCommand": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Command"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ListOfCompliancePolicy": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CompliancePolicy"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ListOfDevice": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Device"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ListOfPolicyDeviceCompliance": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyDeviceCompliance"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ListOfProfile": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Profile"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ListOfScript": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Script"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ListOfScriptRun": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ScriptRun"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ListOfSoftware": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Software"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ListOfToken": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Token"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ListOfWindow": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Window"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "LoginRequest": {
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "totp_code": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "MemberCount": {
+        "properties": {
+          "member_count": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "MemberRequest": {
+        "properties": {
+          "device_id": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "OsBuildCount": {
+        "properties": {
+          "build": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "PasswordRequest": {
+        "properties": {
+          "password": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "PolicyDeviceCompliance": {
+        "properties": {
+          "device_id": {
+            "type": "string"
+          },
+          "evaluated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "failures": {
+            "items": {
+              "$ref": "#/components/schemas/Failure"
+            },
+            "type": "array"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "PreviewRequest": {
+        "properties": {
+          "rule": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Profile": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "current_version": {
+            "type": "integer"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "settings": {
+            "items": {
+              "$ref": "#/components/schemas/Setting"
+            },
+            "type": "array"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ProfileRequest": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "settings": {
+            "items": {
+              "$ref": "#/components/schemas/Setting"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ProfileVersion": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "hash": {
+            "type": "string"
+          },
+          "settings": {
+            "items": {
+              "$ref": "#/components/schemas/Setting"
+            },
+            "type": "array"
+          },
+          "version": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "QueueRequest": {
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "confirm_hostname": {
+            "type": "string"
+          },
+          "delay_seconds": {
+            "type": "integer"
+          },
+          "device_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "expires": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "hours": {
+            "type": "integer"
+          },
+          "length": {
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          },
+          "protected": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "script": {
+            "type": "string"
+          },
+          "signature": {
+            "$ref": "#/components/schemas/Signature"
+          },
+          "timeout_seconds": {
+            "type": "integer"
+          },
+          "ttl_hours": {
+            "type": "integer"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Queued": {
+        "properties": {
+          "device_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "QueuedCommands": {
+        "properties": {
+          "commands": {
+            "items": {
+              "$ref": "#/components/schemas/Queued"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "Result": {
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "exit_code": {
+            "type": "integer"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "stderr": {
+            "type": "string"
+          },
+          "stderr_truncated": {
+            "type": "boolean"
+          },
+          "stdout": {
+            "type": "string"
+          },
+          "stdout_truncated": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "RevealRequest": {
+        "properties": {
+          "reason": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "RevealResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "recovery_password": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "volume_id": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "RevealedPassword": {
+        "properties": {
+          "admin_password": {
+            "$ref": "#/components/schemas/AdminPassword"
+          },
+          "password": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Rollout": {
+        "properties": {
+          "current_percent": {
+            "type": "integer"
+          },
+          "full_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "percent": {
+            "type": "integer"
+          },
+          "step_hours": {
+            "type": "integer"
+          },
+          "step_percent": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ScopeRequest": {
+        "properties": {
+          "group_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "Script": {
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "current_version": {
+            "type": "integer"
+          },
+          "description": {
+            "type": "string"
+          },
+          "detection_body": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "signed": {
+            "type": "boolean"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ScriptRequest": {
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "detection_body": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "signature": {
+            "$ref": "#/components/schemas/Signature"
+          }
+        },
+        "type": "object"
+      },
+      "ScriptRun": {
+        "properties": {
+          "device_id": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "exit_code": {
+            "type": "integer"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "remediated": {
+            "type": "boolean"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "stderr": {
+            "type": "string"
+          },
+          "stderr_truncated": {
+            "type": "boolean"
+          },
+          "stdout": {
+            "type": "string"
+          },
+          "stdout_truncated": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ScriptVersion": {
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "detection_body": {
+            "type": "string"
+          },
+          "hash": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "SealedSecret": {
+        "properties": {
+          "ciphertext": {
+            "type": "string"
+          },
+          "mac": {
+            "type": "string"
+          },
+          "nonce": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "SessionResponse": {
+        "properties": {
+          "admin": {
+            "$ref": "#/components/schemas/Admin"
+          },
+          "csrf_token": {
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "signing_required": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "Setting": {
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "active_hours_end": {
+            "type": "integer"
+          },
+          "active_hours_start": {
+            "type": "integer"
+          },
+          "authentication": {
+            "type": "string"
+          },
+          "auto_connect": {
+            "type": "boolean"
+          },
+          "auto_restart": {
+            "type": "boolean"
+          },
+          "certificate_pem": {
+            "type": "string"
+          },
+          "cloud_block_level": {
+            "type": "string"
+          },
+          "cloud_protection": {
+            "type": "string"
+          },
+          "content_base64": {
+            "type": "string"
+          },
+          "data": {
+            "type": "string"
+          },
+          "deadline_grace_days": {
+            "type": "integer"
+          },
+          "direction": {
+            "type": "string"
+          },
+          "dns_suffix": {
+            "type": "string"
+          },
+          "ensure": {
+            "type": "string"
+          },
+          "escrow_recovery_key": {
+            "type": "boolean"
+          },
+          "feature_deadline_days": {
+            "type": "integer"
+          },
+          "feature_deferral_days": {
+            "type": "integer"
+          },
+          "group": {
+            "type": "string"
+          },
+          "hidden": {
+            "type": "boolean"
+          },
+          "hive": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "local_port": {
+            "type": "string"
+          },
+          "members": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "method": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "passphrase": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "pause_feature_from": {
+            "type": "string"
+          },
+          "pause_quality_from": {
+            "type": "string"
+          },
+          "profile": {
+            "type": "string"
+          },
+          "program": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": "string"
+          },
+          "pua_protection": {
+            "type": "string"
+          },
+          "quality_deadline_days": {
+            "type": "integer"
+          },
+          "quality_deferral_days": {
+            "type": "integer"
+          },
+          "realtime_monitoring": {
+            "type": "boolean"
+          },
+          "require_encryption": {
+            "type": "boolean"
+          },
+          "sample_submission": {
+            "type": "string"
+          },
+          "sealed_secret": {
+            "$ref": "#/components/schemas/SealedSecret"
+          },
+          "secret_set": {
+            "type": "boolean"
+          },
+          "security": {
+            "type": "string"
+          },
+          "server": {
+            "type": "string"
+          },
+          "split_tunneling": {
+            "type": "boolean"
+          },
+          "ssid": {
+            "type": "string"
+          },
+          "startup": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "store": {
+            "type": "string"
+          },
+          "target_product": {
+            "type": "string"
+          },
+          "target_version": {
+            "type": "string"
+          },
+          "tunnel": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "SettingStatusRow": {
+        "properties": {
+          "detail": {
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "identity": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "SetupResponse": {
+        "properties": {
+          "local_login": {
+            "type": "boolean"
+          },
+          "needs_setup": {
+            "type": "boolean"
+          },
+          "sso": {
+            "$ref": "#/components/schemas/SsoSetup"
+          }
+        },
+        "type": "object"
+      },
+      "Signature": {
+        "properties": {
+          "key_id": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Software": {
+        "properties": {
+          "install_date": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "publisher": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "SsoSetup": {
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "StatusRollupOfItemStatusRow": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ItemStatusRow"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "rollup": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "StatusRollupOfSettingStatusRow": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SettingStatusRow"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "rollup": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "Token": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "max_uses": {
+            "type": "integer"
+          },
+          "revoked_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "use_count": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "TotpEnrollment": {
+        "properties": {
+          "otpauth_url": {
+            "type": "string"
+          },
+          "secret": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "TotpRequest": {
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "UploadedPackage": {
+        "properties": {
+          "file_sha256": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "Window": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "days": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "description": {
+            "type": "string"
+          },
+          "duration_minutes": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "start": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "WindowRequest": {
+        "properties": {
+          "days": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "description": {
+            "type": "string"
+          },
+          "duration_minutes": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "start": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "session": {
+        "description": "A console session. Changes also need the X-CSRF-Token header.",
+        "in": "cookie",
+        "name": "retune_session",
+        "type": "apiKey"
+      },
+      "token": {
+        "description": "An API token, rtk_…",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "The API the Retune console uses. Sign in with a session (the retune_session cookie, with the X-CSRF-Token header on every change) or send an API token as `Authorization: Bearer rtk_…`. Each operation's `x-retune-access` names who may call it. Errors are `{\"code\": \"…\", \"message\": \"…\"}`.",
+    "title": "Retune admin API",
+    "version": "1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/admin-passwords/{id}/reveal": {
+      "post": {
+        "description": "Audited, with the reason given.\n\nThe admin or helpdesk role, signed in to the console.",
+        "operationId": "postAdminPasswordsIdReveal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevealRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevealedPassword"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Reveal a local admin password",
+        "tags": [
+          "Recovery"
+        ],
+        "x-retune-access": "session+operate"
+      }
+    },
+    "/admins": {
+      "get": {
+        "description": "Signed in to the console, not limited to some devices.",
+        "operationId": "getAdmins",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOfAdmin"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "List admins",
+        "tags": [
+          "Administration"
+        ],
+        "x-retune-access": "admin"
+      },
+      "post": {
+        "description": "The admin role, signed in to the console, not limited to some devices.",
+        "operationId": "postAdmins",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAdminRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Admin"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Create an admin",
+        "tags": [
+          "Administration"
+        ],
+        "x-retune-access": "admin+write"
+      }
+    },
+    "/admins/{id}/disabled": {
+      "post": {
+        "description": "The admin role, signed in to the console, not limited to some devices.",
+        "operationId": "postAdminsIdDisabled",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisabledRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Disable or re-enable an admin",
+        "tags": [
+          "Administration"
+        ],
+        "x-retune-access": "admin+write"
+      }
+    },
+    "/admins/{id}/password": {
+      "post": {
+        "description": "The admin role, signed in to the console, not limited to some devices.",
+        "operationId": "postAdminsIdPassword",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Set an admin's password",
+        "tags": [
+          "Administration"
+        ],
+        "x-retune-access": "admin+write"
+      }
+    },
+    "/admins/{id}/scope": {
+      "put": {
+        "description": "The admin role, signed in to the console, not limited to some devices.",
+        "operationId": "putAdminsIdScope",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScopeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Limit an admin to some device groups",
+        "tags": [
+          "Administration"
+        ],
+        "x-retune-access": "admin+write"
+      }
+    },
+    "/admins/{id}/totp": {
+      "post": {
+        "description": "Turning them on answers 200 with the secret to enroll; turning them off answers 204.\n\nThe admin role, signed in to the console, not limited to some devices.",
+        "operationId": "postAdminsIdTotp",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TotpRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TotpEnrollment"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Turn authenticator codes on or off for an admin",
+        "tags": [
+          "Administration"
+        ],
+        "x-retune-access": "admin+write"
+      }
+    },
+    "/agent-versions": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getAgentVersions",
+        "parameters": [
+          {
+            "description": "At most this many (default 50, at most 500).",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Skip this many.",
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOfAgentVersion"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "List agent builds",
+        "tags": [
+          "Agent versions"
+        ],
+        "x-retune-access": "scoped"
+      },
+      "post": {
+        "description": "The release signature travels in the X-Retune-Signature header.\n\nThe admin role, not limited to some devices.",
+        "operationId": "postAgentVersions",
+        "parameters": [
+          {
+            "description": "The build's version. Required.",
+            "in": "query",
+            "name": "version",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "notes",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentVersion"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Upload a signed agent build",
+        "tags": [
+          "Agent versions"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/agent-versions/{id}": {
+      "delete": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "deleteAgentVersionsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Delete an agent build and its assignments",
+        "tags": [
+          "Agent versions"
+        ],
+        "x-retune-access": "fleet+write"
+      },
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getAgentVersionsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentVersion"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "An agent build",
+        "tags": [
+          "Agent versions"
+        ],
+        "x-retune-access": "scoped"
+      }
+    },
+    "/alert-deliveries": {
+      "get": {
+        "description": "Any signed-in admin or API token, not limited to some devices.",
+        "operationId": "getAlertDeliveries",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemsOfDelivery"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Recent alert deliveries",
+        "tags": [
+          "Alerts"
+        ],
+        "x-retune-access": "fleet"
+      }
+    },
+    "/alert-rules": {
+      "get": {
+        "description": "Any signed-in admin or API token, not limited to some devices.",
+        "operationId": "getAlertRules",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemsOfAlertRule"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "List alert rules",
+        "tags": [
+          "Alerts"
+        ],
+        "x-retune-access": "fleet"
+      },
+      "post": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "postAlertRules",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlertRuleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertRule"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Create an alert rule",
+        "tags": [
+          "Alerts"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/alert-rules/{id}": {
+      "delete": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "deleteAlertRulesId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Delete an alert rule",
+        "tags": [
+          "Alerts"
+        ],
+        "x-retune-access": "fleet+write"
+      },
+      "get": {
+        "description": "Any signed-in admin or API token, not limited to some devices.",
+        "operationId": "getAlertRulesId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertRule"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "An alert rule",
+        "tags": [
+          "Alerts"
+        ],
+        "x-retune-access": "fleet"
+      },
+      "post": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "postAlertRulesId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlertRuleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertRule"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Update an alert rule",
+        "tags": [
+          "Alerts"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/alerts": {
+      "get": {
+        "description": "Any signed-in admin or API token, not limited to some devices.",
+        "operationId": "getAlerts",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemsOfFiringAlert"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Alerts firing now",
+        "tags": [
+          "Alerts"
+        ],
+        "x-retune-access": "fleet"
+      }
+    },
+    "/api-tokens": {
+      "get": {
+        "description": "Signed in to the console, not limited to some devices.",
+        "operationId": "getApiTokens",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiTokenList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "List API tokens",
+        "tags": [
+          "Administration"
+        ],
+        "x-retune-access": "admin"
+      },
+      "post": {
+        "description": "The token is returned only here. Its role can't be above your own.\n\nThe admin role, signed in to the console, not limited to some devices.",
+        "operationId": "postApiTokens",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAPITokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedAPIToken"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Create an API token",
+        "tags": [
+          "Administration"
+        ],
+        "x-retune-access": "admin+write"
+      }
+    },
+    "/api-tokens/{id}/revoke": {
+      "post": {
+        "description": "The admin role, signed in to the console, not limited to some devices.",
+        "operationId": "postApiTokensIdRevoke",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Revoke an API token",
+        "tags": [
+          "Administration"
+        ],
+        "x-retune-access": "admin+write"
+      }
+    },
+    "/app-packages": {
+      "post": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "postAppPackages",
+        "parameters": [
+          {
+            "description": "The installer's file name.",
+            "in": "query",
+            "name": "file_name",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadedPackage"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Upload an installer (MSI or EXE) for an app",
+        "tags": [
+          "Apps"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/approvals": {
+      "get": {
+        "description": "Signed in to the console, not limited to some devices.",
+        "operationId": "getApprovals",
+        "parameters": [
+          {
+            "description": "pending, approved, rejected, expired or failed.",
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "At most this many (default 50, at most 500).",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Skip this many.",
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOfApproval"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "List requests held for approval",
+        "tags": [
+          "Approvals"
+        ],
+        "x-retune-access": "admin"
+      }
+    },
+    "/approvals/{id}/approve": {
+      "post": {
+        "description": "Not by the person who asked.\n\nThe admin role, signed in to the console, not limited to some devices.",
+        "operationId": "postApprovalsIdApprove",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalEnvelope"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Approve a held request, carrying it out",
+        "tags": [
+          "Approvals"
+        ],
+        "x-retune-access": "admin+write"
+      }
+    },
+    "/approvals/{id}/reject": {
+      "post": {
+        "description": "The admin role, signed in to the console, not limited to some devices.",
+        "operationId": "postApprovalsIdReject",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalEnvelope"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Reject or withdraw a held request",
+        "tags": [
+          "Approvals"
+        ],
+        "x-retune-access": "admin+write"
+      }
+    },
+    "/apps": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getApps",
+        "parameters": [
+          {
+            "description": "At most this many (default 50, at most 500).",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Skip this many.",
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOfApp"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "List apps",
+        "tags": [
+          "Apps"
+        ],
+        "x-retune-access": "scoped"
+      },
+      "post": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "postApps",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/App"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Create an app: a winget package or an uploaded installer",
+        "tags": [
+          "Apps"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/apps/{id}": {
+      "delete": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "deleteAppsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Delete an app and its assignments",
+        "tags": [
+          "Apps"
+        ],
+        "x-retune-access": "fleet+write"
+      },
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getAppsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/App"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "An app",
+        "tags": [
+          "Apps"
+        ],
+        "x-retune-access": "scoped"
+      },
+      "post": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "postAppsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/App"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Update an app, making a new version",
+        "tags": [
+          "Apps"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/apps/{id}/installs": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getAppsIdInstalls",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only this device.",
+            "in": "query",
+            "name": "device_id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "At most this many (default 50, at most 500).",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Skip this many.",
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOfAppInstall"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "An app's install history",
+        "tags": [
+          "Apps"
+        ],
+        "x-retune-access": "scoped"
+      }
+    },
+    "/apps/{id}/versions": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getAppsIdVersions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemsOfAppVersion"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "An app's versions",
+        "tags": [
+          "Apps"
+        ],
+        "x-retune-access": "scoped"
+      }
+    },
+    "/assignments": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getAssignments",
+        "parameters": [
+          {
+            "description": "script, profile, app, agent, compliance or window. Required.",
+            "in": "query",
+            "name": "item_kind",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required.",
+            "in": "query",
+            "name": "item_id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemsOfAssignment"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Where an item is assigned",
+        "tags": [
+          "Groups"
+        ],
+        "x-retune-access": "scoped"
+      },
+      "post": {
+        "description": "Assigning the same item, group and mode again replaces the assignment.\n\nThe admin role; a scoped admin within their devices.",
+        "operationId": "postAssignments",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Assignment"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalEnvelope"
+                }
+              }
+            },
+            "description": "Held for a second administrator's approval."
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Assign an item to a group",
+        "tags": [
+          "Groups"
+        ],
+        "x-retune-access": "scoped+write"
+      }
+    },
+    "/assignments/{id}": {
+      "delete": {
+        "description": "The admin role; a scoped admin within their devices.",
+        "operationId": "deleteAssignmentsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Remove an assignment",
+        "tags": [
+          "Groups"
+        ],
+        "x-retune-access": "scoped+write"
+      }
+    },
+    "/audit": {
+      "get": {
+        "description": "Any signed-in admin or API token, not limited to some devices.",
+        "operationId": "getAudit",
+        "parameters": [
+          {
+            "description": "Only entries by this actor.",
+            "in": "query",
+            "name": "actor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only this action, e.g. command.queued.",
+            "in": "query",
+            "name": "action",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 3339; entries at or after.",
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 3339; entries before.",
+            "in": "query",
+            "name": "until",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "At most this many (default 50, at most 500).",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Skip this many.",
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOfAudit"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "The audit log",
+        "tags": [
+          "Administration"
+        ],
+        "x-retune-access": "fleet"
+      }
+    },
+    "/audit/export.csv": {
+      "get": {
+        "description": "Any signed-in admin or API token, not limited to some devices.",
+        "operationId": "getAuditExportCsv",
+        "parameters": [
+          {
+            "description": "Only entries by this actor.",
+            "in": "query",
+            "name": "actor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only this action, e.g. command.queued.",
+            "in": "query",
+            "name": "action",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 3339; entries at or after.",
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 3339; entries before.",
+            "in": "query",
+            "name": "until",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Export the audit log as CSV",
+        "tags": [
+          "Administration"
+        ],
+        "x-retune-access": "fleet"
+      }
+    },
+    "/bitlocker-keys/{id}/reveal": {
+      "post": {
+        "description": "Audited, with the reason given.\n\nThe admin or helpdesk role, signed in to the console.",
+        "operationId": "postBitlockerKeysIdReveal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevealRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevealResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Reveal a BitLocker recovery key",
+        "tags": [
+          "Recovery"
+        ],
+        "x-retune-access": "session+operate"
+      }
+    },
+    "/commands": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getCommands",
+        "parameters": [
+          {
+            "description": "Only this device.",
+            "in": "query",
+            "name": "device_id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "At most this many (default 50, at most 500).",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Skip this many.",
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOfCommand"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "List commands",
+        "tags": [
+          "Commands"
+        ],
+        "x-retune-access": "scoped"
+      },
+      "post": {
+        "description": "Helpdesk may queue lock, restart, refresh_inventory, collect_logs and rotate_local_admin_password only. A wipe names one device, needs confirm_hostname and a reason, and can't be queued with a token.\n\nThe admin or helpdesk role; a scoped admin within their devices.",
+        "operationId": "postCommands",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueueRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueuedCommands"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalEnvelope"
+                }
+              }
+            },
+            "description": "Held for a second administrator's approval."
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Queue a command on devices",
+        "tags": [
+          "Commands"
+        ],
+        "x-retune-access": "scoped+operate"
+      }
+    },
+    "/commands/{id}": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getCommandsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandDetail"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "A command and its result",
+        "tags": [
+          "Commands"
+        ],
+        "x-retune-access": "scoped"
+      }
+    },
+    "/commands/{id}/artifact": {
+      "get": {
+        "description": "The admin or helpdesk role; a scoped admin within their devices.",
+        "operationId": "getCommandsIdArtifact",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Download what a command produced, such as collected logs",
+        "tags": [
+          "Commands"
+        ],
+        "x-retune-access": "scoped+operate"
+      }
+    },
+    "/compliance-policies": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getCompliancePolicies",
+        "parameters": [
+          {
+            "description": "At most this many (default 50, at most 500).",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Skip this many.",
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOfCompliancePolicy"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "List compliance policies",
+        "tags": [
+          "Compliance"
+        ],
+        "x-retune-access": "scoped"
+      },
+      "post": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "postCompliancePolicies",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompliancePolicyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompliancePolicy"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Create a compliance policy",
+        "tags": [
+          "Compliance"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/compliance-policies/{id}": {
+      "delete": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "deleteCompliancePoliciesId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Delete a compliance policy, its assignments and results",
+        "tags": [
+          "Compliance"
+        ],
+        "x-retune-access": "fleet+write"
+      },
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getCompliancePoliciesId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompliancePolicy"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "A compliance policy",
+        "tags": [
+          "Compliance"
+        ],
+        "x-retune-access": "scoped"
+      },
+      "post": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "postCompliancePoliciesId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompliancePolicyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompliancePolicy"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Update a compliance policy",
+        "tags": [
+          "Compliance"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/compliance-policies/{id}/devices": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getCompliancePoliciesIdDevices",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "compliant, non_compliant or unknown.",
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "At most this many (default 50, at most 500).",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Skip this many.",
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOfPolicyDeviceCompliance"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "A policy's result on each device",
+        "tags": [
+          "Compliance"
+        ],
+        "x-retune-access": "scoped"
+      }
+    },
+    "/compliance-policies/{id}/devices/export.csv": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getCompliancePoliciesIdDevicesExportCsv",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Export a policy's results as CSV",
+        "tags": [
+          "Compliance"
+        ],
+        "x-retune-access": "scoped"
+      }
+    },
+    "/compliance-policies/{id}/evaluate": {
+      "post": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "postCompliancePoliciesIdEvaluate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationStarted"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Re-evaluate a policy on every device it applies to",
+        "tags": [
+          "Compliance"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/dashboard": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getDashboard",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dashboard"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Fleet-wide counts for the overview page",
+        "tags": [
+          "Overview"
+        ],
+        "x-retune-access": "scoped"
+      }
+    },
+    "/devices": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getDevices",
+        "parameters": [
+          {
+            "description": "Hostname or serial contains.",
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "active, retired or unenrolled.",
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "At most this many (default 50, at most 500).",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Skip this many.",
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOfDevice"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "List devices",
+        "tags": [
+          "Devices"
+        ],
+        "x-retune-access": "scoped"
+      }
+    },
+    "/devices/export.csv": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getDevicesExportCsv",
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Export devices as CSV",
+        "tags": [
+          "Devices"
+        ],
+        "x-retune-access": "scoped"
+      }
+    },
+    "/devices/{id}": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getDevicesId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceDetail"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "A device, its inventory and recent commands",
+        "tags": [
+          "Devices"
+        ],
+        "x-retune-access": "scoped"
+      }
+    },
+    "/devices/{id}/admin-passwords": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getDevicesIdAdminPasswords",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemsOfAdminPassword"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "A device's local admin passwords (without the passwords)",
+        "tags": [
+          "Recovery"
+        ],
+        "x-retune-access": "scoped"
+      }
+    },
+    "/devices/{id}/bitlocker-keys": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getDevicesIdBitlockerKeys",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemsOfBitlockerKey"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "A device's BitLocker recovery keys (without the keys)",
+        "tags": [
+          "Recovery"
+        ],
+        "x-retune-access": "scoped"
+      }
+    },
+    "/devices/{id}/compliance": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getDevicesIdCompliance",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceCompliance"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "A device's compliance",
+        "tags": [
+          "Compliance"
+        ],
+        "x-retune-access": "scoped"
+      }
+    },
+    "/devices/{id}/retire": {
+      "post": {
+        "description": "The admin role; a scoped admin within their devices.",
+        "operationId": "postDevicesIdRetire",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Retire a device: it stops checking in",
+        "tags": [
+          "Devices"
+        ],
+        "x-retune-access": "scoped+write"
+      }
+    },
+    "/devices/{id}/software": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getDevicesIdSoftware",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOfSoftware"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "A device's installed software",
+        "tags": [
+          "Devices"
+        ],
+        "x-retune-access": "scoped"
+      }
+    },
+    "/devices/{id}/unenroll": {
+      "post": {
+        "description": "The admin role; a scoped admin within their devices.",
+        "operationId": "postDevicesIdUnenroll",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Unenroll a device: the agent removes its identity",
+        "tags": [
+          "Devices"
+        ],
+        "x-retune-access": "scoped+write"
+      }
+    },
+    "/groups": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getGroups",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemsOfGroup"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "List groups",
+        "tags": [
+          "Groups"
+        ],
+        "x-retune-access": "scoped"
+      },
+      "post": {
+        "description": "A rule that doesn't parse answers 400 with code invalid_rule and the offset of the problem.\n\nThe admin role, not limited to some devices.",
+        "operationId": "postGroups",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GroupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Group"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Create a group",
+        "tags": [
+          "Groups"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/groups/preview": {
+      "post": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "postGroupsPreview",
+        "parameters": [
+          {
+            "description": "At most this many (default 50, at most 500).",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Skip this many.",
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOfDevice"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Preview which devices a rule matches",
+        "tags": [
+          "Groups"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/groups/{id}": {
+      "delete": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "deleteGroupsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Delete a group",
+        "tags": [
+          "Groups"
+        ],
+        "x-retune-access": "fleet+write"
+      },
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getGroupsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Group"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "A group",
+        "tags": [
+          "Groups"
+        ],
+        "x-retune-access": "scoped"
+      },
+      "post": {
+        "description": "A group's kind can't change.\n\nThe admin role, not limited to some devices.",
+        "operationId": "postGroupsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GroupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Group"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Update a group",
+        "tags": [
+          "Groups"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/groups/{id}/evaluate": {
+      "post": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "postGroupsIdEvaluate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberCount"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Re-evaluate a dynamic group now",
+        "tags": [
+          "Groups"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/groups/{id}/members": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getGroupsIdMembers",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "At most this many (default 50, at most 500).",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Skip this many.",
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOfDevice"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "A group's devices",
+        "tags": [
+          "Groups"
+        ],
+        "x-retune-access": "scoped"
+      },
+      "post": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "postGroupsIdMembers",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Add a device to a static group",
+        "tags": [
+          "Groups"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/groups/{id}/members/{deviceID}": {
+      "delete": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "deleteGroupsIdMembersDeviceID",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "deviceID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Remove a device from a static group",
+        "tags": [
+          "Groups"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/items/{kind}/{id}/status": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getItemsKindIdStatus",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "At most this many (default 50, at most 500).",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Skip this many.",
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusRollupOfItemStatusRow"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "How an assigned item is doing on each device",
+        "tags": [
+          "Groups"
+        ],
+        "x-retune-access": "scoped"
+      }
+    },
+    "/maintenance-windows": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getMaintenanceWindows",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOfWindow"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "List maintenance windows",
+        "tags": [
+          "Groups"
+        ],
+        "x-retune-access": "scoped"
+      },
+      "post": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "postMaintenanceWindows",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WindowRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Window"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Create a maintenance window",
+        "tags": [
+          "Groups"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/maintenance-windows/{id}": {
+      "delete": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "deleteMaintenanceWindowsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Delete a maintenance window and its assignments",
+        "tags": [
+          "Groups"
+        ],
+        "x-retune-access": "fleet+write"
+      },
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getMaintenanceWindowsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Window"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "A maintenance window",
+        "tags": [
+          "Groups"
+        ],
+        "x-retune-access": "scoped"
+      },
+      "post": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "postMaintenanceWindowsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WindowRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Window"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Update a maintenance window",
+        "tags": [
+          "Groups"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/notification-channels": {
+      "get": {
+        "description": "Any signed-in admin or API token, not limited to some devices.",
+        "operationId": "getNotificationChannels",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemsOfChannel"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "List notification channels",
+        "tags": [
+          "Alerts"
+        ],
+        "x-retune-access": "fleet"
+      },
+      "post": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "postNotificationChannels",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChannelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Channel"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Create a notification channel (email or webhook)",
+        "tags": [
+          "Alerts"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/notification-channels/{id}": {
+      "delete": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "deleteNotificationChannelsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Delete a notification channel",
+        "tags": [
+          "Alerts"
+        ],
+        "x-retune-access": "fleet+write"
+      },
+      "get": {
+        "description": "Any signed-in admin or API token, not limited to some devices.",
+        "operationId": "getNotificationChannelsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Channel"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "A notification channel",
+        "tags": [
+          "Alerts"
+        ],
+        "x-retune-access": "fleet"
+      },
+      "post": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "postNotificationChannelsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChannelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Channel"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Update a notification channel",
+        "tags": [
+          "Alerts"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/notification-channels/{id}/test": {
+      "post": {
+        "description": "A failed send answers 502.\n\nThe admin role, not limited to some devices.",
+        "operationId": "postNotificationChannelsIdTest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelTest"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Send a test message",
+        "tags": [
+          "Alerts"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/oidc/callback": {
+      "get": {
+        "description": "The identity provider redirects here. Sets the session cookie and redirects to the console.\n\nNo sign-in.",
+        "operationId": "getOidcCallback",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "code",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error_description",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Found"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [],
+        "summary": "Finish single sign-on",
+        "tags": [
+          "Session"
+        ],
+        "x-retune-access": "public"
+      }
+    },
+    "/oidc/start": {
+      "get": {
+        "description": "Redirects to the identity provider. 404 if SSO is not configured.\n\nNo sign-in.",
+        "operationId": "getOidcStart",
+        "responses": {
+          "302": {
+            "description": "Found"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [],
+        "summary": "Start single sign-on",
+        "tags": [
+          "Session"
+        ],
+        "x-retune-access": "public"
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "description": "OpenAPI 3.1.\n\nNo sign-in.",
+        "operationId": "getOpenapiJson",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {},
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [],
+        "summary": "This document",
+        "tags": [
+          "Overview"
+        ],
+        "x-retune-access": "public"
+      }
+    },
+    "/profiles": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getProfiles",
+        "parameters": [
+          {
+            "description": "At most this many (default 50, at most 500).",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Skip this many.",
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOfProfile"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "List configuration profiles",
+        "tags": [
+          "Profiles"
+        ],
+        "x-retune-access": "scoped"
+      },
+      "post": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "postProfiles",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Create a configuration profile",
+        "tags": [
+          "Profiles"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/profiles/{id}": {
+      "delete": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "deleteProfilesId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Delete a configuration profile and its assignments",
+        "tags": [
+          "Profiles"
+        ],
+        "x-retune-access": "fleet+write"
+      },
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getProfilesId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "A configuration profile",
+        "tags": [
+          "Profiles"
+        ],
+        "x-retune-access": "scoped"
+      },
+      "post": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "postProfilesId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Update a configuration profile, making a new version",
+        "tags": [
+          "Profiles"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/profiles/{id}/settings": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getProfilesIdSettings",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "At most this many (default 50, at most 500).",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Skip this many.",
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusRollupOfSettingStatusRow"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "How each of a profile's settings is doing on each device",
+        "tags": [
+          "Profiles"
+        ],
+        "x-retune-access": "scoped"
+      }
+    },
+    "/profiles/{id}/versions": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getProfilesIdVersions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemsOfProfileVersion"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "A profile's versions",
+        "tags": [
+          "Profiles"
+        ],
+        "x-retune-access": "scoped"
+      }
+    },
+    "/scripts": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getScripts",
+        "parameters": [
+          {
+            "description": "At most this many (default 50, at most 500).",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Skip this many.",
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOfScript"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "List scripts",
+        "tags": [
+          "Scripts"
+        ],
+        "x-retune-access": "scoped"
+      },
+      "post": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "postScripts",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScriptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Script"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Create a script",
+        "tags": [
+          "Scripts"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/scripts/{id}": {
+      "delete": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "deleteScriptsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Delete a script and its assignments",
+        "tags": [
+          "Scripts"
+        ],
+        "x-retune-access": "fleet+write"
+      },
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getScriptsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Script"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "A script",
+        "tags": [
+          "Scripts"
+        ],
+        "x-retune-access": "scoped"
+      },
+      "post": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "postScriptsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScriptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Script"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Update a script, making a new version if its code changed",
+        "tags": [
+          "Scripts"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/scripts/{id}/runs": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getScriptsIdRuns",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only this device.",
+            "in": "query",
+            "name": "device_id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "At most this many (default 50, at most 500).",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Skip this many.",
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOfScriptRun"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "A script's runs",
+        "tags": [
+          "Scripts"
+        ],
+        "x-retune-access": "scoped"
+      }
+    },
+    "/scripts/{id}/versions": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getScriptsIdVersions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemsOfScriptVersion"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "A script's versions",
+        "tags": [
+          "Scripts"
+        ],
+        "x-retune-access": "scoped"
+      }
+    },
+    "/session": {
+      "delete": {
+        "description": "A person signed in to the console; not an API token.",
+        "operationId": "deleteSession",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Sign out",
+        "tags": [
+          "Session"
+        ],
+        "x-retune-access": "session"
+      },
+      "get": {
+        "description": "A person signed in to the console; not an API token.",
+        "operationId": "getSession",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "The signed-in admin",
+        "tags": [
+          "Session"
+        ],
+        "x-retune-access": "session"
+      },
+      "post": {
+        "description": "Sets the retune_session cookie. The response carries the CSRF token to send as X-CSRF-Token.\n\nNo sign-in.",
+        "operationId": "postSession",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [],
+        "summary": "Sign in with a password (and authenticator code)",
+        "tags": [
+          "Session"
+        ],
+        "x-retune-access": "public"
+      }
+    },
+    "/setup": {
+      "get": {
+        "description": "No sign-in.",
+        "operationId": "getSetup",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [],
+        "summary": "Whether first-run setup is needed, and how people sign in",
+        "tags": [
+          "Session"
+        ],
+        "x-retune-access": "public"
+      }
+    },
+    "/tokens": {
+      "get": {
+        "description": "Any signed-in admin or API token, not limited to some devices.",
+        "operationId": "getTokens",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOfToken"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "List enrollment tokens",
+        "tags": [
+          "Enrollment"
+        ],
+        "x-retune-access": "fleet"
+      },
+      "post": {
+        "description": "The token is returned only here.\n\nThe admin role, not limited to some devices.",
+        "operationId": "postTokens",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedEnrollmentToken"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Create an enrollment token",
+        "tags": [
+          "Enrollment"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/tokens/{id}/revoke": {
+      "post": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "postTokensIdRevoke",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Revoke an enrollment token",
+        "tags": [
+          "Enrollment"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "/api/admin/v1"
+    }
+  ]
+}

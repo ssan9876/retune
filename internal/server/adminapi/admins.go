@@ -29,11 +29,7 @@ func (h *Handler) listAdmins(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createAdmin(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-		Role     string `json:"role"`
-	}
+	var req createAdminRequest
 	if !decode(w, r, &req) {
 		return
 	}
@@ -57,9 +53,7 @@ func (h *Handler) setAdminPassword(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var req struct {
-		Password string `json:"password"`
-	}
+	var req passwordRequest
 	if !decode(w, r, &req) {
 		return
 	}
@@ -81,9 +75,7 @@ func (h *Handler) setAdminTOTP(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var req struct {
-		Enabled bool `json:"enabled"`
-	}
+	var req totpRequest
 	if !decode(w, r, &req) {
 		return
 	}
@@ -102,7 +94,7 @@ func (h *Handler) setAdminTOTP(w http.ResponseWriter, r *http.Request) {
 	secret, url, err := h.Auth.EnableTOTP(r.Context(), id, actor)
 	switch {
 	case err == nil:
-		writeJSON(w, http.StatusOK, map[string]string{"secret": secret, "otpauth_url": url})
+		writeJSON(w, http.StatusOK, totpEnrollment{Secret: secret, OTPAuthURL: url})
 	case errors.Is(err, auth.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not_found", "no such admin")
 	default:
@@ -115,9 +107,7 @@ func (h *Handler) setAdminDisabled(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var req struct {
-		Disabled bool `json:"disabled"`
-	}
+	var req disabledRequest
 	if !decode(w, r, &req) {
 		return
 	}
@@ -141,9 +131,7 @@ func (h *Handler) setAdminScope(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var req struct {
-		GroupIDs *[]string `json:"group_ids"`
-	}
+	var req scopeRequest
 	if !decode(w, r, &req) {
 		return
 	}

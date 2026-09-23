@@ -168,7 +168,7 @@ func (h *Handler) listScriptVersions(w http.ResponseWriter, r *http.Request) {
 			Hash: v.Hash, CreatedAt: v.CreatedAt, CreatedBy: v.CreatedBy,
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, itemsOf(items))
 }
 
 type scriptRunJSON struct {

@@ -35,9 +35,9 @@ func (h *Handler) createToken(w http.ResponseWriter, r *http.Request) {
 		h.internal(w, "create enrollment token", err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{
-		"id": tok.ID.String(), "token": plain, "label": tok.Label,
-		"max_uses": tok.MaxUses, "expires_at": tok.ExpiresAt, "created_at": tok.CreatedAt,
+	writeJSON(w, http.StatusCreated, createdEnrollmentToken{
+		ID: tok.ID.String(), Token: plain, Label: tok.Label,
+		MaxUses: tok.MaxUses, ExpiresAt: tok.ExpiresAt, CreatedAt: tok.CreatedAt,
 	})
 }
 

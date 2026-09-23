@@ -167,7 +167,7 @@ func (h *Handler) listNotificationChannels(w http.ResponseWriter, r *http.Reques
 	for _, c := range rows {
 		items = append(items, newChannelJSON(c, caller(r).Admin.Role == store.RoleAdmin))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, itemsOf(items))
 }
 
 func (h *Handler) createNotificationChannel(w http.ResponseWriter, r *http.Request) {
@@ -314,7 +314,7 @@ func (h *Handler) testNotificationChannel(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadGateway, "delivery_failed", sendErr.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	writeJSON(w, http.StatusOK, channelTest{OK: true})
 }
 
 // validChannelConfig parses a channel's configuration and, for email, refuses
@@ -342,7 +342,7 @@ func (h *Handler) listAlertRules(w http.ResponseWriter, r *http.Request) {
 	for _, rule := range rows {
 		items = append(items, newAlertRuleJSON(rule))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, itemsOf(items))
 }
 
 func (h *Handler) createAlertRule(w http.ResponseWriter, r *http.Request) {
@@ -520,7 +520,7 @@ func (h *Handler) listFiringAlerts(w http.ResponseWriter, r *http.Request) {
 			FiringSince: a.FiringSince, NotifiedAt: a.NotifiedAt,
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, itemsOf(items))
 }
 
 func (h *Handler) listAlertDeliveries(w http.ResponseWriter, r *http.Request) {
@@ -537,7 +537,7 @@ func (h *Handler) listAlertDeliveries(w http.ResponseWriter, r *http.Request) {
 			Firing: d.Firing, Resolved: d.Resolved,
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, itemsOf(items))
 }
 
 // auditAlert records an administrator's change. A failure to write the audit

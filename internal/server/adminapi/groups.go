@@ -80,7 +80,7 @@ func (h *Handler) listGroups(w http.ResponseWriter, r *http.Request) {
 		}
 		items = append(items, newGroupJSON(g.Group, g.MemberCount))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, itemsOf(items))
 }
 
 func (h *Handler) createGroup(w http.ResponseWriter, r *http.Request) {
@@ -254,7 +254,7 @@ func (h *Handler) evaluateGroup(w http.ResponseWriter, r *http.Request) {
 		h.writeGroupError(w, "evaluate group", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"member_count": n})
+	writeJSON(w, http.StatusOK, memberCount{MemberCount: n})
 }
 
 func (h *Handler) memberCount(r *http.Request, id uuid.UUID) int {
@@ -344,7 +344,7 @@ func (h *Handler) listAssignments(w http.ResponseWriter, r *http.Request) {
 		}
 		items = append(items, newAssignmentJSON(a, name, h.Now()))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, itemsOf(items))
 }
 
 func (h *Handler) createAssignment(w http.ResponseWriter, r *http.Request) {
@@ -578,28 +578,27 @@ func (h *Handler) itemStatus(w http.ResponseWriter, r *http.Request) {
 		h.internal(w, "list item status", err)
 		return
 	}
-	type row struct {
-		DeviceID string `json:"device_id"`
-		Hostname string `json:"hostname"`
-		Status   string `json:"status"`
-		Detail   string `json:"detail"`
-		// Version says which version of the item the status refers to, so the
-		// console can report "succeeded on version 3".
-		Version   int       `json:"version"`
-		UpdatedAt time.Time `json:"updated_at"`
-	}
-	items := make([]row, 0, len(rows))
+	items := make([]itemStatusRowJSON, 0, len(rows))
 	for _, s := range rows {
-		items = append(items, row{
+		items = append(items, itemStatusRowJSON{
 			DeviceID: s.DeviceID.String(), Hostname: s.Hostname,
 			Status: s.Status, Detail: s.Detail, Version: s.Version, UpdatedAt: s.UpdatedAt,
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"rollup": rollup,
-		"items":  items,
-		"total":  total,
-		"limit":  page.Normalized().Limit,
-		"offset": page.Normalized().Offset,
+	writeJSON(w, http.StatusOK, statusRollupResponse[itemStatusRowJSON]{
+		Rollup: rollup, Items: items, Total: total,
+		Limit: page.Normalized().Limit, Offset: page.Normalized().Offset,
 	})
+}
+
+// itemStatusRowJSON is one device's status for an assigned item.
+type itemStatusRowJSON struct {
+	DeviceID string `json:"device_id"`
+	Hostname string `json:"hostname"`
+	Status   string `json:"status"`
+	Detail   string `json:"detail"`
+	// Version says which version of the item the status refers to, so the
+	// console can report "succeeded on version 3".
+	Version   int       `json:"version"`
+	UpdatedAt time.Time `json:"updated_at"`
 }

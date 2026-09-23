@@ -165,7 +165,7 @@ func (h *Handler) listProfileVersions(w http.ResponseWriter, r *http.Request) {
 		}
 		items = append(items, entry)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, itemsOf(items))
 }
 
 // profileStatus returns the per-setting results for a profile, so an
@@ -187,27 +187,26 @@ func (h *Handler) profileSettingStatus(w http.ResponseWriter, r *http.Request) {
 		h.internal(w, "list setting status", err)
 		return
 	}
-	type row struct {
-		DeviceID  string    `json:"device_id"`
-		Hostname  string    `json:"hostname"`
-		Identity  string    `json:"identity"`
-		Version   int       `json:"version"`
-		Status    string    `json:"status"`
-		Detail    string    `json:"detail"`
-		UpdatedAt time.Time `json:"updated_at"`
-	}
-	items := make([]row, 0, len(rows))
+	items := make([]settingStatusRowJSON, 0, len(rows))
 	for _, s := range rows {
-		items = append(items, row{
+		items = append(items, settingStatusRowJSON{
 			DeviceID: s.DeviceID.String(), Hostname: s.Hostname, Identity: s.Identity,
 			Version: s.Version, Status: s.Status, Detail: s.Detail, UpdatedAt: s.UpdatedAt,
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"rollup": rollup,
-		"items":  items,
-		"total":  total,
-		"limit":  page.Normalized().Limit,
-		"offset": page.Normalized().Offset,
+	writeJSON(w, http.StatusOK, statusRollupResponse[settingStatusRowJSON]{
+		Rollup: rollup, Items: items, Total: total,
+		Limit: page.Normalized().Limit, Offset: page.Normalized().Offset,
 	})
+}
+
+// settingStatusRowJSON is one device's status for one profile setting.
+type settingStatusRowJSON struct {
+	DeviceID  string    `json:"device_id"`
+	Hostname  string    `json:"hostname"`
+	Identity  string    `json:"identity"`
+	Version   int       `json:"version"`
+	Status    string    `json:"status"`
+	Detail    string    `json:"detail"`
+	UpdatedAt time.Time `json:"updated_at"`
 }

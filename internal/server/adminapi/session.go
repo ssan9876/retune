@@ -86,11 +86,7 @@ func (h *Handler) setup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-		TOTPCode string `json:"totp_code"`
-	}
+	var req loginRequest
 	if !decode(w, r, &req) {
 		return
 	}

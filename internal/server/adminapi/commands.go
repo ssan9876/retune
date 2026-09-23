@@ -161,7 +161,7 @@ func (h *Handler) queueCommand(w http.ResponseWriter, r *http.Request) {
 		h.writeQueueError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"commands": out})
+	writeJSON(w, http.StatusCreated, queuedCommands{Commands: out})
 }
 
 type queuedJSON struct {

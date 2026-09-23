@@ -73,7 +73,7 @@ func (h *Handler) holdForApproval(w http.ResponseWriter, r *http.Request, kind s
 		h.internal(w, "create approval", err)
 		return
 	}
-	writeJSON(w, http.StatusAccepted, map[string]any{"approval": newApprovalJSON(a)})
+	writeJSON(w, http.StatusAccepted, approvalEnvelope{Approval: newApprovalJSON(a)})
 }
 
 func (h *Handler) listApprovals(w http.ResponseWriter, r *http.Request) {
@@ -118,9 +118,7 @@ func (h *Handler) decideApproval(w http.ResponseWriter, r *http.Request, approve
 	if !ok {
 		return
 	}
-	var req struct {
-		Reason string `json:"reason"`
-	}
+	var req decisionRequest
 	if !decode(w, r, &req) {
 		return
 	}
@@ -192,7 +190,7 @@ func (h *Handler) decideApproval(w http.ResponseWriter, r *http.Request, approve
 			return
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"approval": newApprovalJSON(a)})
+	writeJSON(w, http.StatusOK, approvalEnvelope{Approval: newApprovalJSON(a)})
 }
 
 // replayApproval carries out an approved request as its requester. failed
