@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"retune/internal/opsign"
 	"retune/internal/protocol"
 )
 
@@ -74,6 +75,16 @@ func (e *Executor) wipe(ctx context.Context, raw json.RawMessage, res *protocol.
 	if len(raw) > 0 && string(raw) != "null" {
 		if err := json.Unmarshal(raw, &p); err != nil {
 			fail(res, fmt.Sprintf("invalid wipe payload: %v", err))
+			return
+		}
+	}
+	if e.Operations.Enforced {
+		var expires time.Time
+		if p.Expires != nil {
+			expires = *p.Expires
+		}
+		if err := opsign.VerifyWipe(e.Operations.Keys, e.DeviceID, p.Protected, expires, e.now(), p.Signature); err != nil {
+			fail(res, "refused: "+err.Error())
 			return
 		}
 	}

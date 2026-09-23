@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"retune/internal/opsign"
 	"retune/internal/protocol"
 )
 
@@ -40,6 +41,11 @@ type Executor struct {
 	// Passwords and Escrower rotate local admin passwords.
 	Passwords PasswordSetter
 	Escrower  PasswordEscrower
+
+	// Operations says whether run_powershell and wipe must be signed by an
+	// operations key; DeviceID is what a signed wipe must name.
+	Operations opsign.Policy
+	DeviceID   string
 }
 
 // Execute runs one command.
@@ -78,6 +84,12 @@ func (e *Executor) runPowerShell(ctx context.Context, raw json.RawMessage, res *
 	if strings.TrimSpace(p.Script) == "" {
 		fail(res, "run_powershell payload has no script")
 		return
+	}
+	if e.Operations.Enforced {
+		if err := opsign.Verify(e.Operations.Keys, opsign.ScriptManifest(p.Script, ""), p.Signature); err != nil {
+			fail(res, "refused: "+err.Error())
+			return
+		}
 	}
 	timeout := time.Duration(p.TimeoutSeconds) * time.Second
 	if timeout <= 0 {

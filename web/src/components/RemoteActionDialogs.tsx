@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 
 import { api } from "../api/client";
+import { useSession } from "../session/SessionContext";
+import { SignatureField, parseSignedOrder } from "./SignatureField";
 import { Button, Dialog, ErrorNote, Field } from "./ui";
 import "./RemoteActionDialogs.css";
 
@@ -88,6 +90,8 @@ export function WipeDialog({
   const [confirm, setConfirm] = useState("");
   const [reason, setReason] = useState("");
   const [protectedWipe, setProtectedWipe] = useState(false);
+  const [orderText, setOrderText] = useState("");
+  const { signingRequired } = useSession();
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -96,12 +100,17 @@ export function WipeDialog({
       setConfirm("");
       setReason("");
       setProtectedWipe(false);
+      setOrderText("");
       setError(null);
     }
   }, [open]);
 
+  const order = parseSignedOrder(orderText);
+  // A signed order says for itself whether the wipe is protected.
+  const effectiveProtected = order?.protected ?? protectedWipe;
+  const orderFits = !signingRequired || (order !== null && (order.device ?? deviceId).toLowerCase() === deviceId.toLowerCase());
   const matches = confirm.trim().toLowerCase() === hostname.toLowerCase();
-  const ready = matches && reason.trim() !== "";
+  const ready = matches && reason.trim() !== "" && orderFits;
 
   async function wipe() {
     setBusy(true);
@@ -110,9 +119,10 @@ export function WipeDialog({
       await api.post("/commands", {
         device_ids: [deviceId],
         type: "wipe",
-        protected: protectedWipe,
+        protected: effectiveProtected,
         confirm_hostname: confirm.trim(),
         reason: reason.trim(),
+        ...(order ? { expires: order.expires, signature: { key_id: order.key_id, signature: order.signature } } : {}),
       });
       onQueued();
       onClose();
@@ -142,10 +152,20 @@ export function WipeDialog({
       <Field label="Reason" hint="Recorded in the audit log, e.g. a ticket number.">
         <input aria-label="Reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} />
       </Field>
-      <label className="remote-actions__check">
-        <input type="checkbox" checked={protectedWipe} onChange={(e) => setProtectedWipe(e.target.checked)} />
-        Also remove what a reset keeps for recovery (a protected wipe; the device may need reinstalling)
-      </label>
+      {signingRequired ? (
+        <SignatureField
+          label="Signed wipe order"
+          value={orderText}
+          onChange={setOrderText}
+          valid={order !== null && orderFits}
+          command={`retune-sign sign-wipe --key operations.key --device ${deviceId} [--protected] --valid-for 4h`}
+        />
+      ) : (
+        <label className="remote-actions__check">
+          <input type="checkbox" checked={protectedWipe} onChange={(e) => setProtectedWipe(e.target.checked)} />
+          Also remove what a reset keeps for recovery (a protected wipe; the device may need reinstalling)
+        </label>
+      )}
       <ErrorNote error={error} />
       <div className="actions">
         <Button variant="danger" disabled={busy || !ready} onClick={() => void wipe()}>

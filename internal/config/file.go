@@ -31,6 +31,7 @@ type fileConfig struct {
 	CAKeySource            string `yaml:"ca_key_source"`
 	SweepIntervalSeconds   int    `yaml:"sweep_interval_seconds"`
 	AgentReleaseKeys       string `yaml:"agent_release_keys"`
+	OperationsKeys         string `yaml:"operations_keys"`
 	SMTPHost               string `yaml:"smtp_host"`
 	SMTPPort               int    `yaml:"smtp_port"`
 	SMTPFrom               string `yaml:"smtp_from"`
@@ -148,6 +149,7 @@ func loadConfigFile(getenv func(string) string) (map[string]string, error) {
 		set("SESSION_MAX_HOURS", strconv.Itoa(f.SessionMaxHours))
 	}
 	set("AGENT_RELEASE_KEYS", f.AgentReleaseKeys)
+	set("OPERATIONS_KEYS", f.OperationsKeys)
 	set("SMTP_HOST", f.SMTPHost)
 	if f.SMTPPort != 0 {
 		set("SMTP_PORT", strconv.Itoa(f.SMTPPort))

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { api } from "../api/client";
 import type { Group, Script, ScriptRun } from "../api/types";
+import { SignatureField, parseSignature } from "../components/SignatureField";
 import { StatusDot } from "../components/StatusDot";
 import { Button, Dialog, EmptyState, ErrorNote, Field, Spinner } from "../components/ui";
 import { useList } from "../hooks/useList";
@@ -31,6 +32,13 @@ function ScriptEditor({
   const [description, setDescription] = useState("");
   const [body, setBody] = useState("");
   const [detection, setDetection] = useState("");
+  const [signatureText, setSignatureText] = useState("");
+  const { signingRequired } = useSession();
+  const signature = parseSignature(signatureText);
+  // Renaming a signed script keeps its signature; changing its code needs a
+  // new one.
+  const codeChanged = !script || body !== (script.body ?? "") || detection !== (script.detection_body ?? "");
+  const needsSignature = signingRequired && (codeChanged || !script?.signed);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -40,6 +48,7 @@ function ScriptEditor({
     setDescription(script?.description ?? "");
     setBody(script?.body ?? "");
     setDetection(script?.detection_body ?? "");
+    setSignatureText("");
     setError(null);
   }, [open, script]);
 
@@ -47,7 +56,7 @@ function ScriptEditor({
     setBusy(true);
     setError(null);
     try {
-      const payload = { name, description, body, detection_body: detection };
+      const payload = { name, description, body, detection_body: detection, ...(signature ? { signature } : {}) };
       if (script) {
         await api.post(`/scripts/${script.id}`, payload);
       } else {
@@ -85,9 +94,24 @@ function ScriptEditor({
           onChange={(e) => setDetection(e.target.value)}
         />
       </Field>
+      {needsSignature ? (
+        <SignatureField
+          value={signatureText}
+          onChange={setSignatureText}
+          valid={signature !== null}
+          command={
+            detection.trim()
+              ? "retune-sign sign-script --key operations.key --detection detect.ps1 script.ps1"
+              : "retune-sign sign-script --key operations.key script.ps1"
+          }
+        />
+      ) : null}
       <ErrorNote error={error} />
       <div className="actions">
-        <Button onClick={() => void save()} disabled={busy || name.trim() === "" || body.trim() === ""}>
+        <Button
+          onClick={() => void save()}
+          disabled={busy || name.trim() === "" || body.trim() === "" || (needsSignature && signature === null)}
+        >
           {script ? "Save new version" : "Create script"}
         </Button>
         <Button variant="quiet" onClick={onClose}>

@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"retune/internal/opsign"
 	"retune/internal/protocol"
 	"retune/internal/server/commands"
 	"retune/internal/server/store"
@@ -63,6 +64,10 @@ type queueRequest struct {
 	Protected       bool   `json:"protected"`
 	ConfirmHostname string `json:"confirm_hostname"`
 	Reason          string `json:"reason"`
+	// Expires and Signature: a signed wipe order, or (Signature alone) a
+	// signed script.
+	Expires   *time.Time        `json:"expires,omitempty"`
+	Signature *opsign.Signature `json:"signature,omitempty"`
 	// rotate_local_admin_password
 	Account string `json:"account"`
 	Length  int    `json:"length"`
@@ -168,7 +173,7 @@ func (h *Handler) queueCommand(w http.ResponseWriter, r *http.Request) {
 func payloadFor(req queueRequest) (json.RawMessage, error) {
 	switch req.Type {
 	case protocol.CommandRunPowerShell:
-		return json.Marshal(protocol.RunPowerShellPayload{Script: req.Script, TimeoutSeconds: req.TimeoutSeconds})
+		return json.Marshal(protocol.RunPowerShellPayload{Script: req.Script, TimeoutSeconds: req.TimeoutSeconds, Signature: req.Signature})
 	case protocol.CommandRestart:
 		return json.Marshal(protocol.RestartPayload{DelaySeconds: req.DelaySeconds, Message: req.Message})
 	case protocol.CommandRefreshInventory, protocol.CommandLock:
@@ -176,7 +181,7 @@ func payloadFor(req queueRequest) (json.RawMessage, error) {
 	case protocol.CommandCollectLogs:
 		return json.Marshal(protocol.CollectLogsPayload{Hours: req.Hours})
 	case protocol.CommandWipe:
-		return json.Marshal(protocol.WipePayload{Protected: req.Protected})
+		return json.Marshal(protocol.WipePayload{Protected: req.Protected, Expires: req.Expires, Signature: req.Signature})
 	case protocol.CommandRotateAdminPassword:
 		return json.Marshal(protocol.RotateAdminPasswordPayload{Account: req.Account, Length: req.Length})
 	default:

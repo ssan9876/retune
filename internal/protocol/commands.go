@@ -3,6 +3,8 @@ package protocol
 import (
 	"encoding/json"
 	"time"
+
+	"retune/internal/opsign"
 )
 
 // Command types.
@@ -66,6 +68,11 @@ type WipePayload struct {
 	// Protected also removes what a plain reset keeps for recovery, and
 	// can leave a device that can't start until it is reinstalled.
 	Protected bool `json:"protected"`
+	// Expires and Signature are a signed wipe order, for agents built to
+	// require one: bound to this device, this choice of protected, and this
+	// expiry.
+	Expires   *time.Time        `json:"expires,omitempty"`
+	Signature *opsign.Signature `json:"signature,omitempty"`
 }
 
 // Terminal result statuses reported by the agent.
@@ -89,6 +96,9 @@ type Command struct {
 type RunPowerShellPayload struct {
 	Script         string `json:"script"`
 	TimeoutSeconds int    `json:"timeout_seconds"`
+	// Signature, by an operations key, over the script. An agent built to
+	// require one runs nothing without it.
+	Signature *opsign.Signature `json:"signature,omitempty"`
 }
 
 // RestartPayload configures CommandRestart.

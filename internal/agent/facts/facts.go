@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"retune/internal/agent/inventory"
+	"retune/internal/opsign"
 	"retune/internal/protocol"
 	"retune/internal/release"
 )
@@ -36,6 +37,21 @@ func VersionInjected() bool {
 // both keys, then one that trusts only the new one; nothing on a device is
 // ever edited to change what it trusts.
 var TrustedKeysRaw = ""
+
+// OperationsKeysRaw is the comma-separated list of operations public keys
+// this agent was built to require on the scripts it runs and the wipes it
+// obeys, stamped at build time:
+//
+//	go build -ldflags "-X retune/internal/agent/facts.OperationsKeysRaw=<base64>,<base64>"
+//
+// Empty, the agent requires no signatures. It is a build setting on purpose:
+// nothing the server sends can turn it off.
+var OperationsKeysRaw = ""
+
+// Operations is what this agent requires. A list that doesn't parse
+// enforces with no trusted keys, refusing everything, rather than quietly
+// enforcing nothing.
+func Operations() opsign.Policy { return opsign.ParsePolicy(OperationsKeysRaw) }
 
 // TrustedKeys parses the stamped list. A list that fails to parse is treated
 // as empty rather than partially honoured, since trusting fewer keys than

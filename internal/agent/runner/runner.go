@@ -130,12 +130,14 @@ func Run(ctx context.Context, opts Options) error {
 		State:     st,
 		Collector: inventory.NewCollector(),
 		Executor: &executor.Executor{
-			Runner:    scriptRunner,
-			Restarter: executor.DefaultRestarter(),
-			Now:       time.Now,
-			Locker:    executor.DefaultLocker(),
-			Wiper:     executor.DefaultWiper(scriptRunner),
-			Passwords: executor.DefaultPasswords(),
+			Runner:     scriptRunner,
+			Restarter:  executor.DefaultRestarter(),
+			Now:        time.Now,
+			Locker:     executor.DefaultLocker(),
+			Wiper:      executor.DefaultWiper(scriptRunner),
+			Passwords:  executor.DefaultPasswords(),
+			Operations: facts.Operations(),
+			DeviceID:   id.DeviceID,
 			Logs: executor.LogSources{
 				Dir: opts.DataDir, Channels: []string{"System", "Application"},
 				Events: executor.DefaultEventExporter(),
@@ -143,6 +145,7 @@ func Run(ctx context.Context, opts Options) error {
 		},
 		Scripts: &scripts.Scheduler{
 			State: st, Runner: scriptRunner, Log: opts.Log, Now: time.Now,
+			Operations: facts.Operations(),
 		},
 		Policy: &policy.Syncer{
 			// Handlers are filled in by the session, which owns the client

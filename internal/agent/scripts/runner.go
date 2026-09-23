@@ -13,6 +13,7 @@ import (
 	"retune/internal/agent/executor"
 	"retune/internal/agent/state"
 	"retune/internal/agent/winsession"
+	"retune/internal/opsign"
 	"retune/internal/protocol"
 )
 
@@ -29,6 +30,9 @@ type Scheduler struct {
 	Runner executor.Runner
 	Log    *slog.Logger
 	Now    func() time.Time
+	// Operations says whether a script must be signed by an operations key
+	// before it runs.
+	Operations opsign.Policy
 
 	// mu keeps one script running at a time: two PowerShell processes fighting
 	// over the same machine is rarely what an administrator meant.
@@ -145,6 +149,15 @@ func (s *Scheduler) body(ctx context.Context, item protocol.Item) (protocol.Scri
 // non-compliant has not actually fixed anything.
 func (s *Scheduler) execute(ctx context.Context, v protocol.ScriptVersionResponse, opts protocol.DeploymentOptions) protocol.ScriptRun {
 	started := s.now()
+
+	if s.Operations.Enforced {
+		// Checked on every run, cached or not, and before detection: a
+		// detection script is code too.
+		if err := opsign.Verify(s.Operations.Keys, opsign.ScriptManifest(v.Body, v.DetectionBody), v.Signature); err != nil {
+			refused := outcome{err: fmt.Errorf("refused: %w", err), exitCode: -1}
+			return refused.report(protocol.PhaseScript, false, started, s.now())
+		}
+	}
 
 	if strings.TrimSpace(v.DetectionBody) == "" {
 		out := s.runOne(ctx, v.Body, opts)

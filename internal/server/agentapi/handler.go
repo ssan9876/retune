@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"retune/internal/opsign"
 	"retune/internal/protocol"
 	"retune/internal/server/agentversions"
 	"retune/internal/server/apps"
@@ -417,9 +418,16 @@ func (h *Handler) scriptVersion(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
 		return
 	}
-	writeJSON(w, http.StatusOK, protocol.ScriptVersionResponse{
+	out := protocol.ScriptVersionResponse{
 		Version: v.Version, Body: v.Body, DetectionBody: v.DetectionBody, Hash: v.Hash,
-	})
+	}
+	if len(v.Signature) > 0 {
+		var sig opsign.Signature
+		if json.Unmarshal(v.Signature, &sig) == nil {
+			out.Signature = &sig
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // scriptRun records one execution reported by a device.

@@ -13,6 +13,8 @@ interface SessionValue {
   /** localLogin is false when only SSO may sign in. */
   localLogin: boolean;
   canWrite: boolean;
+  /** signingRequired: scripts and wipes need an operations signature. */
+  signingRequired: boolean;
   signIn: (email: string, password: string, totpCode?: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -26,6 +28,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [needsSetup, setNeedsSetup] = useState(false);
   const [sso, setSso] = useState<string | null>(null);
   const [localLogin, setLocalLogin] = useState(true);
+  const [signingRequired, setSigningRequired] = useState(false);
 
   const clear = useCallback(() => {
     setAdmin(null);
@@ -45,6 +48,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         setCsrfToken(session.csrf_token);
         setAdmin(session.admin);
+        setSigningRequired(session.signing_required ?? false);
       } catch {
         if (!cancelled) clear();
       }
@@ -73,6 +77,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     });
     setCsrfToken(session.csrf_token);
     setAdmin(session.admin);
+    setSigningRequired(session.signing_required ?? false);
     setNeedsSetup(false);
   }, []);
 
@@ -94,10 +99,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       sso,
       localLogin,
       canWrite: admin?.role === "admin",
+      signingRequired,
       signIn,
       signOut,
     }),
-    [admin, loading, needsSetup, sso, localLogin, signIn, signOut],
+    [admin, loading, needsSetup, sso, localLogin, signingRequired, signIn, signOut],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

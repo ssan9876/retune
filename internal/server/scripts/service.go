@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -11,7 +12,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"retune/internal/opsign"
 	"retune/internal/protocol"
+	"retune/internal/release"
 	"retune/internal/server/store"
 )
 
@@ -32,6 +35,8 @@ const MaxBodyBytes = 256 << 10
 type Service struct {
 	Store *store.Store
 	Now   func() time.Time
+	// OperationsKeys, when set, are what every script must be signed by.
+	OperationsKeys []release.PublicKey
 }
 
 func (s *Service) now() time.Time {
@@ -48,6 +53,8 @@ type NewScript struct {
 	Body          string
 	DetectionBody string
 	Actor         string
+	// Signature is an operations signature over Body and DetectionBody.
+	Signature *opsign.Signature
 }
 
 // Hash identifies a version's contents, the way inventory documents are
@@ -55,6 +62,32 @@ type NewScript struct {
 func Hash(body, detection string) string {
 	sum := sha256.Sum256([]byte(body + "\x00" + detection))
 	return hex.EncodeToString(sum[:])
+}
+
+// versionHash identifies a version's contents and its signature, so signing
+// an existing script makes a new version agents fetch. Unsigned, it is Hash
+// exactly, as it always was.
+func versionHash(in NewScript) (string, json.RawMessage) {
+	h := Hash(in.Body, in.DetectionBody)
+	if in.Signature == nil {
+		return h, nil
+	}
+	raw, _ := json.Marshal(in.Signature)
+	sum := sha256.Sum256([]byte(h + "\x00" + string(raw)))
+	return hex.EncodeToString(sum[:]), raw
+}
+
+// checkSignature refuses a script that isn't signed by a trusted operations
+// key, when the server has any: an agent built to require one would refuse
+// it anyway, and it is better said now than on every device.
+func (s *Service) checkSignature(in NewScript) error {
+	if len(s.OperationsKeys) == 0 {
+		return nil
+	}
+	if err := opsign.Verify(s.OperationsKeys, opsign.ScriptManifest(in.Body, in.DetectionBody), in.Signature); err != nil {
+		return fmt.Errorf("%w: %v; sign it with retune-sign sign-script", ErrBadRequest, err)
+	}
+	return nil
 }
 
 func (in NewScript) validate() error {
@@ -75,6 +108,10 @@ func (s *Service) Create(ctx context.Context, in NewScript) (store.Script, error
 	if err := in.validate(); err != nil {
 		return store.Script{}, err
 	}
+	if err := s.checkSignature(in); err != nil {
+		return store.Script{}, err
+	}
+	hash, sig := versionHash(in)
 	now := s.now()
 	sc := store.Script{
 		ID: uuid.Must(uuid.NewV7()), Name: strings.TrimSpace(in.Name), Description: in.Description,
@@ -91,7 +128,7 @@ func (s *Service) Create(ctx context.Context, in NewScript) (store.Script, error
 		}
 		if err := q.CreateScriptVersion(ctx, store.ScriptVersion{
 			ScriptID: sc.ID, Version: 1, Body: in.Body, DetectionBody: in.DetectionBody,
-			Hash: Hash(in.Body, in.DetectionBody), CreatedAt: now, CreatedBy: in.Actor,
+			Hash: hash, Signature: sig, CreatedAt: now, CreatedBy: in.Actor,
 		}); err != nil {
 			return err
 		}
@@ -134,12 +171,25 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewScript) (store
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return err
 		}
-		newVersion := current.Body != in.Body || current.DetectionBody != in.DetectionBody
+		// Renaming or re-describing a signed script keeps its signature: the
+		// code it covers hasn't changed, and the editor doesn't resend it.
+		if in.Signature == nil && len(current.Signature) > 0 &&
+			current.Body == in.Body && current.DetectionBody == in.DetectionBody {
+			var kept opsign.Signature
+			if json.Unmarshal(current.Signature, &kept) == nil {
+				in.Signature = &kept
+			}
+		}
+		if err := s.checkSignature(in); err != nil {
+			return err
+		}
+		hash, sig := versionHash(in)
+		newVersion := current.Hash != hash
 		if newVersion {
 			sc.CurrentVersion++
 			if err := q.CreateScriptVersion(ctx, store.ScriptVersion{
 				ScriptID: id, Version: sc.CurrentVersion, Body: in.Body, DetectionBody: in.DetectionBody,
-				Hash: Hash(in.Body, in.DetectionBody), CreatedAt: now, CreatedBy: in.Actor,
+				Hash: hash, Signature: sig, CreatedAt: now, CreatedBy: in.Actor,
 			}); err != nil {
 				return err
 			}

@@ -1,6 +1,7 @@
-// retune-sign signs agent builds with an offline release key and verifies
-// those signatures. It is what a release process runs; the server never holds
-// the private key.
+// retune-sign signs agent builds with an offline release key, and scripts
+// and wipe orders with an offline operations key, and verifies release
+// signatures. It is what a release or change process runs; the server never
+// holds either private key.
 package main
 
 import (
@@ -14,14 +15,18 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"retune/internal/opsign"
 	"retune/internal/release"
 )
 
 const usage = `usage:
-  retune-sign keygen --out DIR
+  retune-sign keygen --out DIR [--name release|operations]
   retune-sign sign --key FILE|env:NAME --version V BINARY
-  retune-sign verify --trust KEY[,KEY...] BINARY SIGFILE`
+  retune-sign verify --trust KEY[,KEY...] BINARY SIGFILE
+  retune-sign sign-script --key FILE|env:NAME [--detection FILE] SCRIPT
+  retune-sign sign-wipe --key FILE|env:NAME --device ID [--protected] [--valid-for 4h]`
 
 func main() {
 	if err := run(os.Args[1:], os.Getenv, os.Stdout); err != nil {
@@ -37,14 +42,18 @@ func run(args []string, getenv func(string) string, out io.Writer) error {
 	switch args[0] {
 	case "keygen":
 		fs := flag.NewFlagSet("keygen", flag.ContinueOnError)
-		outDir := fs.String("out", "", "directory to write release.key and release.pub into")
+		outDir := fs.String("out", "", "directory to write NAME.key and NAME.pub into")
+		name := fs.String("name", "release", "release, or operations for a key that signs scripts and wipes")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
 		if *outDir == "" {
 			return errors.New("--out is required")
 		}
-		return keygen(*outDir, out)
+		if *name != "release" && *name != "operations" {
+			return errors.New("--name must be release or operations")
+		}
+		return keygen(*outDir, *name, out)
 	case "sign":
 		fs := flag.NewFlagSet("sign", flag.ContinueOnError)
 		key := fs.String("key", "", "path to release.key, or env:NAME to read the seed from the environment")
@@ -74,12 +83,77 @@ func run(args []string, getenv func(string) string, out io.Writer) error {
 			return err
 		}
 		return verify(keys, fs.Arg(0), fs.Arg(1), out)
+	case "sign-script":
+		fs := flag.NewFlagSet("sign-script", flag.ContinueOnError)
+		key := fs.String("key", "", "path to operations.key, or env:NAME")
+		detection := fs.String("detection", "", "the script's detection script, if it has one")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if *key == "" || fs.NArg() != 1 {
+			return errors.New(usage)
+		}
+		priv, err := loadKey(*key, getenv)
+		if err != nil {
+			return err
+		}
+		return signScript(priv, fs.Arg(0), *detection, out)
+	case "sign-wipe":
+		fs := flag.NewFlagSet("sign-wipe", flag.ContinueOnError)
+		key := fs.String("key", "", "path to operations.key, or env:NAME")
+		device := fs.String("device", "", "the device ID the order is for")
+		protected := fs.Bool("protected", false, "a protected wipe")
+		validFor := fs.Duration("valid-for", 4*time.Hour, "how long the order stays valid, at most 24h")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if *key == "" || *device == "" || fs.NArg() != 0 {
+			return errors.New(usage)
+		}
+		if *validFor <= 0 || *validFor > opsign.MaxWipeValidity {
+			return errors.New("--valid-for must be more than 0 and at most 24h")
+		}
+		priv, err := loadKey(*key, getenv)
+		if err != nil {
+			return err
+		}
+		return signWipe(priv, *device, *protected, time.Now().Add(*validFor), out)
 	default:
 		return fmt.Errorf("unknown command %q\n%s", args[0], usage)
 	}
 }
 
-func keygen(dir string, out io.Writer) error {
+// signScript prints the signature for a script and its detection script, as
+// the JSON the console and API take.
+func signScript(priv release.PrivateKey, script, detection string, out io.Writer) error {
+	body, err := os.ReadFile(script)
+	if err != nil {
+		return err
+	}
+	var det []byte
+	if detection != "" {
+		if det, err = os.ReadFile(detection); err != nil {
+			return err
+		}
+	}
+	sig := opsign.Sign(priv, opsign.ScriptManifest(string(body), string(det)))
+	return json.NewEncoder(out).Encode(sig)
+}
+
+// signWipe prints a signed wipe order: the expiry it is bound to, with the
+// signature.
+func signWipe(priv release.PrivateKey, device string, protected bool, expires time.Time, out io.Writer) error {
+	expires = expires.UTC().Truncate(time.Second)
+	sig := opsign.Sign(priv, opsign.WipeManifest(device, protected, expires))
+	return json.NewEncoder(out).Encode(struct {
+		Device    string    `json:"device"`
+		Protected bool      `json:"protected"`
+		Expires   time.Time `json:"expires"`
+		opsign.Signature
+	}{device, protected, expires, sig})
+}
+
+func keygen(dir, name string, out io.Writer) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
@@ -89,10 +163,10 @@ func keygen(dir string, out io.Writer) error {
 	}
 	// O_EXCL: a release key silently replaced is a fleet that can no longer
 	// be updated, so an existing file is an error, never overwritten.
-	if err := writeNew(filepath.Join(dir, "release.key"), []byte(priv.Encode()+"\n"), 0o600); err != nil {
+	if err := writeNew(filepath.Join(dir, name+".key"), []byte(priv.Encode()+"\n"), 0o600); err != nil {
 		return err
 	}
-	if err := writeNew(filepath.Join(dir, "release.pub"), []byte(priv.Public().Encode()+"\n"), 0o644); err != nil {
+	if err := writeNew(filepath.Join(dir, name+".pub"), []byte(priv.Public().Encode()+"\n"), 0o644); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "key id: %s\npublic key: %s\n", priv.Public().ID(), priv.Public().Encode())

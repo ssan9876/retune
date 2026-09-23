@@ -14,7 +14,10 @@ param(
   # .sig is written beside the MSI.
   [string]$ReleaseKey = "",
   # Comma-separated public keys the agent embeds. Required with -ReleaseKey.
-  [string]$TrustedKeys = ""
+  [string]$TrustedKeys = "",
+  # Comma-separated operations public keys. When set, the agent runs no script
+  # and obeys no wipe that one of them hasn't signed.
+  [string]$OperationsKeys = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -32,7 +35,7 @@ Write-Host "Building the agent for windows/amd64..."
 $env:GOOS = "windows"
 $env:GOARCH = "amd64"
 & go build -trimpath `
-  -ldflags "-X retune/internal/agent/facts.AgentVersion=$Version -X retune/internal/agent/facts.TrustedKeysRaw=$TrustedKeys" `
+  -ldflags "-X retune/internal/agent/facts.AgentVersion=$Version -X retune/internal/agent/facts.TrustedKeysRaw=$TrustedKeys -X retune/internal/agent/facts.OperationsKeysRaw=$OperationsKeys" `
   -o $agentExe (Join-Path $root "cmd/retune-agent")
 if ($LASTEXITCODE -ne 0) { throw "go build failed" }
 

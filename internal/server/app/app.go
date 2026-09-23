@@ -110,7 +110,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	comp := &compliance.Service{Store: st, Now: time.Now, Log: log, Background: ctx}
 	inv := &inventory.Service{Store: st, Now: time.Now, Groups: grp, Compliance: comp, Log: log}
 	cmd := &commands.Service{Store: st, Now: time.Now, ArtifactDir: filepath.Join(cfg.DataDir, "command-artifacts")}
-	scr := &scripts.Service{Store: st, Now: time.Now}
+	scr := &scripts.Service{Store: st, Now: time.Now, OperationsKeys: cfg.OperationsKeys}
 	prof := &profiles.Service{Store: st, Now: time.Now}
 	appSvc := &apps.Service{Store: st, Now: time.Now, Packages: artifacts.Blobs{Dir: filepath.Join(cfg.DataDir, "app-packages")}}
 	agentVers := &agentversions.Service{
@@ -128,6 +128,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	locker := &bitlocker.Service{Store: st, Key: secretKey, Now: time.Now}
 	adminPasswords := &laps.Service{Store: st, Key: secretKey, Now: time.Now}
 	cmd.OnComplete = laps.Settle
+	cmd.OperationsKeys = cfg.OperationsKeys
 	// Alerts share the key that protects escrowed recovery keys: a webhook's
 	// shared secret is the same kind of thing, something the server must be
 	// able to use and nobody should be able to read back out of the console.
@@ -166,7 +167,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	}
 	admin := &adminapi.Handler{
 		Auth: authSvc, Store: st, Commands: cmd, Devices: dev, Enroll: svc, Groups: grp, Scripts: scr, Profiles: prof, Apps: appSvc, Compliance: comp, AgentVersions: agentVers, BitLocker: locker, LAPS: adminPasswords, Alerts: alerter,
-		SSO: sso, SSOName: cfg.OIDC.DisplayName,
+		SSO: sso, SSOName: cfg.OIDC.DisplayName, SigningRequired: len(cfg.OperationsKeys) > 0,
 		Now: time.Now, Log: log,
 	}
 	root := http.NewServeMux()
