@@ -220,6 +220,22 @@ provider is ever down. `oidc_disable_local_login: true` turns them off;
 `retune-server bootstrap-admin` still works from the command line, and unsetting
 the option is the way back in.
 
+## Limiting an admin to some devices
+
+An admin can be limited to device groups — a site's helpdesk to that site's
+machines, say. On **Admins**, **Limit devices** picks the groups. A limited
+admin sees and manages only the devices in them: the device list and every
+device page, commands, recovery keys, deployment and compliance status, and a
+dashboard counting their devices alone. A device outside their groups answers
+exactly as a device that does not exist.
+
+They can read scripts, profiles, apps and compliance policies and assign them
+to their own groups, but not create or change them, and anything that concerns
+the whole fleet — groups themselves, enrollment tokens, alerting, the audit log,
+admins and API tokens — is refused. An API token acts with its maker's limits as
+they are now. Retune never lets the last admin who can manage the whole fleet be
+limited or disabled.
+
 ## API tokens
 
 Scripts and other systems — a ticketing system, a SIEM, a nightly report —

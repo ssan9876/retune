@@ -10,6 +10,8 @@ export interface Admin {
   last_login_at?: string;
   /** "local" signs in with a password here; "oidc" through the identity provider. */
   auth_source: "local" | "oidc";
+  /** The device groups this admin is limited to, or null for the whole fleet. */
+  scope: string[] | null;
 }
 
 /** ApiToken is a credential for the admin API; the token itself is only ever

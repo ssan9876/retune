@@ -1,11 +1,12 @@
 import { useState } from "react";
 
 import { api } from "../api/client";
-import type { Admin } from "../api/types";
+import type { Admin, Group } from "../api/types";
 import { StatusDot } from "../components/StatusDot";
 import { Button, Dialog, ErrorNote, Field, Spinner } from "../components/ui";
 import { useList } from "../hooks/useList";
 import { useSession } from "../session/SessionContext";
+import "./Admins.css";
 
 export default function Admins() {
   const { canWrite } = useSession();
@@ -17,6 +18,34 @@ export default function Admins() {
   const [formError, setFormError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const [otpauth, setOtpauth] = useState<string | null>(null);
+  const groups = useList<Group>("/groups");
+  const [scoping, setScoping] = useState<Admin | null>(null);
+  const [limited, setLimited] = useState(false);
+  const [chosen, setChosen] = useState<string[]>([]);
+
+  const groupName = (id: string) => groups.items.find((g) => g.id === id)?.name ?? "a deleted group";
+
+  function openScope(admin: Admin) {
+    setScoping(admin);
+    setLimited(admin.scope != null);
+    setChosen(admin.scope ?? []);
+    setFormError(null);
+  }
+
+  async function saveScope() {
+    if (!scoping) return;
+    setBusy(true);
+    setFormError(null);
+    try {
+      await api.put(`/admins/${scoping.id}/scope`, { group_ids: limited ? chosen : null });
+      setScoping(null);
+      reload();
+    } catch (err) {
+      setFormError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function add() {
     setBusy(true);
@@ -122,6 +151,7 @@ export default function Admins() {
                 <th>Email</th>
                 <th>Signs in with</th>
                 <th>Role</th>
+                <th>Devices</th>
                 <th>Authenticator</th>
                 <th>Account</th>
                 <th>Last sign-in</th>
@@ -134,6 +164,13 @@ export default function Admins() {
                   <td>{admin.email}</td>
                   <td>{admin.auth_source === "oidc" ? "SSO" : "Password"}</td>
                   <td>{admin.role === "admin" ? "Admin" : "Read-only"}</td>
+                  <td>
+                    {admin.scope == null
+                      ? "All devices"
+                      : admin.scope.length === 0
+                        ? "None"
+                        : admin.scope.map(groupName).join(", ")}
+                  </td>
                   <td>
                     {admin.auth_source === "oidc" ? "at the identity provider" : admin.totp_enabled ? "On" : "Off"}
                   </td>
@@ -159,6 +196,9 @@ export default function Admins() {
                             </Button>
                           </>
                         ) : null}
+                        <Button variant="quiet" onClick={() => openScope(admin)}>
+                          Limit devices
+                        </Button>
                         <Button variant="quiet" onClick={() => void toggleDisabled(admin)}>
                           {admin.disabled ? "Enable account" : "Disable account"}
                         </Button>
@@ -171,6 +211,48 @@ export default function Admins() {
           </table>
         </div>
       ) : null}
+
+      <Dialog title={`Devices ${scoping?.email ?? ""} can manage`} open={scoping !== null} onClose={() => setScoping(null)}>
+        <p className="hint">
+          An admin limited to some groups sees and manages only the devices in them, and cannot use anything that
+          concerns the whole fleet: groups, scripts, profiles, apps and policies are theirs to read and assign to
+          their groups, not to change.
+        </p>
+        <fieldset className="scope-choice">
+          <legend>Can manage</legend>
+          <label>
+            <input type="radio" checked={!limited} onChange={() => setLimited(false)} /> All devices
+          </label>
+          <label>
+            <input type="radio" checked={limited} onChange={() => setLimited(true)} /> Only devices in these groups
+          </label>
+          {limited ? (
+            <div className="scope-choice__groups">
+              {groups.items.map((g) => (
+                <label key={g.id}>
+                  <input
+                    type="checkbox"
+                    checked={chosen.includes(g.id)}
+                    onChange={(e) =>
+                      setChosen(e.target.checked ? [...chosen, g.id] : chosen.filter((id) => id !== g.id))
+                    }
+                  />{" "}
+                  {g.name}
+                </label>
+              ))}
+            </div>
+          ) : null}
+        </fieldset>
+        <ErrorNote error={formError} />
+        <div className="actions">
+          <Button variant="primary" disabled={busy} onClick={() => void saveScope()}>
+            Save
+          </Button>
+          <Button variant="quiet" onClick={() => setScoping(null)}>
+            Cancel
+          </Button>
+        </div>
+      </Dialog>
 
       <Dialog title="Add an admin" open={addOpen} onClose={() => setAddOpen(false)}>
         <Field label="Email">

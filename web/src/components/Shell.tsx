@@ -6,7 +6,10 @@ import { useSession } from "../session/SessionContext";
 import { Icon } from "./Icon";
 import "./Shell.css";
 
-type Link = { to: string; label: string; icon: string };
+/** fleet marks pages about the whole fleet rather than devices, which an
+ * admin limited to some device groups cannot use; the server refuses them, so
+ * the nav does not offer them. */
+type Link = { to: string; label: string; icon: string; fleet?: boolean };
 type Section = { heading?: string; links: Link[] };
 
 /** The nav is grouped the way the Intune admin centre groups its own: the
@@ -20,7 +23,7 @@ const SECTIONS: Section[] = [
     links: [
       { to: "/devices", label: "All devices", icon: "device" },
       { to: "/groups", label: "Groups", icon: "group" },
-      { to: "/tokens", label: "Enrollment", icon: "key" },
+      { to: "/tokens", label: "Enrollment", icon: "key", fleet: true },
       { to: "/commands", label: "Commands", icon: "terminal" },
     ],
   },
@@ -40,10 +43,10 @@ const SECTIONS: Section[] = [
   {
     heading: "Tenant administration",
     links: [
-      { to: "/alerts", label: "Alerts", icon: "bell" },
-      { to: "/admins", label: "Admins", icon: "person" },
-      { to: "/api-tokens", label: "API tokens", icon: "key" },
-      { to: "/audit", label: "Audit log", icon: "list" },
+      { to: "/alerts", label: "Alerts", icon: "bell", fleet: true },
+      { to: "/admins", label: "Admins", icon: "person", fleet: true },
+      { to: "/api-tokens", label: "API tokens", icon: "key", fleet: true },
+      { to: "/audit", label: "Audit log", icon: "list", fleet: true },
     ],
   },
 ];
@@ -69,13 +72,20 @@ function matches(to: string, pathname: string): boolean {
 /** Search jumps between pages rather than querying the fleet: there is no
  * search endpoint behind it, and a box that looks like one and finds nothing
  * would be worse than none. Enter opens the first match. */
-function NavSearch({ onGo }: { onGo: (to: string) => void }) {
+/** sectionsFor is the nav an admin can use: all of it, or without the fleet
+ * pages for an admin limited to some device groups. */
+function sectionsFor(scoped: boolean): Section[] {
+  if (!scoped) return SECTIONS;
+  return SECTIONS.map((s) => ({ ...s, links: s.links.filter((l) => !l.fleet) })).filter((s) => s.links.length > 0);
+}
+
+function NavSearch({ onGo, links }: { onGo: (to: string) => void; links: Link[] }) {
   const [query, setQuery] = useState("");
   const hits = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
-    return ALL_LINKS.filter((l) => l.label.toLowerCase().includes(q)).slice(0, 6);
-  }, [query]);
+    return links.filter((l) => l.label.toLowerCase().includes(q)).slice(0, 6);
+  }, [query, links]);
 
   function go(to: string) {
     setQuery("");
@@ -157,6 +167,8 @@ function AccountMenu() {
 
 export function Shell({ children }: { children: ReactNode }) {
   const { admin } = useSession();
+  const sections = sectionsFor(admin?.scope != null);
+  const links = sections.flatMap((section) => section.links);
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [collapsed, setCollapsed] = useState(false);
@@ -179,7 +191,7 @@ export function Shell({ children }: { children: ReactNode }) {
           Retune
         </span>
         <span className="topbar__suite">admin center</span>
-        <NavSearch onGo={navigate} />
+        <NavSearch links={links} onGo={navigate} />
         <div className="topbar__tools">
           {admin?.role === "read_only" ? <span className="topbar__badge">Read-only</span> : null}
           <AccountMenu />
@@ -188,7 +200,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
       <aside className="rail">
         <nav aria-label="Main">
-          {SECTIONS.map((section, i) => (
+          {sections.map((section, i) => (
             <div className="rail__section" key={section.heading ?? i}>
               {section.heading ? <div className="rail__heading">{section.heading}</div> : null}
               {section.links.map((link) => (
