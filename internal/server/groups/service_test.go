@@ -333,7 +333,7 @@ func TestEffectiveItemsExcludeWins(t *testing.T) {
 	}
 
 	assign(inc.ID, store.ModeInclude)
-	items, err := st.Q().EffectiveItems(ctx, d.ID)
+	items, err := st.Q().EffectiveItems(ctx, d.ID, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +342,7 @@ func TestEffectiveItemsExcludeWins(t *testing.T) {
 	}
 
 	assign(exc.ID, store.ModeExclude)
-	items, err = st.Q().EffectiveItems(ctx, d.ID)
+	items, err = st.Q().EffectiveItems(ctx, d.ID, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}

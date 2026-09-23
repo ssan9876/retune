@@ -612,6 +612,29 @@ Items are assigned to groups as `include` or `exclude`, and **exclude always
 wins** — if any group a device belongs to excludes an item, that device does not
 get it, whatever else includes it.
 
+### Phased rollouts
+
+A script, app, configuration profile or agent build can be included in a
+group **in phases**: to a percentage of the group first, widening on a
+schedule — 10% now, then 20% more every 24 hours, say, reaching everyone four
+days later. In the console, tick **Roll out in phases** when assigning; in the
+API, send `"rollout": {"percent": 10, "step_percent": 20, "step_hours": 24}`
+with the assignment. Leave the steps out (or at 0) and it stays at its
+percentage until you change it.
+
+Which devices go first is fixed per item: each device has a place from 0 to 99
+worked out from its id and the item's, so the devices that have it keep it as
+the rollout widens, and the same devices lead whichever group the item is
+assigned through. A device reached in full through another group gets it
+regardless.
+
+To **pause** a rollout, assign it again with no steps at the percentage it has
+reached; to **finish** it, assign it again at 100%; to **back out**, assign it
+again lower, or remove the assignment. Assigning again restarts the schedule
+from its new percentage. Each assignment shows how far it has got and when it
+will reach the whole group. Exclusions, compliance policies and maintenance
+windows are never phased.
+
 ## Deploying scripts
 
 A **command** is a one-off: run this now, on these machines, once. A

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { api } from "../api/client";
 import type { Group } from "../api/types";
+import { AssignedTo } from "../components/Assignments";
 import { Button, Dialog, EmptyState, ErrorNote, Field, Spinner } from "../components/ui";
 import { useList } from "../hooks/useList";
 import { useSession } from "../session/SessionContext";
@@ -26,12 +27,6 @@ export interface MaintenanceWindow {
   start: string;
   duration_minutes: number;
   created_by: string;
-}
-
-interface WindowAssignment {
-  id: string;
-  group_name: string;
-  mode: "include" | "exclude";
 }
 
 /** describeWindow says when a window is open, the way a person would. */
@@ -116,7 +111,7 @@ export default function MaintenanceWindows() {
                   </td>
                   <td>{describeWindow(w)}</td>
                   <td>
-                    <Assignments windowID={w.id} canWrite={canWrite} generation={generation} />
+                    <AssignedTo kind={ITEM_KIND} id={w.id} refresh={generation} />
                   </td>
                   {canWrite ? (
                     <td>
@@ -153,51 +148,6 @@ export default function MaintenanceWindows() {
         onAssigned={() => setGeneration((g) => g + 1)}
       />
     </>
-  );
-}
-
-function Assignments({ windowID, canWrite, generation }: { windowID: string; canWrite: boolean; generation: number }) {
-  const [items, setItems] = useState<WindowAssignment[] | null>(null);
-  const [error, setError] = useState<unknown>(null);
-  const [reloads, setReloads] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .get<{ items: WindowAssignment[] }>(`/assignments?item_kind=${ITEM_KIND}&item_id=${windowID}`)
-      .then((resp) => !cancelled && setItems(resp.items))
-      .catch((err: unknown) => !cancelled && setError(err));
-    return () => {
-      cancelled = true;
-    };
-  }, [windowID, generation, reloads]);
-
-  async function unassign(id: string) {
-    try {
-      await api.del(`/assignments/${id}`);
-      setReloads((n) => n + 1);
-    } catch (err) {
-      setError(err);
-    }
-  }
-
-  if (error) return <ErrorNote error={error} />;
-  if (items === null) return null;
-  if (items.length === 0) return <span className="hint">Not assigned</span>;
-  return (
-    <ul style={{ margin: 0, paddingLeft: "1em" }}>
-      {items.map((a) => (
-        <li key={a.id}>
-          {a.mode === "exclude" ? "Excluded: " : ""}
-          {a.group_name}{" "}
-          {canWrite ? (
-            <Button variant="quiet" onClick={() => void unassign(a.id)} aria-label={`Unassign ${a.group_name}`}>
-              ×
-            </Button>
-          ) : null}
-        </li>
-      ))}
-    </ul>
   );
 }
 

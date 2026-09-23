@@ -228,6 +228,9 @@ func (q *Queries) ListScriptRuns(ctx context.Context, scriptID uuid.UUID, device
 
 // DeviceHasItem reports whether an item is assigned to a device, so the agent
 // API can refuse to hand out a script the caller was not given.
+// It ignores phased rollouts on purpose: it answers whether the device may
+// fetch or report on the item at all, and a device a narrowed rollout has
+// since left behind must still be able to report what it already did.
 func (q *Queries) DeviceHasItem(ctx context.Context, tenantID, deviceID uuid.UUID, kind string, itemID uuid.UUID) (bool, error) {
 	var ok bool
 	err := q.db.QueryRow(ctx, `
