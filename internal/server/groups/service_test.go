@@ -140,6 +140,32 @@ func TestRulesRunAgainstPostgres(t *testing.T) {
 	}
 }
 
+// One device's software list must not be able to break a rule for everyone:
+// a version too long for an integer, and one that is not a dotted number at
+// all, both used to be able to fail the whole membership query.
+func TestVersionRulesSurviveOddVersions(t *testing.T) {
+	st := storetest.New(t)
+	ctx := context.Background()
+	svc := service(st)
+	device(t, st, "NORMAL", 8, store.Software{Name: "Google Chrome", Version: "121.0.6167"})
+	device(t, st, "HUGE", 8, store.Software{Name: "Google Chrome", Version: "1.99999999999999999999"})
+	device(t, st, "BETA", 8, store.Software{Name: "Google Chrome", Version: "122.0-beta"})
+
+	for rule, want := range map[string]int{
+		`has_software('Google Chrome', '>=', '120.0.0')`: 1,
+		`has_software('Google Chrome', '<', '120.0.0')`:  1,
+		`has_software('Google Chrome', '>', '1.5')`:      2,
+	} {
+		_, total, err := svc.Preview(ctx, rule, store.Page{})
+		if err != nil {
+			t.Fatalf("Preview(%q): %v", rule, err)
+		}
+		if total != want {
+			t.Errorf("Preview(%q) matched %d, want %d", rule, total, want)
+		}
+	}
+}
+
 func TestBuiltinGroupHoldsEveryActiveDevice(t *testing.T) {
 	st := storetest.New(t)
 	ctx := context.Background()

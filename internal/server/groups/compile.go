@@ -118,16 +118,29 @@ func (c *compiler) hasSoftware(t HasSoftware) (string, error) {
 			return "", fmt.Errorf("groups: unknown operator %q", t.Op)
 		}
 		if orderingOps[t.Op] {
-			// Versions compare as integer arrays, because text ordering is
+			// Versions compare as number arrays, because text ordering is
 			// simply wrong: '1.10.0' sorts below '1.9.0'. Versions that are
-			// not dotted numbers take part in no ordering comparison.
+			// not dotted numbers take part in no ordering comparison: the
+			// CASE yields NULL for them, and NULL compares as false.
+			//
+			// numeric rather than int, and inside a CASE rather than behind
+			// an AND: a device reporting '1.99999999999' overflowed an int
+			// cast, and Postgres does not promise to test an AND's halves in
+			// order, so a non-numeric version could reach the cast too. Either
+			// failed the whole membership query, so one device's software
+			// list could freeze every group that compares versions.
 			ver := c.bind(t.Version)
-			b.WriteString(" AND s.version ~ '^[0-9]+(\\.[0-9]+)*$' AND " + ver + " ~ '^[0-9]+(\\.[0-9]+)*$'")
-			b.WriteString(" AND string_to_array(s.version, '.')::int[] " + sqlOp + " string_to_array(" + ver + ", '.')::int[]")
+			b.WriteString(" AND " + dottedArray("s.version") + " " + sqlOp + " " + dottedArray(ver))
 		} else {
 			b.WriteString(" AND s.version " + sqlOp + " " + c.bind(t.Version))
 		}
 	}
 	b.WriteString(")")
 	return b.String(), nil
+}
+
+// dottedArray turns a dotted-number version into a numeric array, or NULL if
+// it is not one. The CASE is what makes the check happen before the cast.
+func dottedArray(expr string) string {
+	return "(CASE WHEN " + expr + ` ~ '^[0-9]+(\.[0-9]+)*$' THEN string_to_array(` + expr + ", '.')::numeric[] END)"
 }
