@@ -739,6 +739,7 @@ scripts and assigned to groups the same way.
 | `windows_update` | update deferrals, deadlines, pauses, the feature release to stay on, active hours and restart behaviour |
 | `bitlocker` | requiring the system drive to be encrypted, and escrowing its recovery key |
 | `defender` | Microsoft Defender's real-time monitoring, cloud protection, sample submission, PUA protection and cloud block level |
+| `certificate` | a certificate in the machine's trusted root, intermediate or trusted publisher store |
 
 Each setting is applied as: test, then set only if needed, then **test again**.
 That second test is what separates fixing something from merely running
@@ -756,6 +757,18 @@ exactly the same thing is not a conflict.
 enforcing it. If the assignment was set to put previous values back, it restores
 what was there before the profile first changed each setting — not what Retune
 last wrote — and leaves alone anything another profile still wants.
+
+A `certificate` setting takes one public certificate as PEM — what
+Windows exports as Base-64 `.cer` — and puts it in `root` (trusted root
+authorities), `ca` (intermediates) or `trusted_publisher`, all under
+`Cert:\LocalMachine`. Its identity is the store and the certificate's
+thumbprint, so two profiles trusting the same certificate agree, and
+different certificates never conflict. Removing the setting removes the
+certificate again, unless it was already there before the profile first
+applied. PEM with a private key in it is refused outright: a trust store
+takes certificates, and a key pasted into a profile would be sent to every
+machine it is assigned to. Client certificates and certificates issued
+through SCEP aren't supported.
 
 A `defender` setting enforces only the preferences it names and leaves every
 other one as it is. Two profiles that both configure Defender are a conflict

@@ -21,7 +21,28 @@ const KINDS = [
   { value: "windows_update", label: "Windows Update" },
   { value: "bitlocker", label: "BitLocker" },
   { value: "defender", label: "Microsoft Defender" },
+  { value: "certificate", label: "Trusted certificate" },
 ];
+
+const CERTIFICATE_STORES = [
+  { value: "root", label: "Trusted root authorities" },
+  { value: "ca", label: "Intermediate authorities" },
+  { value: "trusted_publisher", label: "Trusted publishers" },
+];
+
+/** pemProblem says what is wrong with pasted certificate text, matching the
+ * checks the server makes, or undefined when it looks right. The server
+ * parses it properly; this only catches the common mistakes early. */
+export function pemProblem(text: string): string | undefined {
+  const trimmed = text.trim();
+  if (trimmed === "") return undefined;
+  if (trimmed.includes("PRIVATE KEY")) return "This has a private key in it. Paste only the certificate.";
+  const blocks = trimmed.match(/-----BEGIN [A-Z ]+-----/g) ?? [];
+  if (blocks.length === 0) return "Paste the certificate as PEM, starting -----BEGIN CERTIFICATE-----.";
+  if (blocks.some((b) => b !== "-----BEGIN CERTIFICATE-----")) return "Only a CERTIFICATE block is taken.";
+  if (blocks.length > 1) return "One certificate per setting.";
+  return undefined;
+}
 
 /** The Defender preferences a setting can name, with the words the server
  * accepts for each (internal/protocol/profile.go, DefenderPreferences). */
@@ -78,6 +99,8 @@ function blankSetting(kind: string): Setting {
       return { kind, require_encryption: true, method: "XtsAes256", escrow_recovery_key: true };
     case "defender":
       return { kind, realtime_monitoring: true };
+    case "certificate":
+      return { kind, store: "root", certificate_pem: "" };
     default:
       return { kind: "registry", hive: "HKLM", key: "", name: "", type: "REG_SZ", data: "" };
   }
@@ -114,6 +137,8 @@ function describe(s: Setting): string {
       return s.require_encryption ? "Require BitLocker on the system drive" : "BitLocker";
     case "defender":
       return "Microsoft Defender preferences";
+    case "certificate":
+      return `Trust a certificate (${CERTIFICATE_STORES.find((c) => c.value === s.store)?.label.toLowerCase() ?? s.store})`;
     default:
       return s.kind;
   }
@@ -488,6 +513,37 @@ function SettingFields({
               />
             ) : null}
           </div>
+        </Field>
+      </>
+    );
+  }
+
+  if (setting.kind === "certificate") {
+    const problem = pemProblem(setting.certificate_pem ?? "");
+    return (
+      <>
+        <Field label="Store">
+          <select value={setting.store ?? "root"} onChange={(e) => set({ store: e.target.value })}>
+            {CERTIFICATE_STORES.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field
+          label="Certificate (PEM)"
+          hint="The public certificate only, as exported in Base-64 (.cer or .pem). Removing the setting removes the certificate again, unless it was already there."
+          error={problem}
+        >
+          <textarea
+            className="mono"
+            rows={6}
+            spellCheck={false}
+            aria-label="Certificate (PEM)"
+            value={setting.certificate_pem ?? ""}
+            onChange={(e) => set({ certificate_pem: e.target.value })}
+          />
         </Field>
       </>
     );

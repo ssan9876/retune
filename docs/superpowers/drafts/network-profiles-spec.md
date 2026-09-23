@@ -1,6 +1,6 @@
 # M16 — Certificate, Wi-Fi and VPN profile settings
 
-Status: self-approved overnight under the user's standing directive; decisions ledgered for morning review. Builds on M1–M15. **No certificate, Wi-Fi or VPN setting is applied to this machine** — network changes could cut the machine off; handlers are built and tested with fakes only.
+Status: certificates built in the cert-profiles PR (see "As built"); Wi-Fi and VPN are backlog item 7b. Originally self-approved overnight under the user's standing directive; decisions ledgered for morning review. Builds on M1–M15. **No certificate, Wi-Fi or VPN setting is applied to this machine** — network changes could cut the machine off; handlers are built and tested with fakes only.
 
 ## 1. What and why
 
@@ -57,3 +57,15 @@ The profile editor gains the three kinds: a PEM paste box with the parsed subjec
 ## 5. Testing
 
 Protocol validation per kind (incl. PEM with a private key refused, SSID length in bytes, passphrase bounds, enterprise requiring EAP fields); server sealing round-trip and redaction in every admin response; agent handlers with fake PowerShell/netsh runners covering get/set/revert/pre-existing/not-applicable; WLAN XML golden files for each security type. No on-machine application.
+
+## As built (certificates)
+
+- **Split.** The item is split in two: certificates (7a, this PR) need no secrets, while Wi-Fi and VPN (7b) are the first settings that carry them.
+- **Thumbprint.** It is computed from the PEM wherever it is needed (`Setting.CertificateThumbprint`) rather than stored beside the setting. The identity is `certificate:<store>:<SHA-1 thumbprint>`, so the same certificate re-wrapped or with CRLF line endings is the same setting.
+- **Validation.** Exactly one `CERTIFICATE` block is accepted. Any `PRIVATE KEY` text, any other block type (such as a CSR), a second certificate, anything that doesn't parse as X.509, or more than 16 KiB is refused.
+- **Agent.**
+  - The certificate is written as DER to a temp file for `Import-Certificate` (removed afterwards).
+  - Presence is checked with `Test-Path Cert:\LocalMachine\<Store>\<THUMBPRINT>`.
+  - Revert is `Remove-Item` by thumbprint, skipped if the certificate was there before the first apply.
+  - Only the store name, from a fixed table, and a hex thumbprint ever reach a script.
+- **Console.** It checks the pasted PEM for the common mistakes (a private key, several blocks, a non-certificate block); it doesn't parse the certificate, and the server has the final say.
