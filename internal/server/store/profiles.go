@@ -14,6 +14,9 @@ const (
 	SettingRemediated = "remediated"
 	SettingError      = "error"
 	SettingConflict   = "conflict"
+	// SettingNotApplicable is a setting the machine can't have and doesn't
+	// need; it counts as done.
+	SettingNotApplicable = "not_applicable"
 )
 
 // Profile is a named, versioned statement about how a machine should be.

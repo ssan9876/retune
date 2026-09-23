@@ -78,7 +78,7 @@ func (h *Handler) createProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := newProfileJSON(p)
-	out.Settings = req.Settings
+	out.Settings = profiles.Redact(req.Settings)
 	writeJSON(w, http.StatusCreated, out)
 }
 
@@ -97,7 +97,7 @@ func (h *Handler) getProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	out := newProfileJSON(p)
 	if _, settings, err := h.Profiles.Version(ctx, id, p.CurrentVersion); err == nil {
-		out.Settings = settings
+		out.Settings = profiles.Redact(settings)
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -120,7 +120,7 @@ func (h *Handler) updateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := newProfileJSON(p)
-	out.Settings = req.Settings
+	out.Settings = profiles.Redact(req.Settings)
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -161,7 +161,7 @@ func (h *Handler) listProfileVersions(w http.ResponseWriter, r *http.Request) {
 			Version: v.Version, Hash: v.Hash, CreatedAt: v.CreatedAt, CreatedBy: v.CreatedBy,
 		}
 		if _, settings, err := h.Profiles.Version(ctx, id, v.Version); err == nil {
-			entry.Settings = settings
+			entry.Settings = profiles.Redact(settings)
 		}
 		items = append(items, entry)
 	}

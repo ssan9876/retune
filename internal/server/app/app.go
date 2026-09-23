@@ -126,6 +126,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		return nil, err
 	}
 	locker := &bitlocker.Service{Store: st, Key: secretKey, Now: time.Now}
+	prof.Key = secretKey
 	adminPasswords := &laps.Service{Store: st, Key: secretKey, Now: time.Now}
 	cmd.OnComplete = laps.Settle
 	cmd.OperationsKeys = cfg.OperationsKeys

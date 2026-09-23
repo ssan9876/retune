@@ -136,6 +136,9 @@ const (
 	SettingRemediated = "remediated"
 	SettingError      = "error"
 	SettingConflict   = "conflict"
+	// SettingNotApplicable is a setting this machine can't have and doesn't
+	// need, such as a Wi-Fi network on a machine with no wireless adapter.
+	SettingNotApplicable = "not_applicable"
 )
 
 // MaxFileBytes caps the contents of a file setting.
@@ -227,6 +230,24 @@ type Setting struct {
 	// Certificate: which machine store, and the certificate as PEM.
 	Store          string `json:"store,omitempty"`
 	CertificatePEM string `json:"certificate_pem,omitempty"`
+
+	// Wi-Fi. Passphrase is plaintext only in an admin's request and in an
+	// agent's definition; the server stores SealedSecret, and tells admins
+	// only SecretSet.
+	SSID         string        `json:"ssid,omitempty"`
+	Security     string        `json:"security,omitempty"`
+	Passphrase   string        `json:"passphrase,omitempty"`
+	SealedSecret *SealedSecret `json:"sealed_secret,omitempty"`
+	SecretSet    bool          `json:"secret_set,omitempty"`
+	AutoConnect  *bool         `json:"auto_connect,omitempty"`
+	Hidden       bool          `json:"hidden,omitempty"`
+
+	// VPN. The connection's name is Name.
+	Server         string `json:"server,omitempty"`
+	Tunnel         string `json:"tunnel,omitempty"`
+	Authentication string `json:"authentication,omitempty"`
+	SplitTunneling bool   `json:"split_tunneling,omitempty"`
+	DNSSuffix      string `json:"dns_suffix,omitempty"`
 }
 
 // Identity is the key two profiles must agree on to be setting the same thing.
@@ -263,6 +284,11 @@ func (s Setting) Identity() string {
 		// The same certificate in the same store is the same setting;
 		// different certificates never conflict.
 		return "certificate:" + s.Store + ":" + s.CertificateThumbprint()
+	case KindWiFi:
+		// Network names are case-sensitive.
+		return "wifi:" + s.SSID
+	case KindVPN:
+		return "vpn:" + strings.ToLower(s.Name)
 	}
 	return s.Kind + ":"
 }
@@ -318,6 +344,10 @@ func (s Setting) Validate() error {
 		return s.validateDefender()
 	case KindCertificate:
 		return s.validateCertificate()
+	case KindWiFi:
+		return s.validateWiFi()
+	case KindVPN:
+		return s.validateVPN()
 	case "":
 		return fmt.Errorf("%w: every setting needs a kind", ErrBadSetting)
 	}

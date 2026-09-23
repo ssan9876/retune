@@ -62,3 +62,12 @@
   flex: 1 1 8rem;
   min-width: 0;
 }
+
+/* A checkbox with its label beside it, in a setting's form. */
+.settings__check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  margin: 0 0 var(--space-3);
+}

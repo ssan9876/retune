@@ -5,6 +5,7 @@ package profiles
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -16,6 +17,7 @@ import (
 	"github.com/google/uuid"
 
 	"retune/internal/protocol"
+	"retune/internal/server/secrets"
 	"retune/internal/server/store"
 )
 
@@ -35,6 +37,8 @@ const MaxSettings = 200
 type Service struct {
 	Store *store.Store
 	Now   func() time.Time
+	// Key seals the secrets some settings carry, such as Wi-Fi passphrases.
+	Key *secrets.Key
 }
 
 func (s *Service) now() time.Time {
@@ -58,35 +62,148 @@ func Hash(settings []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func (in NewProfile) validate() ([]byte, error) {
+// prepare checks a profile's settings and returns them as stored: secrets
+// sealed, and a secret left blank in an edit carried over from current, the
+// settings the profile has now.
+func (s *Service) prepare(in NewProfile, profileID uuid.UUID, current []protocol.Setting) ([]byte, error) {
 	if strings.TrimSpace(in.Name) == "" {
 		return nil, fmt.Errorf("%w: a profile needs a name", ErrBadRequest)
 	}
 	if len(in.Settings) > MaxSettings {
 		return nil, fmt.Errorf("%w: a profile may have at most %d settings", ErrBadRequest, MaxSettings)
 	}
-	if err := protocol.ValidateSettings(in.Settings); err != nil {
+	settings := make([]protocol.Setting, len(in.Settings))
+	copy(settings, in.Settings)
+	kept := map[string]*protocol.SealedSecret{}
+	for _, c := range current {
+		if c.SealedSecret != nil {
+			kept[c.Identity()] = c.SealedSecret
+		}
+	}
+	for i := range settings {
+		// Only the server makes sealed secrets; one in a request is ignored.
+		settings[i].SealedSecret, settings[i].SecretSet = nil, false
+		if settings[i].HasSecret() && settings[i].Passphrase == "" && settings[i].NeedsSecret() {
+			settings[i].SealedSecret = kept[settings[i].Identity()]
+		}
+	}
+	if err := protocol.ValidateSettings(settings); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrBadRequest, err)
+	}
+	for i := range settings {
+		if settings[i].Passphrase == "" {
+			continue
+		}
+		sealed, err := s.seal(profileID, settings[i])
+		if err != nil {
+			return nil, err
+		}
+		settings[i].Passphrase, settings[i].SealedSecret = "", sealed
 	}
 	// Store the canonical form, so an edit that only reorders JSON keys does
 	// not look like a change.
-	raw, err := json.Marshal(in.Settings)
+	return json.Marshal(settings)
+}
+
+// secretContext binds a sealed secret to its profile and setting, so one
+// copied elsewhere doesn't open.
+func secretContext(profileID uuid.UUID, identity string) []byte {
+	return []byte("profile-secret:" + profileID.String() + "/" + identity)
+}
+
+func (s *Service) seal(profileID uuid.UUID, setting protocol.Setting) (*protocol.SealedSecret, error) {
+	if s.Key == nil {
+		return nil, fmt.Errorf("%w: this server has no key to protect passphrases with", ErrBadRequest)
+	}
+	ctx := secretContext(profileID, setting.Identity())
+	ct, nonce, err := s.Key.Seal([]byte(setting.Passphrase), ctx)
 	if err != nil {
 		return nil, err
 	}
-	return raw, nil
+	enc := base64.StdEncoding
+	return &protocol.SealedSecret{
+		Ciphertext: enc.EncodeToString(ct), Nonce: enc.EncodeToString(nonce),
+		MAC: enc.EncodeToString(s.Key.MAC([]byte(setting.Passphrase), ctx)),
+	}, nil
+}
+
+// versionHash identifies stored settings for "did anything change": a sealed
+// secret counts by its MAC, since its ciphertext differs every time it is
+// sealed.
+func versionHash(stored []byte) (string, error) {
+	var settings []protocol.Setting
+	if len(stored) > 0 {
+		if err := json.Unmarshal(stored, &settings); err != nil {
+			return "", fmt.Errorf("decode stored settings: %w", err)
+		}
+	}
+	for i := range settings {
+		if settings[i].SealedSecret != nil {
+			settings[i].SealedSecret = &protocol.SealedSecret{MAC: settings[i].SealedSecret.MAC}
+		}
+	}
+	raw, err := json.Marshal(settings)
+	if err != nil {
+		return "", err
+	}
+	return Hash(raw), nil
+}
+
+// Redact is settings as an admin sees them: a secret is only SecretSet.
+func Redact(settings []protocol.Setting) []protocol.Setting {
+	out := make([]protocol.Setting, len(settings))
+	for i, st := range settings {
+		if st.HasSecret() {
+			st.SecretSet = st.SealedSecret != nil || st.Passphrase != ""
+			st.Passphrase, st.SealedSecret = "", nil
+		}
+		out[i] = st
+	}
+	return out
+}
+
+// ForAgent is settings as a device receives them: secrets opened.
+func (s *Service) ForAgent(profileID uuid.UUID, settings []protocol.Setting) ([]protocol.Setting, error) {
+	out := make([]protocol.Setting, len(settings))
+	for i, st := range settings {
+		if st.SealedSecret != nil {
+			if s.Key == nil {
+				return nil, errors.New("this server has no key to open passphrases with")
+			}
+			enc := base64.StdEncoding
+			ct, err := enc.DecodeString(st.SealedSecret.Ciphertext)
+			if err != nil {
+				return nil, err
+			}
+			nonce, err := enc.DecodeString(st.SealedSecret.Nonce)
+			if err != nil {
+				return nil, err
+			}
+			plain, err := s.Key.Open(ct, nonce, secretContext(profileID, st.Identity()))
+			if err != nil {
+				return nil, fmt.Errorf("open the secret for %s: %w", st.Identity(), err)
+			}
+			st.Passphrase, st.SealedSecret = string(plain), nil
+		}
+		out[i] = st
+	}
+	return out, nil
 }
 
 // Create adds a profile and its first version.
 func (s *Service) Create(ctx context.Context, in NewProfile) (store.Profile, error) {
-	settings, err := in.validate()
-	if err != nil {
-		return store.Profile{}, err
-	}
 	now := s.now()
 	p := store.Profile{
 		ID: uuid.Must(uuid.NewV7()), Name: strings.TrimSpace(in.Name), Description: in.Description,
 		CurrentVersion: 1, CreatedAt: now, UpdatedAt: now, CreatedBy: in.Actor,
+	}
+	settings, err := s.prepare(in, p.ID, nil)
+	if err != nil {
+		return store.Profile{}, err
+	}
+	hash, err := versionHash(settings)
+	if err != nil {
+		return store.Profile{}, err
 	}
 	err = s.Store.InTx(ctx, func(q *store.Queries) error {
 		if _, err := q.GetProfileByName(ctx, p.Name); err == nil {
@@ -98,7 +215,7 @@ func (s *Service) Create(ctx context.Context, in NewProfile) (store.Profile, err
 			return err
 		}
 		if err := q.CreateProfileVersion(ctx, store.ProfileVersion{
-			ProfileID: p.ID, Version: 1, Settings: settings, Hash: Hash(settings),
+			ProfileID: p.ID, Version: 1, Settings: settings, Hash: hash,
 			CreatedAt: now, CreatedBy: in.Actor,
 		}); err != nil {
 			return err
@@ -117,13 +234,12 @@ func (s *Service) Create(ctx context.Context, in NewProfile) (store.Profile, err
 // Update changes a profile. A new version is written only when the settings
 // actually changed, so renaming does not make every device reconcile again.
 func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewProfile) (store.Profile, error) {
-	settings, err := in.validate()
-	if err != nil {
-		return store.Profile{}, err
+	if strings.TrimSpace(in.Name) == "" {
+		return store.Profile{}, fmt.Errorf("%w: a profile needs a name", ErrBadRequest)
 	}
 	now := s.now()
 	var out store.Profile
-	err = s.Store.InTx(ctx, func(q *store.Queries) error {
+	err := s.Store.InTx(ctx, func(q *store.Queries) error {
 		p, err := q.GetProfile(ctx, store.DefaultTenantID, id)
 		if errors.Is(err, store.ErrNotFound) {
 			return ErrNotFound
@@ -142,18 +258,32 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewProfile) (stor
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return err
 		}
-		// Compare canonically: the stored copy came back through jsonb, which
-		// normalises spacing and key order, so comparing it to freshly
-		// marshalled JSON would call every save a change.
-		currentCanonical, err := canonical(current.Settings)
+		var currentSettings []protocol.Setting
+		if len(current.Settings) > 0 {
+			if err := json.Unmarshal(current.Settings, &currentSettings); err != nil {
+				return fmt.Errorf("decode stored settings: %w", err)
+			}
+		}
+		settings, err := s.prepare(in, id, currentSettings)
 		if err != nil {
 			return err
 		}
-		newVersion := Hash(currentCanonical) != Hash(settings)
+		// Compare canonically: the stored copy came back through jsonb, which
+		// normalises spacing and key order, so comparing it to freshly
+		// marshalled JSON would call every save a change.
+		currentHash, err := versionHash(current.Settings)
+		if err != nil {
+			return err
+		}
+		hash, err := versionHash(settings)
+		if err != nil {
+			return err
+		}
+		newVersion := currentHash != hash
 		if newVersion {
 			p.CurrentVersion++
 			if err := q.CreateProfileVersion(ctx, store.ProfileVersion{
-				ProfileID: id, Version: p.CurrentVersion, Settings: settings, Hash: Hash(settings),
+				ProfileID: id, Version: p.CurrentVersion, Settings: settings, Hash: hash,
 				CreatedAt: now, CreatedBy: in.Actor,
 			}); err != nil {
 				return err
@@ -239,7 +369,7 @@ func (s *Service) RecordStatus(ctx context.Context, deviceID, profileID uuid.UUI
 	for _, r := range report.Settings {
 		switch r.Status {
 		case protocol.SettingCompliant, protocol.SettingRemediated,
-			protocol.SettingError, protocol.SettingConflict:
+			protocol.SettingError, protocol.SettingConflict, protocol.SettingNotApplicable:
 		default:
 			return fmt.Errorf("%w: unsupported setting status %q", ErrBadRequest, r.Status)
 		}
@@ -312,19 +442,6 @@ func summarize(what string, ids []string) string {
 // profile stops applying to it.
 func (s *Service) ClearForDevice(ctx context.Context, deviceID, profileID uuid.UUID) error {
 	return s.Store.Q().ClearDeviceProfileStatus(ctx, deviceID, profileID)
-}
-
-// canonical re-encodes stored settings the same way they are written, so a
-// round trip through Postgres does not look like an edit.
-func canonical(raw []byte) ([]byte, error) {
-	if len(raw) == 0 {
-		return nil, nil
-	}
-	var settings []protocol.Setting
-	if err := json.Unmarshal(raw, &settings); err != nil {
-		return nil, fmt.Errorf("decode stored settings: %w", err)
-	}
-	return json.Marshal(settings)
 }
 
 // uuidPattern matches the profile ids an agent puts in a conflict detail.

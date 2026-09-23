@@ -506,6 +506,12 @@ func (h *Handler) profileVersion(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
 		return
 	}
+	settings, err = h.Profiles.ForAgent(id, settings)
+	if err != nil {
+		h.Log.Error("open profile secrets", "profile_id", id, "version", version, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+		return
+	}
 	writeJSON(w, http.StatusOK, protocol.ProfileVersionResponse{
 		Version: v.Version, Settings: settings, Hash: v.Hash,
 	})
