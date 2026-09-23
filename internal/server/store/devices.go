@@ -89,7 +89,7 @@ func (q *Queries) ListDevices(ctx context.Context) ([]Device, error) {
 // rather than by pulling every device's row into Go: retired is anything not
 // active, stale is active with no check-in since cutoff (or none on record),
 // and active is active with a check-in at or after cutoff. The caller passes
-// cutoff (now minus the console's staleAfter window) so this stays the same
+// cutoff (now minus the console's StaleAfter window) so this stays the same
 // "how long since last seen" definition the device list's own Stale flag
 // uses, rather than a second copy of the threshold living in SQL. The three
 // always partition every device, so their sum is the total device count.

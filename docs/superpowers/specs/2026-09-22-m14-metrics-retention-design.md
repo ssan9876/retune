@@ -1,6 +1,6 @@
 # M14 — Metrics and data retention
 
-Status: **proposed, awaiting approval.** Written 2026-09-22 from the overnight draft (`docs/superpowers/drafts/overnight-rulings.md`, "M14"), whose alerting half shipped differently as M13. Builds on merged M1–M13 and the cleanup PR (#1). Decisions that need a yes are collected in §6.
+Status: approved by the user on 2026-09-22 ("go ahead"), with the §6 decisions as written. Written 2026-09-22 from the overnight draft (`docs/superpowers/drafts/overnight-rulings.md`, "M14"), whose alerting half shipped differently as M13. Builds on merged M1–M13 and the cleanup PR (#1). Decisions that need a yes are collected in §6.
 
 ## 1. What and why
 
@@ -54,7 +54,7 @@ Four methods, each `(ctx, cutoff time.Time, limit int) (int64, error)`, filterin
 
 `GET /metrics` goes on the root mux next to the health probes, outside `/api/admin/v1`, because a Prometheus scraper cannot hold a console session. The output is Prometheus text format (`text/plain; version=0.0.4`), written by hand.
 
-- The endpoint is off (404, like any unknown path) unless `METRICS_TOKEN` is set. The token must be at least 32 characters, and the server refuses to start with a shorter one.
+- The endpoint is off unless `METRICS_TOKEN` is set, and answers 404 when off. The route is registered either way, because the console's catch-all would otherwise answer `/metrics` with the app shell and a 200. The token must be at least 32 characters, and the server refuses to start with a shorter one.
 - Every request must carry `Authorization: Bearer <token>`, compared with `subtle.ConstantTimeCompare`. A missing or wrong token gets a 401 with no body beyond `unauthorized`.
 - Behind a proxy, `/metrics` is served like any other path. Operators who don't want it public should keep it off the proxy.
 

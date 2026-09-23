@@ -38,6 +38,13 @@ var testReleaseKey release.PrivateKey
 
 func newTestApp(t *testing.T) (*app.App, *httptest.Server) {
 	t.Helper()
+	return newTestAppWith(t, nil)
+}
+
+// newTestAppWith is newTestApp with a chance to adjust the configuration
+// before the app is built.
+func newTestAppWith(t *testing.T, adjust func(*config.Server)) (*app.App, *httptest.Server) {
+	t.Helper()
 	priv, err := release.GenerateKey()
 	if err != nil {
 		t.Fatal(err)
@@ -48,6 +55,9 @@ func newTestApp(t *testing.T) (*app.App, *httptest.Server) {
 		TLSMode: "self-signed", DataDir: t.TempDir(),
 		CheckinInterval: 5 * time.Minute, SessionTTL: 12 * time.Hour,
 		AgentReleaseKeys: []release.PublicKey{priv.Public()},
+	}
+	if adjust != nil {
+		adjust(&cfg)
 	}
 	a, err := app.New(context.Background(), cfg, slog.New(slog.DiscardHandler))
 	if err != nil {

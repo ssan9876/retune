@@ -36,6 +36,8 @@ Go agent runs on each machine.
   to email or a webhook, deduplicated so a fleet-wide fault is one message.
 - **Overview dashboard and CSV export.** A fleet-wide landing page, and CSV
   export of the device list and of one policy's results.
+- **Metrics and retention.** A Prometheus endpoint over fleet state and the
+  server's own background jobs, and history pruned after a horizon you set.
 - **Packaging.** A container image and Compose stack for the server, and an MSI
   that installs the agent as a Windows service which enrolls itself.
 
@@ -87,6 +89,11 @@ session_ttl_hours: 12
 | `smtp_from` | — | the address alert email comes from; required with `smtp_host` |
 | `smtp_username`, `smtp_password` | — | credentials for that relay, if it wants them |
 | `smtp_starttls` | `true` | upgrade before authenticating; off only for a relay that does not offer it |
+| `metrics_token` | — | turns on `GET /metrics` and is the bearer token a scraper sends; at least 32 characters |
+| `audit_retention_days` | `365` | how long audit entries are kept; `0` keeps them forever |
+| `command_retention_days` | `90` | how long finished commands and their output are kept; `0` keeps them forever |
+| `script_run_retention_days` | `90` | how long script run history is kept; `0` keeps it forever |
+| `app_install_retention_days` | `90` | how long app install history is kept; `0` keeps it forever |
 
 Every setting is also an environment variable of the same name in capitals,
 and the environment wins over the file.
@@ -186,6 +193,75 @@ retune-server healthcheck    # exits 0 when /readyz says ready
 It reads `AGENT_API_LISTEN` and `TLS_MODE` from the same configuration the
 server uses, dials loopback, and prints the server's own words on failure so
 `docker inspect` says *why* rather than only that something is wrong.
+
+## Metrics
+
+`GET /metrics` serves Prometheus text format. It is off, and answers 404,
+until `METRICS_TOKEN` is set; then every scrape must send
+`Authorization: Bearer <token>`. A scraper cannot sign in to the console, so
+the token is the endpoint's only protection: make it long and random, and
+keep `/metrics` off a public proxy if nothing outside needs it.
+
+```yaml
+scrape_configs:
+  - job_name: retune
+    scheme: https
+    authorization:
+      credentials: <METRICS_TOKEN>
+    static_configs:
+      - targets: ["mdm.example.com:8443"]
+```
+
+| Series | Type | What it counts |
+|---|---|---|
+| `retune_devices{state}` | gauge | devices that are `active`, `stale` (active, unseen for 7 days) or `retired` |
+| `retune_compliance_devices{state}` | gauge | active devices by overall compliance |
+| `retune_failed_deployments{kind}` | gauge | active devices with a failed `script`, `app`, `profile` or `agent` deployment |
+| `retune_commands_outstanding{status}` | gauge | commands still `queued`, `delivered` or `running` |
+| `retune_alerts_firing{kind}` | gauge | subjects firing on enabled alert rules |
+| `retune_sweeper_runs_total{job,result}` | counter | background job runs: `ok`, `error`, or `skipped` because another replica held the lock |
+| `retune_sweeper_rows_total{job}` | counter | rows those jobs affected |
+| `retune_sweeper_last_success_timestamp_seconds{job}` | gauge | when each job last succeeded |
+| `retune_build_info{revision,go_version}` | gauge | always 1 |
+
+The fleet gauges come from the database, so every replica reports the same
+numbers. The `sweeper` series are per process and reset when it restarts.
+
+Alerts watch the fleet; nothing inside Retune can tell you that the alert
+job itself has stopped. That is the one rule worth adding in Prometheus:
+
+```yaml
+- alert: RetuneAlertsNotRunning
+  expr: time() - max(retune_sweeper_last_success_timestamp_seconds{job="alerts.evaluate"}) > 900
+```
+
+## Retention
+
+History is deleted once it is older than a horizon, measured in days:
+
+| Setting | Default | Deletes |
+|---|---|---|
+| `AUDIT_RETENTION_DAYS` | 365 | audit entries |
+| `COMMAND_RETENTION_DAYS` | 90 | finished commands and their output |
+| `SCRIPT_RUN_RETENTION_DAYS` | 90 | script run history |
+| `APP_INSTALL_RETENTION_DAYS` | 90 | app install history |
+
+`0` keeps that history forever; anything else can be up to 3650.
+**Retention is on by default, so if you need older history than this, raise
+the setting before upgrading**: the first run after an upgrade deletes
+everything past the horizon.
+
+Only history is deleted. A command still waiting for its device is kept
+however old it is, and nothing that says what a device is or should be —
+inventory, statuses, compliance results, recovery keys, anything an admin
+created — is ever deleted by age. Losing old run history does not change
+what a device is told to do.
+
+The pruning runs hourly, in batches of 5,000 rows, and stops after a million
+rows per table per run, so the first run on a large, old database spreads
+itself over a few hours rather than holding one long lock. Each run that
+deletes anything leaves one `retention.pruned` entry in the audit log with
+the counts. Alert delivery history is kept for 30 days and has no setting.
 
 ## Backups
 

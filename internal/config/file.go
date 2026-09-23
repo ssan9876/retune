@@ -29,6 +29,20 @@ type fileConfig struct {
 	TrustedProxies         string `yaml:"trusted_proxies"`
 	CAKeySource            string `yaml:"ca_key_source"`
 	SweepIntervalSeconds   int    `yaml:"sweep_interval_seconds"`
+	AgentReleaseKeys       string `yaml:"agent_release_keys"`
+	SMTPHost               string `yaml:"smtp_host"`
+	SMTPPort               int    `yaml:"smtp_port"`
+	SMTPFrom               string `yaml:"smtp_from"`
+	SMTPUsername           string `yaml:"smtp_username"`
+	SMTPPassword           string `yaml:"smtp_password"`
+	SMTPStartTLS           *bool  `yaml:"smtp_starttls"`
+	MetricsToken           string `yaml:"metrics_token"`
+	// Pointers, because 0 is a meaningful value here (keep forever) and has
+	// to be told apart from a key that was never written.
+	AuditRetentionDays      *int `yaml:"audit_retention_days"`
+	CommandRetentionDays    *int `yaml:"command_retention_days"`
+	ScriptRunRetentionDays  *int `yaml:"script_run_retention_days"`
+	AppInstallRetentionDays *int `yaml:"app_install_retention_days"`
 }
 
 // DatabaseURL resolves the database connection string for commands that need
@@ -111,6 +125,28 @@ func loadConfigFile(getenv func(string) string) (map[string]string, error) {
 	}
 	if f.SessionTTLHours != 0 {
 		set("SESSION_TTL_HOURS", strconv.Itoa(f.SessionTTLHours))
+	}
+	set("AGENT_RELEASE_KEYS", f.AgentReleaseKeys)
+	set("SMTP_HOST", f.SMTPHost)
+	if f.SMTPPort != 0 {
+		set("SMTP_PORT", strconv.Itoa(f.SMTPPort))
+	}
+	set("SMTP_FROM", f.SMTPFrom)
+	set("SMTP_USERNAME", f.SMTPUsername)
+	set("SMTP_PASSWORD", f.SMTPPassword)
+	if f.SMTPStartTLS != nil {
+		set("SMTP_STARTTLS", strconv.FormatBool(*f.SMTPStartTLS))
+	}
+	set("METRICS_TOKEN", f.MetricsToken)
+	for key, days := range map[string]*int{
+		"AUDIT_RETENTION_DAYS":       f.AuditRetentionDays,
+		"COMMAND_RETENTION_DAYS":     f.CommandRetentionDays,
+		"SCRIPT_RUN_RETENTION_DAYS":  f.ScriptRunRetentionDays,
+		"APP_INSTALL_RETENTION_DAYS": f.AppInstallRetentionDays,
+	} {
+		if days != nil {
+			set(key, strconv.Itoa(*days))
+		}
 	}
 	return out, nil
 }

@@ -12,8 +12,9 @@ import (
 	"retune/internal/server/store"
 )
 
-// staleAfter is how long a device may go unseen before the console flags it.
-const staleAfter = 7 * 24 * time.Hour
+// StaleAfter is how long a device may go unseen before the console flags it,
+// exported so the metrics endpoint counts stale devices the same way.
+const StaleAfter = 7 * 24 * time.Hour
 
 type deviceJSON struct {
 	ID            string     `json:"id"`
@@ -41,7 +42,7 @@ type deviceJSON struct {
 }
 
 func (h *Handler) newDeviceJSON(d store.Device) deviceJSON {
-	stale := d.LastSeenAt == nil || h.Now().Sub(*d.LastSeenAt) > staleAfter
+	stale := d.LastSeenAt == nil || h.Now().Sub(*d.LastSeenAt) > StaleAfter
 	return deviceJSON{
 		ID: d.ID.String(), Hostname: d.Hostname, Status: d.Status,
 		OSVersion: d.OSVersion, OSBuild: d.OSBuild, Manufacturer: d.Manufacturer, Model: d.Model,

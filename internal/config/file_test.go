@@ -122,3 +122,36 @@ func TestConfigFileNewKeys(t *testing.T) {
 		t.Errorf("CAKeySource = %q, SweepInterval = %v", c.CAKeySource, c.SweepInterval)
 	}
 }
+
+// Every setting the README lists can be written in the file, not only in the
+// environment: the decoder refuses unknown keys, so a documented key missing
+// here is a config file that will not load.
+func TestConfigFileRetentionMetricsAndSMTP(t *testing.T) {
+	path := writeFile(t, `
+database_url: postgres://file/retune
+public_url: https://mdm.file.example
+audit_retention_days: 0
+command_retention_days: 30
+metrics_token: `+strings.Repeat("t", 40)+`
+smtp_host: mail.example.com
+smtp_port: 2525
+smtp_from: retune@example.com
+smtp_starttls: false
+`)
+	c, err := LoadServer(env(map[string]string{"RETUNE_CONFIG": path}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Retention.Audit != 0 {
+		t.Errorf("audit_retention_days: 0 should keep audit forever, got %v", c.Retention.Audit)
+	}
+	if c.Retention.Commands != 30*24*time.Hour || c.Retention.ScriptRuns != 90*24*time.Hour {
+		t.Errorf("retention = %+v", c.Retention)
+	}
+	if len(c.MetricsToken) != 40 {
+		t.Errorf("metrics_token = %q", c.MetricsToken)
+	}
+	if c.SMTP.Host != "mail.example.com" || c.SMTP.Port != 2525 || c.SMTP.From != "retune@example.com" || c.SMTP.StartTLS {
+		t.Errorf("smtp = %+v", c.SMTP)
+	}
+}
