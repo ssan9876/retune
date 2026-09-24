@@ -94,7 +94,16 @@ func (h *Handler) OpenAPI() ([]byte, error) {
 	g := &schemaGen{schemas: map[string]any{}, names: map[reflect.Type]string{}}
 	paths := map[string]map[string]any{}
 	var missing []string
-	for pattern, route := range h.routes {
+	// In a fixed order: two types with the same name are told apart by
+	// package, and which one keeps the plain name must not change from one
+	// run to the next.
+	patterns := make([]string, 0, len(h.routes))
+	for pattern := range h.routes {
+		patterns = append(patterns, pattern)
+	}
+	sort.Strings(patterns)
+	for _, pattern := range patterns {
+		route := h.routes[pattern]
 		doc, ok := routeDocs[pattern]
 		if !ok {
 			missing = append(missing, pattern)
