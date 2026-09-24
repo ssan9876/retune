@@ -55,7 +55,13 @@ func LoadOrCreate(ctx context.Context, ks KeyStore, now time.Time) (*CA, error) 
 	if err != nil {
 		return nil, fmt.Errorf("load CA: %w", err)
 	}
-	return parse(certPEM, keyPEM)
+	c, err := parse(certPEM, keyPEM)
+	if err != nil {
+		// Written by an older version, or by a server beside this one that
+		// is part-way through: give it the few seconds it needs.
+		return awaitOther(ctx, ks)
+	}
+	return c, nil
 }
 
 // awaitOther loads the CA another server is creating, waiting a few
