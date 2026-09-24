@@ -21,6 +21,9 @@ var ErrLinkInPath = errors.New("the path goes through a link")
 // Go reports symbolic links as ModeSymlink and, from Go 1.23, junctions and
 // other reparse points as ModeIrregular, so both are checked. A part that
 // doesn't exist ends the walk: nothing below it can be a link yet.
+//
+// The one exception is a link only root could have made: see
+// trustedSystemLink.
 func checkNoLinks(path string) error {
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -44,7 +47,7 @@ func checkNoLinks(path string) error {
 		if err != nil {
 			return err
 		}
-		if info.Mode()&(fs.ModeSymlink|fs.ModeIrregular) != 0 {
+		if info.Mode()&(fs.ModeSymlink|fs.ModeIrregular) != 0 && !trustedSystemLink(current, info) {
 			return fmt.Errorf("%w: %s is a link (a junction or symbolic link), so Retune won't write through it", ErrLinkInPath, current)
 		}
 	}

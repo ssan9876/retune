@@ -37,12 +37,19 @@ type Shell struct {
 type ShellStarter func(ctx context.Context) (*Shell, error)
 
 // DefaultShell is Windows PowerShell reading commands from its input, as
-// SYSTEM - the agent's own account.
+// SYSTEM - the agent's own account. On a Mac it is zsh, as root.
 func DefaultShell(ctx context.Context) (*Shell, error) {
-	if runtime.GOOS != "windows" {
-		return nil, errors.New("remote sessions are only supported on Windows")
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.CommandContext(ctx, "powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "-")
+	case "darwin":
+		// -s reads commands from standard input; with no terminal it prints
+		// no prompt, so the transcript is the commands and their output.
+		cmd = exec.CommandContext(ctx, "/bin/zsh", "-s")
+	default:
+		return nil, errors.New("remote sessions are only supported on Windows and macOS")
 	}
-	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "-")
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err

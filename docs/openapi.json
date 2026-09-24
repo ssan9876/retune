@@ -81,6 +81,20 @@
         },
         "type": "object"
       },
+      "AdminapiDeviceCompliance": {
+        "properties": {
+          "overall": {
+            "type": "string"
+          },
+          "policies": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceCompliancePolicy"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
       "AgentVersion": {
         "properties": {
           "created_at": {
@@ -569,33 +583,6 @@
         },
         "type": "object"
       },
-      "AttestDeviceCompliance": {
-        "properties": {
-          "compliance": {
-            "type": "string"
-          },
-          "compliant": {
-            "type": "boolean"
-          },
-          "device_id": {
-            "type": "string"
-          },
-          "hostname": {
-            "type": "string"
-          },
-          "last_seen_at": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "serial": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
       "Audit": {
         "properties": {
           "action": {
@@ -786,7 +773,7 @@
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/AttestDeviceCompliance"
+              "$ref": "#/components/schemas/DeviceCompliance"
             },
             "type": "array"
           }
@@ -1140,14 +1127,27 @@
       },
       "DeviceCompliance": {
         "properties": {
-          "overall": {
+          "compliance": {
             "type": "string"
           },
-          "policies": {
-            "items": {
-              "$ref": "#/components/schemas/DeviceCompliancePolicy"
-            },
-            "type": "array"
+          "compliant": {
+            "type": "boolean"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "serial": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
           }
         },
         "type": "object"
@@ -6044,7 +6044,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DeviceCompliance"
+                  "$ref": "#/components/schemas/AdminapiDeviceCompliance"
                 }
               }
             },

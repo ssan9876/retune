@@ -1,5 +1,5 @@
 # Retune build helpers. On Windows, run the same commands by hand in PowerShell.
-.PHONY: console build test test-go test-web clean docker compose-up compose-down msi agent
+.PHONY: console build test test-go test-web clean docker compose-up compose-down msi agent agent-mac
 
 # console builds the admin console into the Go package that embeds it.
 console:
@@ -51,6 +51,19 @@ agent:
 	@if [ -n "$(RELEASE_KEY)" ]; then \
 	  go run ./cmd/retune-sign sign --key "$(RELEASE_KEY)" --version "$(VERSION)" bin/retune-agent.exe; \
 	else echo "bin/retune-agent.exe is unsigned and trusts no release key (set RELEASE_KEY and RELEASE_PUBKEYS)"; fi
+
+# agent-mac cross-compiles the macOS agent for Apple silicon and Intel, with
+# the same stamping and signing as the Windows build.
+agent-mac:
+	@if [ -n "$(RELEASE_KEY)" ] && [ -z "$(RELEASE_PUBKEYS)" ]; then \
+	  echo "RELEASE_KEY is set; RELEASE_PUBKEYS must name the public key(s) to embed"; exit 1; fi
+	@for arch in arm64 amd64; do \
+	  GOOS=darwin GOARCH=$$arch go build -trimpath \
+	    -ldflags "-X retune/internal/agent/facts.AgentVersion=$(VERSION) -X retune/internal/agent/facts.TrustedKeysRaw=$(RELEASE_PUBKEYS) -X retune/internal/agent/facts.OperationsKeysRaw=$(OPERATIONS_PUBKEYS)" \
+	    -o bin/retune-agent-darwin-$$arch ./cmd/retune-agent || exit 1; \
+	  if [ -n "$(RELEASE_KEY)" ]; then \
+	    go run ./cmd/retune-sign sign --key "$(RELEASE_KEY)" --version "$(VERSION)" bin/retune-agent-darwin-$$arch || exit 1; fi; \
+	done
 
 # msi builds the agent installer (requires the WiX 5 dotnet tool).
 msi:

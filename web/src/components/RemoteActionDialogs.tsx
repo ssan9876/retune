@@ -73,7 +73,7 @@ export function CollectLogsDialog({
   );
 }
 
-/** RemoteShellDialog opens a remote PowerShell session, once the
+/** RemoteShellDialog opens a remote shell session, once the
  * administrator has said why. */
 export function RemoteShellDialog({
   deviceId,
@@ -115,7 +115,7 @@ export function RemoteShellDialog({
   return (
     <Dialog title={`Remote shell on ${hostname}`} open={open} onClose={onClose}>
       <p className="note" role="alert">
-        Whatever you type runs on {hostname} as SYSTEM, with full control of the machine. The session and everything
+        Whatever you type runs on {hostname} as SYSTEM (root on a Mac), with full control of the machine. The session and everything
         typed and shown in it are recorded, with your name and reason.
       </p>
       <Field label="Reason" hint="A ticket number, or what you are fixing.">
