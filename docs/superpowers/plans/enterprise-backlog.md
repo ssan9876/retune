@@ -67,7 +67,7 @@ Round two is done. These close the larger gaps between Retune and Intune, as far
 | 23 | **Device compliance for conditional access**: an API network access control and identity providers can ask "is this device compliant?", and a signed compliance statement a device can present | conditional access: only compliant devices reach company resources | done, #35 |
 | 24 | **Remote help**: an interactive PowerShell session to a device from the console, recorded | helpdesk fixes a machine without walking to it | done, #36; the shell, not a remote desktop |
 | 25 | **A macOS agent**: enrollment, inventory, scripts and commands on macOS | most fleets aren't only Windows | done, #37; profiles, lock, wipe, apps and self-update stay Windows-only |
-| 26 | **Multi-tenant administration**: several organisations on one server, each seeing only its own | managed service providers | the schema already carries a tenant on every row |
+| 26 | **Multi-tenant administration**: several organisations on one server, each seeing only its own | managed service providers | not planned: on 2026-09-23 the user chose to keep one organisation per server |
 
 ## Can't be done from here
 
