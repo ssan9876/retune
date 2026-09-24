@@ -32,11 +32,13 @@ import (
 	"retune/internal/server/inventory"
 	"retune/internal/server/laps"
 	"retune/internal/server/profiles"
+	"retune/internal/server/remote"
 	"retune/internal/server/reports"
 	"retune/internal/server/scripts"
 	"retune/internal/server/secrets"
 	"retune/internal/server/store"
 	"retune/internal/server/sweeper"
+	"retune/internal/server/wake"
 )
 
 const clientCertValidity = 90 * 24 * time.Hour
@@ -69,8 +71,13 @@ type App struct {
 	// gives it its job.
 	Reports *reports.Service
 
+	// Wake wakes devices and remote sessions waiting on this server.
+	Wake *wake.Hub
+
 	// releaseRunning lets go of the lock that says this server is running.
 	releaseRunning func()
+	// stopWake ends the listener feeding Wake.
+	stopWake func()
 }
 
 // New migrates the database, loads (or creates) the CA, and builds handlers.
@@ -164,6 +171,8 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	}
 	dev := &devices.Service{Store: st}
 	reporter := &reports.Service{Store: st, Mailer: alerter.AttachmentMailer(), Now: time.Now, Log: log}
+	hub := wake.NewHub()
+	remoteSvc := &remote.Service{Store: st, Wake: hub, Now: time.Now}
 	attester := &attest.Service{Store: st, CA: authority, Issuer: strings.TrimRight(cfg.PublicURL, "/"), Now: time.Now}
 	authSvc := &auth.Service{
 		Store: st, Now: time.Now, SessionTTL: cfg.SessionTTL, MaxSessionLifetime: cfg.SessionMaxLifetime,
@@ -177,7 +186,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	}
 	agent := &agentapi.Handler{
 		Enroll: svc, Inventory: inv, Commands: cmd, Scripts: scr, Profiles: prof, Apps: appSvc, AgentVersions: agentVers, BitLocker: locker, LAPS: adminPasswords, Store: st,
-		Now: time.Now, CheckinInterval: cfg.CheckinInterval, Log: log, Attest: attester,
+		Now: time.Now, CheckinInterval: cfg.CheckinInterval, Log: log, Attest: attester, Wake: hub, Remote: remoteSvc,
 		ClientCert: clientCert,
 	}
 	authSvc.LocalLoginDisabled = cfg.OIDC.DisableLocalLogin
@@ -195,7 +204,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		Auth: authSvc, Store: st, Commands: cmd, Devices: dev, Enroll: svc, Groups: grp, Scripts: scr, Profiles: prof, Apps: appSvc, Compliance: comp, AgentVersions: agentVers, BitLocker: locker, LAPS: adminPasswords, Alerts: alerter,
 		SSO: sso, SSOName: cfg.OIDC.DisplayName, SigningRequired: len(cfg.OperationsKeys) > 0,
 		ApprovalsRequired: cfg.Approvals.Required, ApprovalThreshold: cfg.Approvals.DeviceThreshold,
-		Now: time.Now, Log: log, Reports: reporter, Attest: attester,
+		Now: time.Now, Log: log, Reports: reporter, Attest: attester, Remote: remoteSvc,
 	}
 	root := http.NewServeMux()
 	mountHealth(root, st, log)
@@ -229,11 +238,21 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		SSO:           sso,
 	}
 	a.releaseRunning = releaseRunning
+	a.Wake = hub
+	// The listener lives as long as the server, not the request that built
+	// it: ctx is the server's lifetime, and Close ends it too.
+	wakeCtx, stopWake := context.WithCancel(context.WithoutCancel(ctx))
+	a.stopWake = stopWake
+	go hub.Run(wakeCtx, st)
 	return a, nil
 }
 
 // Close releases the database pool.
 func (a *App) Close() {
+	if a.stopWake != nil {
+		a.stopWake()
+		a.stopWake = nil
+	}
 	if a.releaseRunning != nil {
 		a.releaseRunning()
 		a.releaseRunning = nil

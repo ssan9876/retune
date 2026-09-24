@@ -28,6 +28,16 @@ type ComplianceStatementResponse struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
+// WaitResponse answers GET /api/agent/v1/wait: whether the device should
+// check in now. The server answers 204 instead when the wait simply ran out.
+type WaitResponse struct {
+	CheckIn bool `json:"check_in"`
+}
+
+// MaxWaitSeconds is the longest the server holds a wait, under the idle
+// timeouts of most proxies.
+const MaxWaitSeconds = 50
+
 // EnrollResponse returns the device identity.
 type EnrollResponse struct {
 	DeviceID string `json:"device_id"`

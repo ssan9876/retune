@@ -1267,8 +1267,13 @@ than replaying a week.
 ## Remote actions
 
 A device's page has buttons for one-off commands. Each goes through the
-same queue as a script: it is delivered at the next check-in, and its result
-shows on the **Commands** page.
+same queue as a script, and its result shows on the **Commands** page. A
+command reaches its device within seconds, not at its next check-in: between
+check-ins every agent holds a request open on the server, which answers it the
+moment a command is queued for that device (through PostgreSQL's
+`LISTEN`/`NOTIFY`, so whichever server holds the request hears about it). An
+agent talking to an older server, or through a proxy that cuts long requests,
+simply falls back to its check-in interval.
 
 | Action | What the device does |
 |---|---|
@@ -1280,7 +1285,20 @@ shows on the **Commands** page.
 | Wipe | resets the device to factory settings through Windows' own MDM remote wipe; a *protected* wipe also removes the recovery partition's data and may leave a device that needs reinstalling |
 | Rotate admin password | sets a new random password on the built-in Administrator (or a named local account), escrowed with the server first |
 | Install updates | installs security and critical updates, or everything Windows Update offers, restarting only if asked and needed |
+| Remote shell | an interactive PowerShell session, as SYSTEM, recorded; admins only (see below) |
 | Rename | gives the device a new computer name (1–15 letters, digits and hyphens), effective at the next restart, or a minute later if you ask it to restart; admins only |
+
+**Remote shell** opens a PowerShell session on the device from the console:
+type a line, press Enter, and it runs there as SYSTEM, with its output shown
+as it comes. It starts only with a reason, only for an administrator signed
+in to the console (not helpdesk, not an API token), and every line typed and
+everything written back is kept with the session, in order — the device's page
+lists its recent sessions, each with its full transcript, and starting and
+ending one is in the audit log. A session ends when you end it, when the
+shell exits, after fifteen minutes with nothing typed, after an hour however
+busy, or if the device doesn't join within ten minutes. Agents built to run
+only signed code refuse remote shells outright: a live shell would run
+unsigned commands. It is a command line, not a remote desktop.
 
 **Collected logs** are kept on the server in `DATA_DIR/command-artifacts`
 for 30 days, and downloaded from the command's result on the Commands page.

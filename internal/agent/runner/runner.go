@@ -174,7 +174,7 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	sess.Start(ctx)
 
-	loop := &checkin.Loop{Client: sess, Facts: facts.Checkin, Log: opts.Log, Rand: rand.Float64}
+	loop := &checkin.Loop{Client: sess, Facts: facts.Checkin, Log: opts.Log, Rand: rand.Float64, Waiter: sess}
 	if !opts.Once {
 		return loop.Run(ctx)
 	}

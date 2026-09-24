@@ -73,6 +73,67 @@ export function CollectLogsDialog({
   );
 }
 
+/** RemoteShellDialog opens a remote PowerShell session, once the
+ * administrator has said why. */
+export function RemoteShellDialog({
+  deviceId,
+  hostname,
+  open,
+  onClose,
+  onStarted,
+}: {
+  deviceId: string;
+  hostname: string;
+  open: boolean;
+  onClose: () => void;
+  onStarted: (sessionId: string) => void;
+}) {
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setReason("");
+      setError(null);
+    }
+  }, [open]);
+
+  async function start() {
+    setBusy(true);
+    setError(null);
+    try {
+      const s = await api.post<{ id: string }>(`/devices/${deviceId}/remote-sessions`, { reason: reason.trim() });
+      onStarted(s.id);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog title={`Remote shell on ${hostname}`} open={open} onClose={onClose}>
+      <p className="note" role="alert">
+        Whatever you type runs on {hostname} as SYSTEM, with full control of the machine. The session and everything
+        typed and shown in it are recorded, with your name and reason.
+      </p>
+      <Field label="Reason" hint="A ticket number, or what you are fixing.">
+        <input value={reason} onChange={(e) => setReason(e.target.value)} />
+      </Field>
+      <ErrorNote error={error} />
+      <div className="actions">
+        <Button variant="primary" onClick={() => void start()} disabled={busy || reason.trim() === ""}>
+          Start session
+        </Button>
+        <Button variant="quiet" onClick={onClose}>
+          Cancel
+        </Button>
+      </div>
+    </Dialog>
+  );
+}
+
 /** InstallUpdatesDialog installs what Windows Update is offering the device
  * now. */
 export function InstallUpdatesDialog({

@@ -1,17 +1,24 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { DeviceCompliance, DeviceDetail as Detail } from "../api/types";
 import { AdminPasswords } from "../components/AdminPasswords";
 import { RecoveryKeys } from "../components/RecoveryKeys";
-import { CollectLogsDialog, InstallUpdatesDialog, RenameDialog, WipeDialog } from "../components/RemoteActionDialogs";
+import {
+  CollectLogsDialog,
+  InstallUpdatesDialog,
+  RemoteShellDialog,
+  RenameDialog,
+  WipeDialog,
+} from "../components/RemoteActionDialogs";
 import { RunScriptDialog } from "../components/RunScriptDialog";
 import { SecurityStatus } from "../components/SecurityStatus";
 import { StatusDot } from "../components/StatusDot";
 import { Button, ErrorNote, Spinner } from "../components/ui";
 import { useSession } from "../session/SessionContext";
 import { relative } from "./Devices";
+import type { RemoteSessionInfo } from "./RemoteSession";
 import "./DeviceDetail.css";
 
 export default function DeviceDetail() {
@@ -27,6 +34,8 @@ export default function DeviceDetail() {
   const [wipeOpen, setWipeOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [updatesOpen, setUpdatesOpen] = useState(false);
+  const [shellOpen, setShellOpen] = useState(false);
+  const navigate = useNavigate();
   const [passwordsToken, setPasswordsToken] = useState(0);
 
   const load = useCallback(() => {
@@ -186,6 +195,7 @@ export default function DeviceDetail() {
           </Button>
           {canWrite ? (
             <>
+              <Button onClick={() => setShellOpen(true)}>Remote shell…</Button>
               <Button onClick={() => setRenameOpen(true)}>Rename…</Button>
               <Button variant="danger" onClick={() => setWipeOpen(true)}>
                 Wipe…
@@ -272,6 +282,7 @@ export default function DeviceDetail() {
 
       <RecoveryKeys deviceId={device.id} />
       <AdminPasswords deviceId={device.id} reloadToken={passwordsToken} />
+      {canWrite ? <RemoteSessions deviceId={device.id} /> : null}
 
       <RunScriptDialog
         deviceIds={[device.id]}
@@ -280,6 +291,13 @@ export default function DeviceDetail() {
         onQueued={load}
       />
       <CollectLogsDialog deviceId={device.id} open={logsOpen} onClose={() => setLogsOpen(false)} onQueued={load} />
+      <RemoteShellDialog
+        deviceId={device.id}
+        hostname={device.hostname}
+        open={shellOpen}
+        onClose={() => setShellOpen(false)}
+        onStarted={(sessionId) => navigate(`/remote-sessions/${sessionId}`)}
+      />
       <InstallUpdatesDialog
         deviceId={device.id}
         hostname={device.hostname}
@@ -302,5 +320,31 @@ export default function DeviceDetail() {
         onQueued={load}
       />
     </>
+  );
+}
+
+/** RemoteSessions lists a device's recent remote sessions, each linking to
+ * its transcript. */
+function RemoteSessions({ deviceId }: { deviceId: string }) {
+  const [items, setItems] = useState<RemoteSessionInfo[] | null>(null);
+  useEffect(() => {
+    api
+      .get<{ items: RemoteSessionInfo[] }>(`/devices/${deviceId}/remote-sessions?limit=5`)
+      .then((r) => setItems(r.items ?? []))
+      .catch(() => setItems([]));
+  }, [deviceId]);
+  if (!items || items.length === 0) return null;
+  return (
+    <section>
+      <h2>Remote sessions</h2>
+      <ul>
+        {items.map((s) => (
+          <li key={s.id}>
+            <Link to={`/remote-sessions/${s.id}`}>{relative(s.created_at)}</Link> by {s.started_by}: {s.reason}{" "}
+            <span className="hint">({s.status})</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

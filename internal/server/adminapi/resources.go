@@ -144,6 +144,14 @@ func (h *Handler) mountResources(mux *http.ServeMux, base string) {
 
 	h.handle(mux, "GET "+base+"/dashboard", h.read(h.dashboard))
 	h.handle(mux, "GET "+base+"/compliance/devices", h.read(h.lookupCompliance))
+
+	// A remote shell runs as SYSTEM, so it is an administrator's, signed in
+	// to the console - never an API token's, and never helpdesk's.
+	h.handle(mux, "POST "+base+"/devices/{id}/remote-sessions", h.writeSession(h.startRemoteSession))
+	h.handle(mux, "GET "+base+"/devices/{id}/remote-sessions", h.writeSession(h.listRemoteSessions))
+	h.handle(mux, "GET "+base+"/remote-sessions/{id}", h.writeSession(h.getRemoteSession))
+	h.handle(mux, "POST "+base+"/remote-sessions/{id}/input", h.writeSession(h.remoteSessionInput))
+	h.handle(mux, "POST "+base+"/remote-sessions/{id}/end", h.writeSession(h.endRemoteSession))
 	// The key compliance statements are signed with is public: relying
 	// parties fetch it to check them.
 	h.handle(mux, "GET "+base+"/compliance/jwks.json", public(h.complianceJWKS))

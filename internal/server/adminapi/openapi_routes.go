@@ -300,6 +300,16 @@ var routeDocs = map[string]routeDoc{
 	"GET /api/admin/v1/compliance/jwks.json": {Tag: "Compliance", Summary: "The key compliance statements are signed with", Response: map[string]any{},
 		Description: "A JSON Web Key Set. Devices get signed statements (ES256 JWTs, aud retune-device-compliance) from the agent API and can present them; check them with this key."},
 
+	// Remote help
+	"POST /api/admin/v1/devices/{id}/remote-sessions": {Tag: "Remote help", Summary: "Open a remote PowerShell session on a device", Request: remoteStartRequest{}, Status: 201, Response: remoteSessionJSON{},
+		Description: "A reason is required and audited. The device joins within seconds; one that doesn't within ten minutes ends the session. Refused by devices built to run only signed code."},
+	"GET /api/admin/v1/devices/{id}/remote-sessions": {Tag: "Remote help", Summary: "A device's remote sessions", Query: paging, Response: listResponse[remoteSessionJSON]{}},
+	"GET /api/admin/v1/remote-sessions/{id}": {Tag: "Remote help", Summary: "A remote session and its transcript",
+		Query:    []param{{Name: "after", In: "query", Type: "integer", Description: "Only chunks after this seq."}, {Name: "wait", In: "query", Description: "1 holds the request up to 25 seconds for more."}},
+		Response: remoteTranscript{}, Description: "Every chunk typed (in) and written (out, err) is kept: the transcript is the record."},
+	"POST /api/admin/v1/remote-sessions/{id}/input": {Tag: "Remote help", Summary: "Type into a remote session", Request: remoteInputRequest{}, Status: 204, Description: "A line runs when it ends with a newline."},
+	"POST /api/admin/v1/remote-sessions/{id}/end":   {Tag: "Remote help", Summary: "End a remote session", Status: 204},
+
 	// Overview
 	"GET /api/admin/v1/dashboard":    {Tag: "Overview", Summary: "Fleet-wide counts for the overview page", Response: dashboardJSON{}},
 	"GET /api/admin/v1/openapi.json": {Tag: "Overview", Summary: "This document", Description: "OpenAPI 3.1.", Response: map[string]any{}},
