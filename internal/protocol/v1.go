@@ -1,7 +1,10 @@
 // Package protocol defines the v1 agent <-> server wire types.
 package protocol
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
+)
 
 // DeviceFacts identifies a device at enrollment time.
 type DeviceFacts struct {
@@ -16,6 +19,13 @@ type EnrollRequest struct {
 	Token  string      `json:"token"`
 	CSRPEM string      `json:"csr_pem"`
 	Device DeviceFacts `json:"device"`
+}
+
+// ComplianceStatementResponse is a signed statement of the device's
+// compliance, from GET /api/agent/v1/compliance-statement.
+type ComplianceStatementResponse struct {
+	Token     string    `json:"token"`
+	ExpiresAt time.Time `json:"expires_at"`
 }
 
 // EnrollResponse returns the device identity.

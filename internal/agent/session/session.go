@@ -10,6 +10,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -56,6 +58,9 @@ type Config struct {
 	SelfUpdate *selfupdate.Syncer
 	// Updates, when set, adds what Windows Update is offering to inventory.
 	Updates *winupdate.Cache
+	// StatementPath, when set, is where the device's signed compliance
+	// statement is kept current, for software that gates access on it.
+	StatementPath string
 	// Syncers apply what is assigned to this device. New appends Scripts and
 	// Policy to whatever is set here.
 	Syncers     []ItemSyncer
@@ -89,6 +94,9 @@ type Session struct {
 	flushMu sync.Mutex // one result flush at a time
 	work    chan protocol.Command
 	pending sync.WaitGroup
+
+	// nextStatement is when the compliance statement is next fetched.
+	nextStatement time.Time
 }
 
 // New builds a Session for an enrolled identity.
@@ -233,6 +241,7 @@ func (s *Session) Checkin(ctx context.Context, req protocol.CheckinRequest) (pro
 	// the hand-off and the restart would otherwise starve the supervisor of
 	// its proof and force a rollback of a perfectly good agent.
 	s.noteCheckedIn()
+	s.refreshStatement(ctx)
 
 	if resp.InventoryDue {
 		if err := s.UploadInventory(ctx); err != nil {
@@ -248,6 +257,55 @@ func (s *Session) Checkin(ctx context.Context, req protocol.CheckinRequest) (pro
 	// finds it still busy.
 	dispatch(ctx, s.cfg.Syncers, resp.Items, &s.pending, s.cfg.Log)
 	return resp, nil
+}
+
+// refreshStatement keeps the signed compliance statement at StatementPath
+// current: fetched again half an hour before it expires, and written whole,
+// so a reader never sees half of one. A server too old to issue them is
+// asked again in six hours.
+func (s *Session) refreshStatement(ctx context.Context) {
+	if s.cfg.StatementPath == "" || s.cfg.Now().Before(s.nextStatement) {
+		return
+	}
+	resp, err := s.currentClient().ComplianceStatement(ctx)
+	if err != nil {
+		var httpErr *client.HTTPError
+		if errors.As(err, &httpErr) && httpErr.Status == http.StatusNotFound {
+			s.nextStatement = s.cfg.Now().Add(6 * time.Hour)
+			return
+		}
+		s.cfg.Log.Warn("fetching the compliance statement failed", "error", err)
+		return
+	}
+	if err := writeAtomic(s.cfg.StatementPath, []byte(resp.Token+"\n")); err != nil {
+		s.cfg.Log.Warn("writing the compliance statement failed", "error", err)
+		return
+	}
+	s.nextStatement = resp.ExpiresAt.Add(-30 * time.Minute)
+}
+
+// writeAtomic replaces a file with data: written beside it, then renamed
+// over it.
+func writeAtomic(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(name)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(name)
+		return err
+	}
+	if err := os.Rename(name, path); err != nil {
+		os.Remove(name)
+		return err
+	}
+	return nil
 }
 
 // noteCheckedIn passes the proof of life on to the self-update syncer, if

@@ -1176,6 +1176,45 @@ split, an editor for their rules, and per-policy device results filterable by
 state. The compliance column on **Devices**, and the compliance section on a
 device's own page, both read the same overall and per-policy state.
 
+### Conditional access
+
+Compliance is most useful when something acts on it: only compliant devices
+on the corporate Wi-Fi, or into the finance app. Retune answers two ways.
+
+**Asking the server.** Network access control (Aruba ClearPass, Cisco ISE,
+and the like) and identity providers can ask whether a device is compliant,
+with an API token (read-only is enough):
+
+```
+GET /api/admin/v1/compliance/devices?mac=00-15-5D-01-02-03
+Authorization: Bearer rtk_…
+
+{"items":[{"device_id":"…","hostname":"PC-042","serial":"…","status":"active",
+           "compliance":"compliant","compliant":true,"last_seen_at":"…"}]}
+```
+
+Look a device up by one of `mac` (any adapter it last reported, in any
+common format), `serial`, `hostname` or `device_id`. `compliant` is the one
+answer to act on: true only for an active device compliant with every policy
+assigned to it. A device with no policy assigned is `not_evaluated`, and not
+compliant — nothing has said it is. Treat an empty answer the same way.
+
+**A statement the device carries.** Every agent keeps a signed statement of
+its own compliance at `C:\ProgramData\Retune\compliance.jwt`, refreshed half
+an hour before it expires (it lasts an hour). It is an ES256 JWT with
+`aud: retune-device-compliance`, `sub` the device ID, and `compliant`, signed
+by the Retune CA — whose public key is at
+`GET /api/admin/v1/compliance/jwks.json`, no sign-in needed. Software on the
+device that gates access, a zero-trust proxy say, can present it; whatever
+checks it verifies the signature, the audience and the expiry. It also names
+the device's certificate (`cnf.x5t#S256`, RFC 8705), so a relying party that
+sees that certificate in TLS can refuse a statement copied from another
+machine.
+
+Microsoft Entra ID's own conditional access takes compliance only from
+partners it has approved, which needs Microsoft's agreement; these are the
+open equivalents.
+
 ## Alerts
 
 Everything above, Retune knows silently. An **alert rule** says which of it is

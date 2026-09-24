@@ -164,7 +164,10 @@ func Run(ctx context.Context, opts Options) error {
 		Apps:       appSyncer,
 		SelfUpdate: updater,
 		Updates:    updates,
-		Log:        opts.Log,
+		// Kept current for software on the device that gates access on
+		// compliance, such as a zero-trust proxy.
+		StatementPath: filepath.Join(opts.DataDir, "compliance.jwt"),
+		Log:           opts.Log,
 	})
 	if err != nil {
 		return err

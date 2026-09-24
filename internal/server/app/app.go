@@ -19,6 +19,7 @@ import (
 	"retune/internal/server/alerts"
 	"retune/internal/server/apps"
 	"retune/internal/server/artifacts"
+	"retune/internal/server/attest"
 	"retune/internal/server/auth"
 	"retune/internal/server/bitlocker"
 	"retune/internal/server/ca"
@@ -163,6 +164,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	}
 	dev := &devices.Service{Store: st}
 	reporter := &reports.Service{Store: st, Mailer: alerter.AttachmentMailer(), Now: time.Now, Log: log}
+	attester := &attest.Service{Store: st, CA: authority, Issuer: strings.TrimRight(cfg.PublicURL, "/"), Now: time.Now}
 	authSvc := &auth.Service{
 		Store: st, Now: time.Now, SessionTTL: cfg.SessionTTL, MaxSessionLifetime: cfg.SessionMaxLifetime,
 		Throttle: &auth.StoreThrottle{Store: st, Max: 10, Window: 15 * time.Minute, Now: time.Now},
@@ -175,7 +177,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	}
 	agent := &agentapi.Handler{
 		Enroll: svc, Inventory: inv, Commands: cmd, Scripts: scr, Profiles: prof, Apps: appSvc, AgentVersions: agentVers, BitLocker: locker, LAPS: adminPasswords, Store: st,
-		Now: time.Now, CheckinInterval: cfg.CheckinInterval, Log: log,
+		Now: time.Now, CheckinInterval: cfg.CheckinInterval, Log: log, Attest: attester,
 		ClientCert: clientCert,
 	}
 	authSvc.LocalLoginDisabled = cfg.OIDC.DisableLocalLogin
@@ -193,7 +195,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		Auth: authSvc, Store: st, Commands: cmd, Devices: dev, Enroll: svc, Groups: grp, Scripts: scr, Profiles: prof, Apps: appSvc, Compliance: comp, AgentVersions: agentVers, BitLocker: locker, LAPS: adminPasswords, Alerts: alerter,
 		SSO: sso, SSOName: cfg.OIDC.DisplayName, SigningRequired: len(cfg.OperationsKeys) > 0,
 		ApprovalsRequired: cfg.Approvals.Required, ApprovalThreshold: cfg.Approvals.DeviceThreshold,
-		Now: time.Now, Log: log, Reports: reporter,
+		Now: time.Now, Log: log, Reports: reporter, Attest: attester,
 	}
 	root := http.NewServeMux()
 	mountHealth(root, st, log)
