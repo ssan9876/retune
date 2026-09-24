@@ -355,6 +355,10 @@
   font-weight: 400;
 }
 
+.crumbs a {
+  color: inherit;
+}
+
 /* The page's own header is the command bar: title on the left, the actions
    for this page on the right, with a rule under it separating chrome from
    content the way the admin centre does. */
@@ -443,5 +447,17 @@
 
   .content {
     padding: var(--space-4);
+  }
+}
+
+@media (pointer: coarse) {
+  .topbar__burger,
+  .topbar__avatar,
+  .rail a,
+  .topbar__results button,
+  .topbar__menu button {
+    min-width: 44px;
+    min-height: 44px;
+    height: auto;
   }
 }

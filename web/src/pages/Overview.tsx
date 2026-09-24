@@ -10,18 +10,20 @@ import "./Overview.css";
 /** Tile is one framed answer on the dashboard: a heading, an optional line
  * saying what the numbers are counted over, and the chart itself. */
 function Tile({
+  id,
   title,
   hint,
   wide,
   children,
 }: {
+  id?: string;
   title: string;
   hint?: string;
   wide?: boolean;
   children: ReactNode;
 }) {
   return (
-    <section className={`tile${wide ? " tile--wide" : ""}`}>
+    <section id={id} className={`tile${wide ? " tile--wide" : ""}`}>
       <div className="tile__head">
         <h2>{title}</h2>
         {hint ? <span className="tile__hint">{hint}</span> : null}
@@ -105,28 +107,28 @@ export default function Overview() {
             compliantPct === null ? "no policy assigned yet" : `${compliance.compliant} of ${scored} scored`
           }
           tone={compliantPct !== null && compliantPct < 100 ? "non_compliant" : "compliant"}
-          to="/compliance"
+          to="/devices?compliance=non_compliant"
         />
         <Kpi
           label="Non-compliant"
           value={compliance.non_compliant}
           note="devices failing a policy"
           tone={compliance.non_compliant > 0 ? "non_compliant" : "compliant"}
-          to="/compliance"
+          to="/devices?compliance=non_compliant"
         />
         <Kpi
           label="Stale"
           value={devices.stale}
           note="no check-in lately"
           tone={devices.stale > 0 ? "stale" : "compliant"}
-          to="/devices"
+          to="/devices?status=stale"
         />
         <Kpi
           label="Failed deployments"
           value={failedTotal}
           note="scripts, apps, profiles, agent"
           tone={failedTotal > 0 ? "non_compliant" : "compliant"}
-          to="/scripts"
+          to="/#failed-deployments"
         />
       </div>
 
@@ -179,7 +181,7 @@ export default function Overview() {
           />
         </Tile>
 
-        <Tile title="Failed deployments" hint="Active devices">
+        <Tile id="failed-deployments" title="Failed deployments" hint="Active devices">
           <BarList
             empty="Nothing has failed."
             rows={[

@@ -171,12 +171,29 @@ describe("DeviceDetail", () => {
     mockDetail();
     renderDetail();
     await screen.findByRole("heading", { name: "PC-ALPHA" });
-    for (const name of ["Lock", "Restart", "Collect logs", "Rotate admin password"]) {
+    for (const name of ["Lock device", "Collect logs", "Rotate admin password"]) {
       expect(screen.getByRole("button", { name })).toBeInTheDocument();
     }
+    await userEvent.click(screen.getByText("Lifecycle and disruptive actions"));
+    expect(screen.getByRole("button", { name: "Restart device…" })).toBeInTheDocument();
     for (const name of ["Run script", "Wipe…", "Retire device", "Unenroll device"]) {
       expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
     }
+  });
+
+  it("confirms a restart and shows a durable command receipt", async () => {
+    mockDetail(detail, emptyCompliance, () => ({ commands: [{ id: "command-1" }] }));
+    renderDetail();
+    await screen.findByRole("heading", { name: "PC-ALPHA" });
+    await userEvent.click(screen.getByText("Lifecycle and disruptive actions"));
+    await userEvent.click(screen.getByRole("button", { name: "Restart device…" }));
+    expect(screen.getByRole("dialog", { name: "Restart PC-ALPHA?" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Restart PC-ALPHA" }));
+    expect(await screen.findByText(/Restart queued for PC-ALPHA/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View command status" })).toHaveAttribute(
+      "href",
+      "/commands?device_id=01a0-1&command_id=command-1",
+    );
   });
 
   it("hides write actions from a read-only admin", async () => {

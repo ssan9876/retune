@@ -15,7 +15,7 @@ import {
 import { RunScriptDialog } from "../components/RunScriptDialog";
 import { SecurityStatus } from "../components/SecurityStatus";
 import { StatusDot } from "../components/StatusDot";
-import { Button, ErrorNote, Spinner } from "../components/ui";
+import { Button, Dialog, ErrorNote, Spinner, SuccessNote } from "../components/ui";
 import { useSession } from "../session/SessionContext";
 import { relative } from "./Devices";
 import type { RemoteSessionInfo } from "./RemoteSession";
@@ -35,6 +35,9 @@ export default function DeviceDetail() {
   const [renameOpen, setRenameOpen] = useState(false);
   const [updatesOpen, setUpdatesOpen] = useState(false);
   const [shellOpen, setShellOpen] = useState(false);
+  const [restartOpen, setRestartOpen] = useState(false);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [receipt, setReceipt] = useState<{ label: string; commandID?: string } | null>(null);
   const navigate = useNavigate();
   const [passwordsToken, setPasswordsToken] = useState(0);
 
@@ -59,22 +62,40 @@ export default function DeviceDetail() {
 
   async function act(path: string, confirmation: string) {
     if (!window.confirm(confirmation)) return;
+    setBusyAction(path);
+    setError(null);
     try {
       await api.post(`/devices/${id}/${path}`);
+      setReceipt({ label: `${path === "retire" ? "Retirement" : "Unenrollment"} submitted for ${detail?.device.hostname ?? "this device"}.` });
       load();
     } catch (err) {
       setError(err);
+    } finally {
+      setBusyAction(null);
     }
   }
 
-  async function queueSimple(type: string, confirmation?: string) {
-    if (confirmation && !window.confirm(confirmation)) return;
+  async function queueSimple(type: string, label: string): Promise<boolean> {
+    setBusyAction(type);
+    setError(null);
     try {
-      await api.post("/commands", { device_ids: [id], type });
+      const response = await api.post<{ commands?: { id: string }[] }>("/commands", { device_ids: [id], type });
+      setReceipt({ label: `${label} queued for ${detail?.device.hostname ?? "this device"}.`, commandID: response.commands?.[0]?.id });
+      setTab("commands");
       load();
+      return true;
     } catch (err) {
       setError(err);
+      return false;
+    } finally {
+      setBusyAction(null);
     }
+  }
+
+  function recordQueued(label: string) {
+    setReceipt({ label: `${label} submitted for ${detail?.device.hostname ?? "this device"}.` });
+    setTab("commands");
+    load();
   }
 
   if (error && !detail) return <ErrorNote error={error} />;
@@ -95,6 +116,17 @@ export default function DeviceDetail() {
       </div>
 
       <ErrorNote error={error} />
+      {receipt ? (
+        <SuccessNote>
+          <div className="action-receipt">
+            <span>{receipt.label} It will run after the device checks in.</span>
+            <Link to={`/commands?device_id=${device.id}${receipt.commandID ? `&command_id=${receipt.commandID}` : ""}`}>
+              View command status
+            </Link>
+            <Button variant="quiet" onClick={() => setReceipt(null)}>Dismiss</Button>
+          </div>
+        </SuccessNote>
+      ) : null}
 
       <dl className="detail__grid">
         <div>
@@ -166,57 +198,64 @@ export default function DeviceDetail() {
       <SecurityStatus document={inventory?.document} />
 
       {(canWrite || canOperate) && device.status === "active" ? (
-        <div className="actions" style={{ marginBottom: "var(--space-6)" }}>
-          {canWrite ? (
-            <Button variant="primary" onClick={() => setScriptOpen(true)}>
-              Run script
-            </Button>
-          ) : null}
-          <Button onClick={() => void queueSimple("refresh_inventory")}>Refresh inventory</Button>
-          <Button onClick={() => void queueSimple("restart")}>Restart</Button>
-          <Button
-            onClick={() =>
-              void queueSimple("lock", `Lock ${device.hostname}? Whoever is signed in will need their password.`)
-            }
-          >
-            Lock
-          </Button>
-          <Button onClick={() => setLogsOpen(true)}>Collect logs</Button>
-          <Button onClick={() => setUpdatesOpen(true)}>Install updates…</Button>
-          <Button
-            onClick={() =>
-              void queueSimple(
-                "rotate_local_admin_password",
-                `Set a new random password on ${device.hostname}'s built-in Administrator account? The old one stops working; the new one is kept here.`,
-              ).then(() => setPasswordsToken((n) => n + 1))
-            }
-          >
-            Rotate admin password
-          </Button>
-          {canWrite ? (
-            <>
-              <Button onClick={() => setShellOpen(true)}>Remote shell…</Button>
-              <Button onClick={() => setRenameOpen(true)}>Rename…</Button>
-              <Button variant="danger" onClick={() => setWipeOpen(true)}>
-                Wipe…
+        <section className="device-actions" aria-labelledby="device-actions-title">
+          <div className="device-actions__head">
+            <div>
+              <h2 id="device-actions-title">Device actions</h2>
+              <p>Requests run after {device.hostname} checks in. Their progress and results stay available in Commands.</p>
+            </div>
+            {busyAction ? <span className="device-actions__busy" role="status">Submitting request…</span> : null}
+          </div>
+          <div className="device-actions__group">
+            <h3>Common</h3>
+            <div className="actions">
+              {canWrite ? <Button variant="primary" disabled={Boolean(busyAction)} onClick={() => setScriptOpen(true)}>Run script</Button> : null}
+              <Button disabled={Boolean(busyAction)} onClick={() => void queueSimple("refresh_inventory", "Inventory refresh")}>Refresh inventory</Button>
+              <Button disabled={Boolean(busyAction)} onClick={() => setLogsOpen(true)}>Collect logs</Button>
+              <Button disabled={Boolean(busyAction)} onClick={() => setUpdatesOpen(true)}>Install updates…</Button>
+            </div>
+          </div>
+          <div className="device-actions__group">
+            <h3>Support and access</h3>
+            <div className="actions">
+              <Button
+                disabled={Boolean(busyAction)}
+                onClick={() => {
+                  if (window.confirm(`Lock ${device.hostname} now? The person using it will be interrupted.`)) {
+                    void queueSimple("lock", "Device lock");
+                  }
+                }}
+              >
+                Lock device
               </Button>
               <Button
-                variant="danger"
-                onClick={() => void act("retire", `Stop accepting check-ins from ${device.hostname}?`)}
+                disabled={Boolean(busyAction)}
+                onClick={() => {
+                  if (!window.confirm(`Rotate the local administrator password on ${device.hostname}?`)) return;
+                  void queueSimple("rotate_local_admin_password", "Administrator password rotation").then((ok) => {
+                    if (ok) setPasswordsToken((n) => n + 1);
+                  });
+                }}
               >
-                Retire device
+                Rotate admin password
               </Button>
-              <Button
-                variant="danger"
-                onClick={() =>
-                  void act("unenroll", `Tell ${device.hostname} to delete its identity and stop managing it?`)
-                }
-              >
-                Unenroll device
-              </Button>
-            </>
+              {canWrite ? <Button disabled={Boolean(busyAction)} onClick={() => setShellOpen(true)}>Open remote shell…</Button> : null}
+            </div>
+          </div>
+          {canWrite || canOperate ? (
+            <details className="device-actions__lifecycle">
+              <summary>Lifecycle and disruptive actions</summary>
+              <p>These actions can interrupt the person using this device or stop its management.</p>
+              <div className="actions">
+                <Button disabled={Boolean(busyAction)} onClick={() => setRestartOpen(true)}>Restart device…</Button>
+                {canWrite ? <Button disabled={Boolean(busyAction)} onClick={() => setRenameOpen(true)}>Rename device…</Button> : null}
+                {canWrite ? <Button variant="danger" disabled={Boolean(busyAction)} onClick={() => setWipeOpen(true)}>Wipe device…</Button> : null}
+                {canWrite ? <Button variant="danger" disabled={Boolean(busyAction)} onClick={() => void act("retire", `Stop accepting check-ins from ${device.hostname}?`)}>Retire device</Button> : null}
+                {canWrite ? <Button variant="danger" disabled={Boolean(busyAction)} onClick={() => void act("unenroll", `Tell ${device.hostname} to delete its identity and stop managing it?`)}>Unenroll device</Button> : null}
+              </div>
+            </details>
           ) : null}
-        </div>
+        </section>
       ) : null}
 
       <div className="tabs" role="tablist">
@@ -288,9 +327,9 @@ export default function DeviceDetail() {
         deviceIds={[device.id]}
         open={scriptOpen}
         onClose={() => setScriptOpen(false)}
-        onQueued={load}
+        onQueued={() => recordQueued("Script")}
       />
-      <CollectLogsDialog deviceId={device.id} open={logsOpen} onClose={() => setLogsOpen(false)} onQueued={load} />
+      <CollectLogsDialog deviceId={device.id} open={logsOpen} onClose={() => setLogsOpen(false)} onQueued={() => recordQueued("Log collection")} />
       <RemoteShellDialog
         deviceId={device.id}
         hostname={device.hostname}
@@ -303,22 +342,39 @@ export default function DeviceDetail() {
         hostname={device.hostname}
         open={updatesOpen}
         onClose={() => setUpdatesOpen(false)}
-        onQueued={load}
+        onQueued={() => recordQueued("Update installation")}
       />
       <RenameDialog
         deviceId={device.id}
         hostname={device.hostname}
         open={renameOpen}
         onClose={() => setRenameOpen(false)}
-        onQueued={load}
+        onQueued={() => recordQueued("Rename")}
       />
       <WipeDialog
         deviceId={device.id}
         hostname={device.hostname}
         open={wipeOpen}
         onClose={() => setWipeOpen(false)}
-        onQueued={load}
+        onQueued={() => recordQueued("Wipe request")}
       />
+      <Dialog title={`Restart ${device.hostname}?`} open={restartOpen} onClose={() => setRestartOpen(false)}>
+        <p>
+          Anyone using this device will be interrupted. The restart is queued now and runs after the device checks in.
+        </p>
+        <div className="actions">
+          <Button
+            variant="danger"
+            disabled={busyAction === "restart"}
+            onClick={() => void queueSimple("restart", "Restart").then((ok) => {
+              if (ok) setRestartOpen(false);
+            })}
+          >
+            {busyAction === "restart" ? "Queueing restart…" : `Restart ${device.hostname}`}
+          </Button>
+          <Button variant="quiet" onClick={() => setRestartOpen(false)}>Cancel</Button>
+        </div>
+      </Dialog>
     </>
   );
 }

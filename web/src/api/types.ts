@@ -89,6 +89,7 @@ export interface FirewallProfileState {
 export interface Command {
   id: string;
   device_id: string;
+  hostname?: string;
   type: string;
   status: string;
   payload: unknown;

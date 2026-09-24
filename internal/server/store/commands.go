@@ -32,6 +32,9 @@ type Command struct {
 	StartedAt   *time.Time
 	CompletedAt *time.Time
 	ExpiresAt   time.Time
+	// Hostname is filled by list queries that join devices. Single-command
+	// lookups leave it empty because their callers already know the device.
+	Hostname string
 }
 
 // CommandResult is what the agent reported for a command.

@@ -17,6 +17,23 @@ export class ApiError extends Error {
 let csrfToken: string | null = null;
 let unauthenticatedHandler: (() => void) | null = null;
 
+function decodePayload(response: Response, text: string): unknown {
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    if (response.ok) {
+      throw new ApiError(
+        response.status,
+        "invalid_response",
+        "The server returned an unreadable response. Try again; if it continues, check the server or proxy logs.",
+        text,
+      );
+    }
+    return { message: response.statusText || "The request failed before Retune could read the response." };
+  }
+}
+
 /** setCsrfToken stores the token the server issued at sign-in. */
 export function setCsrfToken(token: string | null): void {
   csrfToken = token;
@@ -47,7 +64,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     return undefined as T;
   }
   const text = await response.text();
-  const payload: unknown = text ? JSON.parse(text) : {};
+  const payload = decodePayload(response, text);
   if (!response.ok) {
     const { code, message } = payload as { code?: string; message?: string };
     if (response.status === 401) {
@@ -80,7 +97,7 @@ async function postBinary<T>(
     credentials: "same-origin",
   });
   const text = await response.text();
-  const payload: unknown = text ? JSON.parse(text) : {};
+  const payload = decodePayload(response, text);
   if (!response.ok) {
     const { code, message } = payload as { code?: string; message?: string };
     if (response.status === 401) {

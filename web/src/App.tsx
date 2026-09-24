@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { Shell } from "./components/Shell";
-import { Spinner } from "./components/ui";
+import { Button, ErrorNote, Spinner } from "./components/ui";
 import Admins from "./pages/Admins";
 import ApiTokens from "./pages/ApiTokens";
 import AgentVersions from "./pages/AgentVersions";
@@ -26,8 +26,20 @@ import Tokens from "./pages/Tokens";
 import { useSession } from "./session/SessionContext";
 
 export default function App() {
-  const { admin, loading } = useSession();
+  const { admin, loading, startupError, retryStartup } = useSession();
   if (loading) return <Spinner label="Loading the console…" />;
+  if (!admin && startupError) {
+    return (
+      <main className="service-unavailable">
+        <div>
+          <h1>Retune is unavailable</h1>
+          <p>The console could not reach the Retune server. Your session and device data have not been changed.</p>
+          <ErrorNote error={startupError} />
+          <Button variant="primary" onClick={retryStartup}>Try again</Button>
+        </div>
+      </main>
+    );
+  }
   if (!admin) return <Login />;
   return (
     <Shell>

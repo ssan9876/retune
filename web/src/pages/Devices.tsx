@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { Dashboard, Device } from "../api/types";
@@ -33,16 +33,35 @@ export function relative(value?: string): string {
 }
 
 export default function Devices() {
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("");
-  const [counts, setCounts] = useState<FleetCounts>({ active: 0, stale: 0, retired: 0 });
+  const [params, setParams] = useSearchParams();
+  const search = params.get("search") ?? "";
+  const filter = params.get("status") ?? "";
+  const compliance = params.get("compliance") ?? "";
+  const [counts, setCounts] = useState<FleetCounts | null>(null);
+  const [countsError, setCountsError] = useState<unknown>(null);
 
-  // "stale" is a property of active devices, so it filters client-side.
-  const status = filter === "stale" ? "active" : filter === "retired" ? "retired" : "";
   const { items, total, loading, error, offset, setOffset } = useList<Device>("/devices", {
     search,
-    status,
+    status: filter,
+    compliance,
   });
+
+  function setFilterParam(key: string, value: string) {
+    const next = new URLSearchParams(params);
+    if (value) next.set(key, value);
+    else next.delete(key);
+    setOffset(0);
+    setParams(next, { replace: true });
+  }
+
+  function clearFilters() {
+    const next = new URLSearchParams(params);
+    next.delete("search");
+    next.delete("status");
+    next.delete("compliance");
+    setOffset(0);
+    setParams(next, { replace: true });
+  }
 
   // The fleet bar summarises the whole fleet, not just the current page, so
   // it comes from the dashboard's SQL-computed buckets rather than a capped
@@ -55,11 +74,12 @@ export default function Devices() {
       .then((dashboard) => {
         const { active, stale, retired } = dashboard.devices;
         setCounts({ active, stale, retired });
+        setCountsError(null);
       })
-      .catch(() => setCounts({ active: 0, stale: 0, retired: 0 }));
+      .catch(setCountsError);
   }, []);
 
-  const shown = filter === "stale" ? items.filter((device) => device.stale) : items;
+  const hasFilters = Boolean(search || filter || compliance);
 
   return (
     <>
@@ -73,31 +93,37 @@ export default function Devices() {
             placeholder="Hostname, serial or model"
             value={search}
             onChange={(event) => {
-              setOffset(0);
-              setSearch(event.target.value);
+              setFilterParam("search", event.target.value);
             }}
           />
           <a className="button" href="/api/admin/v1/devices/export.csv">
-            Export CSV
+            Export all devices
           </a>
         </div>
       </div>
 
-      <FleetBar
-        counts={counts}
-        active={filter}
-        onSelect={(next) => {
-          setOffset(0);
-          setFilter(next);
-        }}
-      />
+      {counts ? <FleetBar counts={counts} active={filter} onSelect={(next) => setFilterParam("status", next)} /> : null}
+      <ErrorNote error={countsError} />
+
+      {hasFilters ? (
+        <div className="devices__filters" role="status">
+          <span>
+            Showing {compliance ? compliance.replace(/_/g, " ") + " " : ""}
+            {filter || "all"} devices{search ? ` matching “${search}”` : ""}.
+          </span>
+          <Button variant="quiet" onClick={clearFilters}>Clear filters</Button>
+        </div>
+      ) : null}
 
       <ErrorNote error={error} />
       {loading ? <Spinner /> : null}
 
-      {!loading && shown.length === 0 ? (
-        search || filter ? (
-          <EmptyState title="No devices match this search." />
+      {!loading && !error && items.length === 0 ? (
+        hasFilters ? (
+          <EmptyState title="No devices match these filters.">
+            <p>Try another search or clear the current filters.</p>
+            <p><Button onClick={clearFilters}>Clear filters</Button></p>
+          </EmptyState>
         ) : (
           <EmptyState title="No devices yet.">
             <p>Create an enrollment token, then install the agent on a machine.</p>
@@ -108,7 +134,7 @@ export default function Devices() {
         )
       ) : null}
 
-      {shown.length > 0 ? (
+      {items.length > 0 ? (
         <div className="table-scroll">
           <table className="devices__table">
             <thead>
@@ -122,7 +148,7 @@ export default function Devices() {
               </tr>
             </thead>
             <tbody>
-              {shown.map((device) => (
+              {items.map((device) => (
                 <tr key={device.id}>
                   <td>
                     <Link to={`/devices/${device.id}`}>{device.hostname}</Link>

@@ -37,10 +37,9 @@
 .alerts__note {
   margin: 0 0 var(--space-4);
   padding: var(--space-3) var(--cell-padding);
-  border: 1px solid var(--rule);
-  border-left: 3px solid var(--primary);
+  border: 1px solid color-mix(in srgb, var(--primary) 28%, var(--rule));
   border-radius: var(--radius);
-  background: var(--surface);
+  background: color-mix(in srgb, var(--primary) 4%, var(--surface));
   font-size: var(--text-sm);
 }
 

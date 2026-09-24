@@ -11,6 +11,7 @@ export function useList<T>(path: string, params: Record<string, string | number 
   const [error, setError] = useState<unknown>(null);
   const [offset, setOffset] = useState(0);
   const [reloadToken, setReloadToken] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -29,6 +30,7 @@ export function useList<T>(path: string, params: Record<string, string | number 
         setItems(page.items);
         setTotal(page.total);
         setError(null);
+        setLastUpdated(new Date());
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err);
@@ -42,5 +44,5 @@ export function useList<T>(path: string, params: Record<string, string | number 
   }, [path, search, reloadToken]);
 
   const reload = useCallback(() => setReloadToken((n) => n + 1), []);
-  return { items, total, loading, error, offset, setOffset, reload };
+  return { items, total, loading, error, offset, setOffset, reload, lastUpdated };
 }

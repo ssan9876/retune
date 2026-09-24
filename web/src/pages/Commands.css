@@ -1,0 +1,49 @@
+.commands__updated {
+  margin: var(--space-1) 0 0;
+  color: var(--ink-muted);
+  font-size: var(--text-xs);
+}
+
+.commands__filters {
+  align-items: center;
+  margin-top: 0;
+}
+
+.commands__filters label {
+  font-size: var(--text-sm);
+}
+
+.commands__filters select {
+  min-height: 34px;
+  margin-inline-start: var(--space-1);
+}
+
+.command-detail-row > td {
+  padding: 0;
+  background: var(--surface-sunken);
+}
+
+.command-details {
+  padding: var(--space-4) var(--cell-padding);
+}
+
+.command-details p {
+  margin: 0 0 var(--space-3);
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+}
+
+.command-details pre {
+  max-height: 24rem;
+  overflow: auto;
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+}
+
+.command-details__stderr {
+  color: var(--status-retired);
+}

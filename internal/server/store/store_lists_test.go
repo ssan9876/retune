@@ -27,11 +27,14 @@ func TestListDevicesPage(t *testing.T) {
 		}
 		return d
 	}
-	mk("PC-ALPHA", "SN-100", store.DeviceActive)
-	mk("PC-BETA", "SN-200", store.DeviceActive)
+	alpha := mk("PC-ALPHA", "SN-100", store.DeviceActive)
+	beta := mk("PC-BETA", "SN-200", store.DeviceActive)
 	mk("PC-GAMMA", "SN-300", store.DeviceRetired)
 	if err := q.UpdateDeviceHardware(ctx, store.DefaultTenantID, mk("PC-DELTA", "SN-400", store.DeviceActive).ID,
 		store.HardwareInfo{Model: "Latitude 7440"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.RecordCheckin(ctx, store.DefaultTenantID, alpha.ID, "0.1.0", now); err != nil {
 		t.Fatal(err)
 	}
 
@@ -43,6 +46,38 @@ func TestListDevicesPage(t *testing.T) {
 	active, total, err := q.ListDevicesPage(ctx, store.DeviceFilter{Status: store.DeviceActive})
 	if err != nil || len(active) != 3 || total != 3 {
 		t.Fatalf("active = %d rows, total = %d, err = %v", len(active), total, err)
+	}
+
+	cutoff := now.Add(-15 * time.Minute)
+	fresh, total, err := q.ListDevicesPage(ctx, store.DeviceFilter{Bucket: "active", StaleCutoff: cutoff})
+	if err != nil || len(fresh) != 1 || total != 1 || fresh[0].Hostname != "PC-ALPHA" {
+		t.Fatalf("fresh bucket = %+v, total = %d, err = %v", fresh, total, err)
+	}
+	stale, total, err := q.ListDevicesPage(ctx, store.DeviceFilter{Bucket: "stale", StaleCutoff: cutoff})
+	if err != nil || len(stale) != 2 || total != 2 {
+		t.Fatalf("stale bucket = %+v, total = %d, err = %v", stale, total, err)
+	}
+	retired, total, err := q.ListDevicesPage(ctx, store.DeviceFilter{Bucket: "retired", StaleCutoff: cutoff})
+	if err != nil || len(retired) != 1 || total != 1 || retired[0].Hostname != "PC-GAMMA" {
+		t.Fatalf("retired bucket = %+v, total = %d, err = %v", retired, total, err)
+	}
+
+	policy := store.CompliancePolicy{
+		ID: uuid.Must(uuid.NewV7()), Name: "Baseline", Rules: []byte(`[]`),
+		CreatedAt: now, UpdatedAt: now, CreatedBy: "test",
+	}
+	if err := q.CreateCompliancePolicy(ctx, policy); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.UpsertDeviceCompliance(ctx, store.DeviceCompliance{
+		DeviceID: beta.ID, PolicyID: policy.ID, State: store.ComplianceNonCompliant,
+		Failures: []byte(`[]`), EvaluatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	nonCompliant, total, err := q.ListDevicesPage(ctx, store.DeviceFilter{Compliance: store.ComplianceNonCompliant})
+	if err != nil || len(nonCompliant) != 1 || total != 1 || nonCompliant[0].Hostname != "PC-BETA" {
+		t.Fatalf("non-compliant filter = %+v, total = %d, err = %v", nonCompliant, total, err)
 	}
 
 	byHost, _, err := q.ListDevicesPage(ctx, store.DeviceFilter{Search: "beta"})
@@ -97,6 +132,11 @@ func TestListCommandsAndTokensAndAudit(t *testing.T) {
 	all, total, err := q.ListCommandsPage(ctx, store.CommandFilter{})
 	if err != nil || len(all) != 3 || total != 3 {
 		t.Fatalf("all commands = %d, total = %d, err = %v", len(all), total, err)
+	}
+	for _, command := range all {
+		if command.Hostname == "" {
+			t.Fatalf("command %s is missing its device hostname", command.ID)
+		}
 	}
 	forDevice, total, err := q.ListCommandsPage(ctx, store.CommandFilter{DeviceID: &d1.ID})
 	if err != nil || len(forDevice) != 2 || total != 2 {

@@ -17,6 +17,8 @@ interface SessionValue {
   canOperate: boolean;
   /** signingRequired: scripts and wipes need an operations signature. */
   signingRequired: boolean;
+  startupError: unknown;
+  retryStartup: () => void;
   signIn: (email: string, password: string, totpCode?: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -31,6 +33,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [sso, setSso] = useState<string | null>(null);
   const [localLogin, setLocalLogin] = useState(true);
   const [signingRequired, setSigningRequired] = useState(false);
+  const [startupError, setStartupError] = useState<unknown>(null);
+  const [retryToken, setRetryToken] = useState(0);
 
   const clear = useCallback(() => {
     setAdmin(null);
@@ -51,8 +55,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setCsrfToken(session.csrf_token);
         setAdmin(session.admin);
         setSigningRequired(session.signing_required ?? false);
-      } catch {
-        if (!cancelled) clear();
+        setStartupError(null);
+      } catch (error) {
+        if (!cancelled) {
+          clear();
+          if (error instanceof ApiError && error.status === 401) setStartupError(null);
+          else setStartupError(error);
+        }
       }
       try {
         const setup = await api.get<Setup>("/setup");
@@ -69,7 +78,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [clear]);
+  }, [clear, retryToken]);
+
+  const retryStartup = useCallback(() => {
+    setLoading(true);
+    setRetryToken((token) => token + 1);
+  }, []);
 
   const signIn = useCallback(async (email: string, password: string, totpCode?: string) => {
     const session = await api.post<SessionResponse>("/session", {
@@ -103,10 +117,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       canWrite: admin?.role === "admin",
       canOperate: admin?.role === "admin" || admin?.role === "helpdesk",
       signingRequired,
+      startupError,
+      retryStartup,
       signIn,
       signOut,
     }),
-    [admin, loading, needsSetup, sso, localLogin, signingRequired, signIn, signOut],
+    [admin, loading, needsSetup, sso, localLogin, signingRequired, startupError, retryStartup, signIn, signOut],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

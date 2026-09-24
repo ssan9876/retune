@@ -21,6 +21,7 @@ import (
 type commandJSON struct {
 	ID          string          `json:"id"`
 	DeviceID    string          `json:"device_id"`
+	Hostname    string          `json:"hostname,omitempty"`
 	Type        string          `json:"type"`
 	Status      string          `json:"status"`
 	Payload     json.RawMessage `json:"payload"`
@@ -34,7 +35,7 @@ type commandJSON struct {
 
 func newCommandJSON(c store.Command) commandJSON {
 	return commandJSON{
-		ID: c.ID.String(), DeviceID: c.DeviceID.String(), Type: c.Type, Status: c.Status,
+		ID: c.ID.String(), DeviceID: c.DeviceID.String(), Hostname: c.Hostname, Type: c.Type, Status: c.Status,
 		Payload: json.RawMessage(c.Payload), CreatedBy: c.CreatedBy, CreatedAt: c.CreatedAt,
 		DeliveredAt: c.DeliveredAt, StartedAt: c.StartedAt, CompletedAt: c.CompletedAt, ExpiresAt: c.ExpiresAt,
 	}

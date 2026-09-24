@@ -109,7 +109,9 @@ describe("Overview", () => {
     await screen.findByRole("heading", { name: "Overview" });
 
     expect(kpi("Devices").closest("a")).toHaveAttribute("href", "/devices");
-    expect(kpi("Non-compliant").closest("a")).toHaveAttribute("href", "/compliance");
+    expect(kpi("Non-compliant").closest("a")).toHaveAttribute("href", "/devices?compliance=non_compliant");
+    expect(kpi("Stale").closest("a")).toHaveAttribute("href", "/devices?status=stale");
+    expect(kpi("Failed deployments").closest("a")).toHaveAttribute("href", "/#failed-deployments");
     expect(screen.getByRole("link", { name: "Scripts" })).toHaveAttribute("href", "/scripts");
     expect(screen.getByRole("link", { name: "Apps" })).toHaveAttribute("href", "/apps");
   });

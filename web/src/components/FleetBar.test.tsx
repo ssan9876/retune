@@ -6,9 +6,11 @@ import { FleetBar } from "./FleetBar";
 
 describe("FleetBar", () => {
   it("sizes each segment by its share of the fleet", () => {
-    render(<FleetBar counts={{ active: 30, stale: 10, retired: 10 }} active="" onSelect={vi.fn()} />);
-    expect(screen.getByRole("button", { name: "Active, 30 devices" })).toHaveStyle({ flexGrow: "30" });
-    expect(screen.getByRole("button", { name: "Stale, 10 devices" })).toHaveStyle({ flexGrow: "10" });
+    const { container } = render(
+      <FleetBar counts={{ active: 30, stale: 10, retired: 10 }} active="" onSelect={vi.fn()} />,
+    );
+    expect(container.querySelector(".fleet__segment--active")).toHaveStyle({ flexGrow: "30" });
+    expect(container.querySelector(".fleet__segment--stale")).toHaveStyle({ flexGrow: "10" });
   });
 
   it("filters when a segment is chosen, and clears when chosen again", async () => {

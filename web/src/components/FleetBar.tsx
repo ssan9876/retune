@@ -32,27 +32,30 @@ export function FleetBar({
   }
   return (
     <div className="fleet">
-      <div className="fleet__bar">
+      <div className="fleet__bar" aria-hidden="true">
         {SEGMENTS.filter((segment) => counts[segment.key] > 0).map((segment) => {
           const count = counts[segment.key];
           return (
-            <button
+            <span
               key={segment.key}
-              type="button"
               className={`fleet__segment fleet__segment--${segment.key}`}
               style={{ flexGrow: count, flexBasis: 0 }}
-              aria-pressed={active === segment.key}
-              aria-label={`${segment.label}, ${count} ${count === 1 ? "device" : "devices"}`}
-              onClick={() => onSelect(active === segment.key ? "" : segment.key)}
             />
           );
         })}
       </div>
-      <div className="fleet__legend">
+      <div className="fleet__legend" role="group" aria-label="Filter devices by fleet status">
+        <button type="button" aria-pressed={active === ""} onClick={() => onSelect("")}>All <b>{total}</b></button>
         {SEGMENTS.map((segment) => (
-          <span key={segment.key}>
+          <button
+            type="button"
+            key={segment.key}
+            aria-label={`${segment.label}, ${counts[segment.key]} ${counts[segment.key] === 1 ? "device" : "devices"}`}
+            aria-pressed={active === segment.key}
+            onClick={() => onSelect(active === segment.key ? "" : segment.key)}
+          >
             <StatusDot status={segment.key} label={segment.label} /> <b>{counts[segment.key]}</b>
-          </span>
+          </button>
         ))}
       </div>
     </div>

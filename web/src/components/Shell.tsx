@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { Link as RouterLink, NavLink, useLocation, useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
 
 import { useSession } from "../session/SessionContext";
@@ -11,6 +11,7 @@ import "./Shell.css";
  * the nav does not offer them. */
 type Link = { to: string; label: string; icon: string; fleet?: boolean };
 type Section = { heading?: string; links: Link[] };
+type Crumb = { label: string; to?: string };
 
 /** The nav is grouped the way the Intune admin centre groups its own: the
  * fleet first, then the things pushed to it, then what judges it, then the
@@ -59,13 +60,24 @@ const ALL_LINKS = SECTIONS.flatMap((s) => s.links);
 
 /** breadcrumbFor names where you are, the way the admin centre's own
  * breadcrumb does: the section this page sits in, then the page. */
-function breadcrumbFor(pathname: string): string[] {
+function breadcrumbFor(pathname: string): Crumb[] {
+  if (pathname.startsWith("/devices/")) {
+    return [
+      { label: "Home", to: "/" },
+      { label: "Devices" },
+      { label: "All devices", to: "/devices" },
+      { label: "Device details" },
+    ];
+  }
+  if (pathname.startsWith("/remote-sessions/")) {
+    return [{ label: "Home", to: "/" }, { label: "Devices", to: "/devices" }, { label: "Remote session" }];
+  }
   const section = SECTIONS.find((s) => s.links.some((l) => matches(l.to, pathname)));
   const link = ALL_LINKS.find((l) => matches(l.to, pathname));
-  if (!link || link.to === "/") return ["Home"];
-  const crumbs = ["Home"];
-  if (section?.heading) crumbs.push(section.heading);
-  crumbs.push(link.label);
+  if (!link || link.to === "/") return [{ label: "Home" }];
+  const crumbs: Crumb[] = [{ label: "Home", to: "/" }];
+  if (section?.heading) crumbs.push({ label: section.heading });
+  crumbs.push({ label: link.label });
   return crumbs;
 }
 
@@ -85,6 +97,7 @@ function sectionsFor(scoped: boolean): Section[] {
 
 function NavSearch({ onGo, links }: { onGo: (to: string) => void; links: Link[] }) {
   const [query, setQuery] = useState("");
+  const resultsID = useId();
   const hits = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
@@ -104,6 +117,8 @@ function NavSearch({ onGo, links }: { onGo: (to: string) => void; links: Link[] 
         value={query}
         placeholder="Search pages"
         aria-label="Search pages"
+        aria-expanded={hits.length > 0}
+        aria-controls={resultsID}
         onChange={(e) => setQuery(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && hits.length > 0) go(hits[0].to);
@@ -111,10 +126,10 @@ function NavSearch({ onGo, links }: { onGo: (to: string) => void; links: Link[] 
         }}
       />
       {hits.length > 0 ? (
-        <ul className="topbar__results">
+        <ul className="topbar__results" id={resultsID}>
           {hits.map((l) => (
             <li key={l.to}>
-              <button type="button" onMouseDown={() => go(l.to)}>
+              <button type="button" onClick={() => go(l.to)}>
                 <Icon name={l.icon} /> {l.label}
               </button>
             </li>
@@ -129,21 +144,35 @@ function AccountMenu() {
   const { admin, signOut } = useSession();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const signOutRef = useRef<HTMLButtonElement>(null);
   const initials = (admin?.email ?? "?").slice(0, 2).toUpperCase();
 
   useEffect(() => {
     if (!open) return;
+    signOutRef.current?.focus();
     function onDown(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    }
     document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
   }, [open]);
 
   return (
     <div className="topbar__account" ref={ref}>
       <button
         type="button"
+        ref={triggerRef}
         className="topbar__avatar"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -157,10 +186,14 @@ function AccountMenu() {
           <div className="topbar__menu-head">
             <span className="topbar__menu-email">{admin?.email}</span>
             <span className="topbar__menu-role">
-              {admin?.role === "read_only" ? "Read-only access" : "Administrator"}
+              {admin?.role === "read_only"
+                ? "Read-only access"
+                : admin?.role === "helpdesk"
+                  ? "Helpdesk"
+                  : "Administrator"}
             </span>
           </div>
-          <button type="button" role="menuitem" onClick={() => void signOut()}>
+          <button ref={signOutRef} type="button" role="menuitem" onClick={() => void signOut()}>
             Sign out
           </button>
         </div>
@@ -221,9 +254,9 @@ export function Shell({ children }: { children: ReactNode }) {
       <main className="content">
         <nav className="crumbs" aria-label="Breadcrumb">
           {crumbs.map((crumb, i) => (
-            <span key={crumb}>
-              {i > 0 ? <span className="crumbs__sep">›</span> : null}
-              {crumb}
+            <span key={`${crumb.label}-${i}`}>
+              {i > 0 ? <span className="crumbs__sep" aria-hidden="true">›</span> : null}
+              {crumb.to ? <RouterLink to={crumb.to}>{crumb.label}</RouterLink> : crumb.label}
             </span>
           ))}
         </nav>

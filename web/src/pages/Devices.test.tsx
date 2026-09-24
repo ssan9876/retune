@@ -88,7 +88,7 @@ describe("Devices", () => {
       </MemoryRouter>,
     );
     await screen.findByRole("link", { name: "PC-ALPHA" });
-    expect(screen.getByRole("link", { name: "Export CSV" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Export all devices" })).toHaveAttribute(
       "href",
       "/api/admin/v1/devices/export.csv",
     );
@@ -139,6 +139,20 @@ describe("Devices", () => {
       const urls = fetchMock.mock.calls.map(([url]) => String(url));
       expect(urls.some((url) => url.includes("search=beta"))).toBe(true);
     });
+  });
+
+  it("keeps status filters in the URL and sends them to the API", async () => {
+    mockList([]);
+    render(
+      <MemoryRouter initialEntries={["/devices?status=stale"]}>
+        <Devices />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      const urls = fetchMock.mock.calls.map(([url]) => String(url));
+      expect(urls.some((url) => url.includes("status=stale"))).toBe(true);
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("Showing stale devices");
   });
 });
 

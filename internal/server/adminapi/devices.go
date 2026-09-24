@@ -78,8 +78,16 @@ type deviceDetailJSON struct {
 func (h *Handler) listDevices(w http.ResponseWriter, r *http.Request) {
 	page := pageFrom(r)
 	q := r.URL.Query()
+	bucket := q.Get("status")
+	status := ""
+	if bucket != "active" && bucket != "stale" && bucket != "retired" {
+		status = bucket
+		bucket = ""
+	}
 	rows, total, err := h.Store.Q().ListDevicesPage(r.Context(), store.DeviceFilter{
-		Search: q.Get("search"), Status: q.Get("status"), Page: page, Scope: caller(r).Scope,
+		Search: q.Get("search"), Status: status, Bucket: bucket,
+		StaleCutoff: h.Now().Add(-StaleAfter), Compliance: q.Get("compliance"),
+		Page: page, Scope: caller(r).Scope,
 	})
 	if err != nil {
 		h.internal(w, "list devices", err)
