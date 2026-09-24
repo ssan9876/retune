@@ -135,6 +135,12 @@ func New(cfg Config) (*Session, error) {
 	if cfg.Executor.Escrower == nil {
 		cfg.Executor.Escrower = artifactClient{s}
 	}
+	if cfg.Executor.Remote == nil {
+		cfg.Executor.Remote = artifactClient{s}
+	}
+	if cfg.Executor.StartShell == nil {
+		cfg.Executor.StartShell = executor.DefaultShell
+	}
 	if cfg.Scripts != nil && cfg.Scripts.Client == nil {
 		cfg.Scripts.Client = scriptClient{s}
 	}
@@ -257,6 +263,12 @@ func (s *Session) Checkin(ctx context.Context, req protocol.CheckinRequest) (pro
 	// finds it still busy.
 	dispatch(ctx, s.cfg.Syncers, resp.Items, &s.pending, s.cfg.Log)
 	return resp, nil
+}
+
+// WaitForWork holds a wait open on the server; see client.Client.Wait. It
+// satisfies checkin.Waiter.
+func (s *Session) WaitForWork(ctx context.Context, limit time.Duration) (bool, error) {
+	return s.currentClient().Wait(ctx, limit)
 }
 
 // refreshStatement keeps the signed compliance statement at StatementPath
@@ -557,6 +569,18 @@ func (c artifactClient) EscrowAdminPassword(ctx context.Context, req protocol.Ad
 
 func (c artifactClient) UploadCommandArtifact(ctx context.Context, id string, body io.Reader, size int64) error {
 	return c.s.currentClient().UploadCommandArtifact(ctx, id, body, size)
+}
+
+func (c artifactClient) RemoteInput(ctx context.Context, id string, after int64) (protocol.RemoteInputResponse, error) {
+	return c.s.currentClient().RemoteInput(ctx, id, after)
+}
+
+func (c artifactClient) RemoteOutput(ctx context.Context, id, stream, data string) error {
+	return c.s.currentClient().RemoteOutput(ctx, id, stream, data)
+}
+
+func (c artifactClient) RemoteEnd(ctx context.Context, id, reason string) error {
+	return c.s.currentClient().RemoteEnd(ctx, id, reason)
 }
 
 type appClient struct{ s *Session }

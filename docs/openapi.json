@@ -1764,6 +1764,26 @@
         },
         "type": "object"
       },
+      "ListOfRemoteSession": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RemoteSession"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
       "ListOfScript": {
         "properties": {
           "items": {
@@ -2169,6 +2189,89 @@
           },
           "serial": {
             "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "RemoteChunk": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "data": {
+            "type": "string"
+          },
+          "seq": {
+            "type": "integer"
+          },
+          "stream": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "RemoteInputRequest": {
+        "properties": {
+          "data": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "RemoteSession": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "end_reason": {
+            "type": "string"
+          },
+          "ended_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "started_by": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "RemoteStartRequest": {
+        "properties": {
+          "reason": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "RemoteTranscript": {
+        "properties": {
+          "chunks": {
+            "items": {
+              "$ref": "#/components/schemas/RemoteChunk"
+            },
+            "type": "array"
+          },
+          "session": {
+            "$ref": "#/components/schemas/RemoteSession"
           }
         },
         "type": "object"
@@ -5966,6 +6069,112 @@
         "x-retune-access": "scoped"
       }
     },
+    "/devices/{id}/remote-sessions": {
+      "get": {
+        "description": "The admin role, signed in to the console.",
+        "operationId": "getDevicesIdRemoteSessions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "At most this many (default 50, at most 500).",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Skip this many.",
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOfRemoteSession"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "A device's remote sessions",
+        "tags": [
+          "Remote help"
+        ],
+        "x-retune-access": "session+write"
+      },
+      "post": {
+        "description": "A reason is required and audited. The device joins within seconds; one that doesn't within ten minutes ends the session. Refused by devices built to run only signed code.\n\nThe admin role, signed in to the console.",
+        "operationId": "postDevicesIdRemoteSessions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoteStartRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoteSession"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Open a remote PowerShell session on a device",
+        "tags": [
+          "Remote help"
+        ],
+        "x-retune-access": "session+write"
+      }
+    },
     "/devices/{id}/retire": {
       "post": {
         "description": "The admin role; a scoped admin within their devices.",
@@ -7512,6 +7721,141 @@
           "Profiles"
         ],
         "x-retune-access": "scoped"
+      }
+    },
+    "/remote-sessions/{id}": {
+      "get": {
+        "description": "Every chunk typed (in) and written (out, err) is kept: the transcript is the record.\n\nThe admin role, signed in to the console.",
+        "operationId": "getRemoteSessionsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only chunks after this seq.",
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "1 holds the request up to 25 seconds for more.",
+            "in": "query",
+            "name": "wait",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoteTranscript"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "A remote session and its transcript",
+        "tags": [
+          "Remote help"
+        ],
+        "x-retune-access": "session+write"
+      }
+    },
+    "/remote-sessions/{id}/end": {
+      "post": {
+        "description": "The admin role, signed in to the console.",
+        "operationId": "postRemoteSessionsIdEnd",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "End a remote session",
+        "tags": [
+          "Remote help"
+        ],
+        "x-retune-access": "session+write"
+      }
+    },
+    "/remote-sessions/{id}/input": {
+      "post": {
+        "description": "A line runs when it ends with a newline.\n\nThe admin role, signed in to the console.",
+        "operationId": "postRemoteSessionsIdInput",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoteInputRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Type into a remote session",
+        "tags": [
+          "Remote help"
+        ],
+        "x-retune-access": "session+write"
       }
     },
     "/reports": {

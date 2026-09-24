@@ -25,6 +25,7 @@ import (
 	"retune/internal/server/groups"
 	"retune/internal/server/laps"
 	"retune/internal/server/profiles"
+	"retune/internal/server/remote"
 	"retune/internal/server/reports"
 	"retune/internal/server/scripts"
 	"retune/internal/server/store"
@@ -53,6 +54,7 @@ type Handler struct {
 	LAPS          *laps.Service
 	Reports       *reports.Service
 	Attest        *attest.Service
+	Remote        *remote.Service
 	Enroll        *enroll.Service
 	// SSO is nil when single sign-on is not configured.
 	SSO *auth.OIDC

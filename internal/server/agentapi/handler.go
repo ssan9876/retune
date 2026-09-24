@@ -27,8 +27,10 @@ import (
 	"retune/internal/server/inventory"
 	"retune/internal/server/laps"
 	"retune/internal/server/profiles"
+	"retune/internal/server/remote"
 	"retune/internal/server/scripts"
 	"retune/internal/server/store"
+	"retune/internal/server/wake"
 )
 
 // Handler serves /api/agent/v1.
@@ -51,6 +53,11 @@ type Handler struct {
 	// verified against the internal CA, or (nil, nil) if the request
 	// presented none. It is TLSClientCert unless a proxy terminates TLS.
 	ClientCert func(*http.Request) (*x509.Certificate, error)
+	// Wake lets a device wait between check-ins for work to arrive. Nil
+	// answers every wait 404, and the agent sleeps instead.
+	Wake *wake.Hub
+	// Remote relays remote sessions.
+	Remote *remote.Service
 }
 
 type authKey struct{}
@@ -85,7 +92,106 @@ func (h *Handler) Routes() http.Handler {
 	mux.Handle("POST /api/agent/v1/bitlocker", h.requireDevice(h.escrowBitLocker))
 	mux.Handle("POST /api/agent/v1/admin-passwords", h.requireDevice(h.escrowAdminPassword))
 	mux.Handle("GET /api/agent/v1/compliance-statement", h.requireDevice(h.complianceStatement))
+	mux.Handle("GET /api/agent/v1/wait", h.requireDevice(h.wait))
+	mux.Handle("GET /api/agent/v1/remote-sessions/{id}/input", h.requireDevice(h.remoteInput))
+	mux.Handle("POST /api/agent/v1/remote-sessions/{id}/output", h.requireDevice(h.remoteOutput))
+	mux.Handle("POST /api/agent/v1/remote-sessions/{id}/end", h.requireDevice(h.remoteEnd))
 	return mux
+}
+
+func (h *Handler) writeRemoteError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, remote.ErrNotFound):
+		writeError(w, http.StatusNotFound, "not_found", "no such remote session")
+	case errors.Is(err, remote.ErrEnded):
+		writeError(w, http.StatusGone, "ended", err.Error())
+	case errors.Is(err, remote.ErrBadRequest):
+		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
+	default:
+		h.Log.Error("remote session", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+	}
+}
+
+// remoteInput is what the administrator has typed since ?after=, held up to
+// RemotePollSeconds for more. Asking is also how the device joins.
+func (h *Handler) remoteInput(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil || h.Remote == nil {
+		writeError(w, http.StatusNotFound, "not_found", "no such remote session")
+		return
+	}
+	device := auth(r).Device.ID
+	if err := h.Remote.Join(r.Context(), device, id); err != nil && !errors.Is(err, remote.ErrEnded) {
+		h.writeRemoteError(w, err)
+		return
+	}
+	after, _ := strconv.ParseInt(r.URL.Query().Get("after"), 10, 64)
+	s, chunks, err := h.Remote.Poll(r.Context(), id, after, []string{protocol.RemoteStreamIn}, protocol.RemotePollSeconds*time.Second)
+	if err != nil {
+		h.writeRemoteError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, protocol.RemoteInputResponse{Chunks: chunks, Ended: s.Status == store.RemoteEnded})
+}
+
+func (h *Handler) remoteOutput(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil || h.Remote == nil {
+		writeError(w, http.StatusNotFound, "not_found", "no such remote session")
+		return
+	}
+	var req protocol.RemoteOutputRequest
+	if !decode(w, r, &req, protocol.MaxRemoteChunk*2) {
+		return
+	}
+	if err := h.Remote.Output(r.Context(), auth(r).Device.ID, id, req.Stream, req.Data); err != nil {
+		h.writeRemoteError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) remoteEnd(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil || h.Remote == nil {
+		writeError(w, http.StatusNotFound, "not_found", "no such remote session")
+		return
+	}
+	var req protocol.RemoteEndRequest
+	if !decode(w, r, &req, maxCheckinBody) {
+		return
+	}
+	if err := h.Remote.DeviceEnd(r.Context(), auth(r).Device.ID, id, req.Reason); err != nil {
+		h.writeRemoteError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// wait holds a device's request until a command is queued for it, or up to
+// MaxWaitSeconds, so commands reach it in seconds rather than at its next
+// check-in.
+func (h *Handler) wait(w http.ResponseWriter, r *http.Request) {
+	if h.Wake == nil {
+		writeError(w, http.StatusNotFound, "not_found", "this server doesn't hold waits")
+		return
+	}
+	seconds, _ := strconv.Atoi(r.URL.Query().Get("seconds"))
+	if seconds <= 0 || seconds > protocol.MaxWaitSeconds {
+		seconds = protocol.MaxWaitSeconds
+	}
+	deviceID := auth(r).Device.ID
+	ctx := r.Context()
+	queued := func() bool {
+		ok, err := h.Store.Q().HasQueuedCommand(ctx, deviceID)
+		return err == nil && ok
+	}
+	if h.Wake.Wait(ctx, wake.DeviceKey(deviceID.String()), time.Duration(seconds)*time.Second, queued) {
+		writeJSON(w, http.StatusOK, protocol.WaitResponse{CheckIn: true})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // complianceStatement signs a short-lived statement of this device's

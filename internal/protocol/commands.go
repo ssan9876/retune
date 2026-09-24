@@ -28,7 +28,62 @@ const (
 	// CommandInstallUpdates installs what Windows Update offers now,
 	// rather than when its own schedule gets round to it.
 	CommandInstallUpdates = "install_updates"
+	// CommandRemoteShell opens an interactive PowerShell session an
+	// administrator types into from the console. Only the server creates it,
+	// for a remote session an administrator started.
+	CommandRemoteShell = "remote_shell"
 )
+
+// RemoteShellPayload names the remote session a remote_shell command is for.
+type RemoteShellPayload struct {
+	SessionID string `json:"session_id"`
+}
+
+// Remote session streams: what the administrator typed, and what the shell
+// wrote to its output and error.
+const (
+	RemoteStreamIn  = "in"
+	RemoteStreamOut = "out"
+	RemoteStreamErr = "err"
+)
+
+// Remote session bounds, kept by the agent and the server alike.
+const (
+	// MaxRemoteChunk is the most one input or output post may carry.
+	MaxRemoteChunk = 64 << 10
+	// RemoteIdleTimeout ends a session nobody has typed into for a while.
+	RemoteIdleTimeout = 15 * time.Minute
+	// RemoteMaxDuration ends a session however busy it is.
+	RemoteMaxDuration = time.Hour
+	// RemotePollSeconds is how long a poll for input or output is held.
+	RemotePollSeconds = 25
+)
+
+// RemoteChunk is one piece of a remote session, in order.
+type RemoteChunk struct {
+	Seq    int64     `json:"seq"`
+	Stream string    `json:"stream"`
+	Data   string    `json:"data"`
+	At     time.Time `json:"at"`
+}
+
+// RemoteInputResponse is the input an agent polls for, and whether the
+// session has ended.
+type RemoteInputResponse struct {
+	Chunks []RemoteChunk `json:"chunks"`
+	Ended  bool          `json:"ended"`
+}
+
+// RemoteOutputRequest is output an agent sends.
+type RemoteOutputRequest struct {
+	Stream string `json:"stream"`
+	Data   string `json:"data"`
+}
+
+// RemoteEndRequest says why the agent ended a session.
+type RemoteEndRequest struct {
+	Reason string `json:"reason"`
+}
 
 // install_updates scopes and restart choices.
 const (

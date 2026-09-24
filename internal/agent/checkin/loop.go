@@ -35,10 +35,27 @@ type Loop struct {
 	Facts  func() protocol.CheckinRequest
 	Log    *slog.Logger
 	Rand   func() float64 // uniform in [0, 1)
+	// Waiter, when set, is asked to hold a request open on the server
+	// between check-ins, so a command queued for this device is picked up
+	// in seconds rather than at the next check-in.
+	Waiter Waiter
 
 	interval time.Duration
 	failures int
+	// noWaitUntil turns waiting off for a while after a server that
+	// doesn't support it said so.
+	noWaitUntil time.Time
 }
+
+// Waiter holds a request open on the server until it says to check in, or
+// limit passes.
+type Waiter interface {
+	WaitForWork(ctx context.Context, limit time.Duration) (bool, error)
+}
+
+// minWakeGap spaces check-ins a wake triggers, so a command that somehow
+// stays queued can't have the agent checking in continuously.
+const minWakeGap = 2 * time.Second
 
 // Run checks in until ctx is cancelled, or until the device is unenrolled.
 func (l *Loop) Run(ctx context.Context) error {
@@ -47,13 +64,55 @@ func (l *Loop) Run(ctx context.Context) error {
 		if errors.Is(err, ErrUnenrolled) {
 			return err
 		}
-		t := time.NewTimer(wait)
-		select {
-		case <-ctx.Done():
-			t.Stop()
+		if !l.pause(ctx, wait) {
 			return nil
-		case <-t.C:
 		}
+	}
+}
+
+// pause waits until the next check-in is due, or until the server says to
+// check in now. It reports false when ctx ended.
+func (l *Loop) pause(ctx context.Context, wait time.Duration) bool {
+	deadline := time.Now().Add(wait)
+	for l.Waiter != nil && time.Now().After(l.noWaitUntil) {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return ctx.Err() == nil
+		}
+		woke, err := l.Waiter.WaitForWork(ctx, min(remaining, protocol.MaxWaitSeconds*time.Second))
+		if ctx.Err() != nil {
+			return false
+		}
+		var httpErr *client.HTTPError
+		switch {
+		case err == nil && woke:
+			return sleep(ctx, minWakeGap)
+		case err == nil:
+			continue
+		case errors.As(err, &httpErr) && httpErr.Status == http.StatusNotFound:
+			// A server from before waits: sleep, as agents always did.
+			l.noWaitUntil = time.Now().Add(time.Hour)
+		default:
+			// Anything else, sleep out the rest of the interval: the next
+			// check-in is the retry.
+			l.Log.Debug("waiting for work failed", "error", err)
+			return sleep(ctx, time.Until(deadline))
+		}
+	}
+	return sleep(ctx, time.Until(deadline))
+}
+
+func sleep(ctx context.Context, d time.Duration) bool {
+	if d <= 0 {
+		return ctx.Err() == nil
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
 	}
 }
 

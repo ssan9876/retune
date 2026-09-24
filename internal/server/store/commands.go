@@ -73,12 +73,26 @@ func (q *Queries) queryCommands(ctx context.Context, sql string, args ...any) ([
 	return out, rows.Err()
 }
 
+// HasQueuedCommand reports whether a device has a command waiting for it.
+func (q *Queries) HasQueuedCommand(ctx context.Context, deviceID uuid.UUID) (bool, error) {
+	var ok bool
+	err := q.db.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM commands WHERE tenant_id = $1 AND device_id = $2 AND status = 'queued')`,
+		DefaultTenantID, deviceID).Scan(&ok)
+	return ok, err
+}
+
 func (q *Queries) CreateCommand(ctx context.Context, c Command) error {
 	_, err := q.db.Exec(ctx, `
 		INSERT INTO commands (id, tenant_id, device_id, type, payload, status, created_by, created_at, expires_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 		c.ID, DefaultTenantID, c.DeviceID, c.Type, c.Payload, c.Status, c.CreatedBy, c.CreatedAt, c.ExpiresAt)
-	return err
+	if err != nil {
+		return err
+	}
+	// A device waiting between check-ins picks it up now, not at its next
+	// check-in.
+	return q.Wake(ctx, "device:"+c.DeviceID.String())
 }
 
 func (q *Queries) GetCommand(ctx context.Context, tenantID, id uuid.UUID) (Command, error) {

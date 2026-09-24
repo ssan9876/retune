@@ -240,6 +240,39 @@ func (c *Client) FetchScript(ctx context.Context, id string, version int) (proto
 	return resp, err
 }
 
+// Wait holds a request open on the server for up to limit, and reports
+// whether it said to check in now: a command has been queued.
+func (c *Client) Wait(ctx context.Context, limit time.Duration) (bool, error) {
+	seconds := min(max(int(limit/time.Second), 1), protocol.MaxWaitSeconds)
+	var resp protocol.WaitResponse
+	err := c.do(ctx, http.MethodGet, "/api/agent/v1/wait?seconds="+strconv.Itoa(seconds), nil, &resp)
+	return resp.CheckIn, err
+}
+
+// RemoteInput waits for what an administrator typed into a remote session
+// after seq.
+func (c *Client) RemoteInput(ctx context.Context, sessionID string, after int64) (protocol.RemoteInputResponse, error) {
+	var resp protocol.RemoteInputResponse
+	path := "/api/agent/v1/remote-sessions/" + url.PathEscape(sessionID) + "/input?after=" + strconv.FormatInt(after, 10)
+	err := c.do(ctx, http.MethodGet, path, nil, &resp)
+	if httpErr := (*HTTPError)(nil); errors.As(err, &httpErr) && httpErr.Status == http.StatusGone {
+		return protocol.RemoteInputResponse{Ended: true}, nil
+	}
+	return resp, err
+}
+
+// RemoteOutput sends what the shell wrote.
+func (c *Client) RemoteOutput(ctx context.Context, sessionID, stream, data string) error {
+	return c.do(ctx, http.MethodPost, "/api/agent/v1/remote-sessions/"+url.PathEscape(sessionID)+"/output",
+		protocol.RemoteOutputRequest{Stream: stream, Data: data}, nil)
+}
+
+// RemoteEnd tells the server a session is over, and why.
+func (c *Client) RemoteEnd(ctx context.Context, sessionID, reason string) error {
+	return c.do(ctx, http.MethodPost, "/api/agent/v1/remote-sessions/"+url.PathEscape(sessionID)+"/end",
+		protocol.RemoteEndRequest{Reason: reason}, nil)
+}
+
 // ComplianceStatement fetches a signed statement of this device's
 // compliance.
 func (c *Client) ComplianceStatement(ctx context.Context) (protocol.ComplianceStatementResponse, error) {

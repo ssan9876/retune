@@ -19,6 +19,7 @@ import MaintenanceWindows from "./pages/MaintenanceWindows";
 import Overview from "./pages/Overview";
 import Profiles from "./pages/Profiles";
 import Provisioning from "./pages/Provisioning";
+import RemoteSession from "./pages/RemoteSession";
 import Reports from "./pages/Reports";
 import Scripts from "./pages/Scripts";
 import Tokens from "./pages/Tokens";
@@ -34,6 +35,7 @@ export default function App() {
         <Route path="/" element={<Overview />} />
         <Route path="/devices" element={<Devices />} />
         <Route path="/devices/:id" element={<DeviceDetail />} />
+        <Route path="/remote-sessions/:id" element={<RemoteSession />} />
         <Route path="/groups" element={<Groups />} />
         <Route path="/scripts" element={<Scripts />} />
         <Route path="/apps" element={<Apps />} />

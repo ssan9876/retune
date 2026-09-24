@@ -45,6 +45,9 @@ type Executor struct {
 	// AfterUpdates runs once updates have been installed: forgetting the
 	// last Windows Update search, so the next inventory reports afresh.
 	AfterUpdates func()
+	// Remote and StartShell run remote sessions.
+	Remote     RemoteChannel
+	StartShell ShellStarter
 
 	// Operations says whether run_powershell and wipe must be signed by an
 	// operations key; DeviceID is what a signed wipe must name.
@@ -76,6 +79,8 @@ func (e *Executor) Execute(ctx context.Context, c protocol.Command) protocol.Com
 		e.renameComputer(ctx, c.Payload, &res)
 	case protocol.CommandInstallUpdates:
 		e.installUpdates(ctx, c.Payload, &res)
+	case protocol.CommandRemoteShell:
+		e.remoteShell(ctx, c.Payload, &res)
 	default:
 		fail(&res, fmt.Sprintf("unsupported command type %q", c.Type))
 	}
