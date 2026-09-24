@@ -248,6 +248,24 @@ func normalizePayload(typ string, raw json.RawMessage) ([]byte, error) {
 			return nil, err
 		}
 		return json.Marshal(p)
+	case protocol.CommandInstallUpdates:
+		var p protocol.InstallUpdatesPayload
+		if err := decodePayload(raw, &p); err != nil {
+			return nil, err
+		}
+		if p.Scope == "" {
+			p.Scope = protocol.UpdatesSecurity
+		}
+		if p.Restart == "" {
+			p.Restart = protocol.UpdateRestartNever
+		}
+		if p.Scope != protocol.UpdatesSecurity && p.Scope != protocol.UpdatesAll {
+			return nil, fmt.Errorf("%w: scope must be security or all", ErrBadRequest)
+		}
+		if p.Restart != protocol.UpdateRestartNever && p.Restart != protocol.UpdateRestartIfRequired {
+			return nil, fmt.Errorf("%w: restart_policy must be never or if_required", ErrBadRequest)
+		}
+		return json.Marshal(p)
 	case protocol.CommandRenameComputer:
 		var p protocol.RenameComputerPayload
 		if err := decodePayload(raw, &p); err != nil {

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"retune/internal/agent/winupdate"
 	"retune/internal/opsign"
 	"retune/internal/protocol"
 )
@@ -41,6 +42,9 @@ type Executor struct {
 	// Passwords and Escrower rotate local admin passwords.
 	Passwords PasswordSetter
 	Escrower  PasswordEscrower
+	// AfterUpdates runs once updates have been installed: forgetting the
+	// last Windows Update search, so the next inventory reports afresh.
+	AfterUpdates func()
 
 	// Operations says whether run_powershell and wipe must be signed by an
 	// operations key; DeviceID is what a signed wipe must name.
@@ -70,6 +74,8 @@ func (e *Executor) Execute(ctx context.Context, c protocol.Command) protocol.Com
 		e.rotateAdminPassword(ctx, c, &res)
 	case protocol.CommandRenameComputer:
 		e.renameComputer(ctx, c.Payload, &res)
+	case protocol.CommandInstallUpdates:
+		e.installUpdates(ctx, c.Payload, &res)
 	default:
 		fail(&res, fmt.Sprintf("unsupported command type %q", c.Type))
 	}
@@ -162,6 +168,45 @@ func (e *Executor) renameComputer(ctx context.Context, raw json.RawMessage, res 
 	}
 	if err := e.Restarter.Restart(time.Minute, "Restarting to finish renaming this computer to "+p.Name+"."); err != nil {
 		fail(res, "renamed, but the restart to finish it failed: "+err.Error())
+	}
+}
+
+// installUpdates installs what Windows Update offers in scope, restarts if
+// asked to and an update needs it, and reports afresh.
+func (e *Executor) installUpdates(ctx context.Context, raw json.RawMessage, res *protocol.CommandResult) {
+	var p protocol.InstallUpdatesPayload
+	if err := json.Unmarshal(raw, &p); err != nil {
+		fail(res, fmt.Sprintf("invalid install_updates payload: %v", err))
+		return
+	}
+	if p.Restart != protocol.UpdateRestartNever && p.Restart != protocol.UpdateRestartIfRequired {
+		fail(res, fmt.Sprintf("restart must be never or if_required, not %q", p.Restart))
+		return
+	}
+	out, detail, err := winupdate.Install(ctx, e.Runner, p.Scope)
+	if err != nil {
+		res.Stderr = detail
+		fail(res, err.Error())
+		return
+	}
+	if e.AfterUpdates != nil {
+		e.AfterUpdates()
+	}
+	summary, _ := json.Marshal(out)
+	res.Stdout = string(summary) + "\n"
+	if out.Failed > 0 {
+		res.Status, res.ExitCode = protocol.ResultFailed, 1
+		res.Error = fmt.Sprintf("%d of %d updates failed to install", out.Failed, out.Installed+out.Failed)
+	}
+	if out.RebootRequired && p.Restart == protocol.UpdateRestartIfRequired {
+		if err := e.Restarter.Restart(5*time.Minute, "Restarting in five minutes to finish installing updates."); err != nil {
+			fail(res, "installed, but the restart to finish failed: "+err.Error())
+		}
+		return
+	}
+	if e.RefreshInventory != nil {
+		// A restart would report afresh anyway; without one, report now.
+		_ = e.RefreshInventory(ctx)
 	}
 }
 

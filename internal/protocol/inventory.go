@@ -29,6 +29,43 @@ type Inventory struct {
 	// Firewall is the effective state of each firewall profile, after Group
 	// Policy. Nil when it could not be read.
 	Firewall []FirewallProfileState `json:"firewall,omitempty"`
+	// WindowsUpdates is the last search for updates this device is missing.
+	// Nil when the agent hasn't searched yet (or isn't on Windows).
+	WindowsUpdates *UpdateStatus `json:"windows_updates,omitempty"`
+}
+
+// UpdateStatus is what a Windows Update search found missing.
+type UpdateStatus struct {
+	ScannedAt time.Time       `json:"scanned_at"`
+	Pending   []PendingUpdate `json:"pending"`
+	// Error is why the search failed; Pending is then empty and means
+	// nothing.
+	Error string `json:"error,omitempty"`
+}
+
+// PendingUpdate is one update Windows Update offers this device.
+type PendingUpdate struct {
+	Title string `json:"title"`
+	KB    string `json:"kb,omitempty"`
+	// Severity is Microsoft's rating for a security update: Critical,
+	// Important, Moderate or Low; empty for others.
+	Severity   string   `json:"severity,omitempty"`
+	Categories []string `json:"categories,omitempty"`
+	// Security is a security or critical update: the ones compliance counts.
+	Security       bool  `json:"security"`
+	SizeBytes      int64 `json:"size_bytes,omitempty"`
+	RebootRequired bool  `json:"reboot_required,omitempty"`
+}
+
+// SecurityPending is how many of the pending updates are security updates.
+func (s *UpdateStatus) SecurityPending() []PendingUpdate {
+	var out []PendingUpdate
+	for _, u := range s.Pending {
+		if u.Security {
+			out = append(out, u)
+		}
+	}
+	return out
 }
 
 // DefenderStatus is what Microsoft Defender Antivirus says about itself.

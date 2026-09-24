@@ -75,6 +75,9 @@ type queueRequest struct {
 	// rename_computer
 	Name    string `json:"name,omitempty"`
 	Restart bool   `json:"restart,omitempty"`
+	// install_updates: security or all, and never or if_required.
+	Scope         string `json:"scope,omitempty"`
+	RestartPolicy string `json:"restart_policy,omitempty"`
 }
 
 func (h *Handler) listCommands(w http.ResponseWriter, r *http.Request) {
@@ -243,8 +246,10 @@ func payloadFor(req queueRequest) (json.RawMessage, error) {
 		return json.Marshal(protocol.RotateAdminPasswordPayload{Account: req.Account, Length: req.Length})
 	case protocol.CommandRenameComputer:
 		return json.Marshal(protocol.RenameComputerPayload{Name: req.Name, Restart: req.Restart})
+	case protocol.CommandInstallUpdates:
+		return json.Marshal(protocol.InstallUpdatesPayload{Scope: req.Scope, Restart: req.RestartPolicy})
 	default:
-		return nil, errors.New("type must be run_powershell, restart, refresh_inventory, lock, collect_logs, wipe, rotate_local_admin_password or rename_computer")
+		return nil, errors.New("type must be run_powershell, restart, refresh_inventory, lock, collect_logs, wipe, rotate_local_admin_password, rename_computer or install_updates")
 	}
 }
 
@@ -349,4 +354,7 @@ func safeFileName(s string) string {
 var helpdeskCommands = map[string]bool{
 	protocol.CommandLock: true, protocol.CommandRestart: true, protocol.CommandRefreshInventory: true,
 	protocol.CommandCollectLogs: true, protocol.CommandRotateAdminPassword: true,
+	// Installing what Windows Update offers is routine patching, and restarts
+	// only when asked to, as helpdesk can anyway.
+	protocol.CommandInstallUpdates: true,
 }

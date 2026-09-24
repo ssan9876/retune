@@ -24,6 +24,7 @@ import (
 	"retune/internal/agent/scripts"
 	"retune/internal/agent/selfupdate"
 	"retune/internal/agent/state"
+	"retune/internal/agent/winupdate"
 	"retune/internal/protocol"
 )
 
@@ -53,6 +54,8 @@ type Config struct {
 	Apps *apps.Syncer
 	// SelfUpdate, when set, replaces this agent with an assigned build.
 	SelfUpdate *selfupdate.Syncer
+	// Updates, when set, adds what Windows Update is offering to inventory.
+	Updates *winupdate.Cache
 	// Syncers apply what is assigned to this device. New appends Scripts and
 	// Policy to whatever is set here.
 	Syncers     []ItemSyncer
@@ -113,6 +116,10 @@ func New(cfg Config) (*Session, error) {
 	}
 	if cfg.Executor.RefreshInventory == nil {
 		cfg.Executor.RefreshInventory = s.UploadInventory
+	}
+	if cfg.Updates != nil && cfg.Executor.AfterUpdates == nil {
+		updates := cfg.Updates
+		cfg.Executor.AfterUpdates = func() { _ = updates.Invalidate() }
 	}
 	if cfg.Executor.Uploader == nil {
 		cfg.Executor.Uploader = artifactClient{s}
@@ -262,6 +269,9 @@ func (s *Session) UploadInventory(ctx context.Context) error {
 	inv, err := s.cfg.Collector.Collect(ctx)
 	if err != nil {
 		return fmt.Errorf("collect inventory: %w", err)
+	}
+	if s.cfg.Updates != nil {
+		inv.WindowsUpdates = s.cfg.Updates.Status(ctx)
 	}
 	resp, err := s.currentClient().PutInventory(ctx, inv)
 	if err != nil {

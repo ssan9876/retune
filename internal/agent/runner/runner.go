@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"retune/internal/agent/agentcfg"
@@ -25,6 +26,7 @@ import (
 	"retune/internal/agent/selfupdate"
 	"retune/internal/agent/session"
 	"retune/internal/agent/state"
+	"retune/internal/agent/winupdate"
 )
 
 // Options configures one run of the agent.
@@ -124,6 +126,12 @@ func Run(ctx context.Context, opts Options) error {
 		defer control.Close()
 	}
 
+	// Windows Update is asked what it is offering at most daily: a search
+	// can take minutes.
+	var updates *winupdate.Cache
+	if runtime.GOOS == "windows" {
+		updates = &winupdate.Cache{Store: st, Runner: scriptRunner, Now: time.Now, MaxAge: 24 * time.Hour}
+	}
 	sess, err := session.New(session.Config{
 		Identity:  id,
 		IDStore:   idStore,
@@ -155,6 +163,7 @@ func Run(ctx context.Context, opts Options) error {
 		},
 		Apps:       appSyncer,
 		SelfUpdate: updater,
+		Updates:    updates,
 		Log:        opts.Log,
 	})
 	if err != nil {
