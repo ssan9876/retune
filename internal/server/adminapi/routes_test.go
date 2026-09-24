@@ -64,6 +64,8 @@ var expectedRoutes = map[string]string{
 	"GET /api/admin/v1/compliance-policies/{id}/devices":            "scoped",
 	"GET /api/admin/v1/compliance-policies/{id}/devices/export.csv": "scoped",
 	"GET /api/admin/v1/openapi.json":                                "public",
+	"GET /api/admin/v1/compliance/jwks.json":                        "public",
+	"GET /api/admin/v1/compliance/devices":                          "scoped",
 	"GET /api/admin/v1/dashboard":                                   "scoped",
 	"GET /api/admin/v1/devices":                                     "scoped",
 	"GET /api/admin/v1/devices/export.csv":                          "scoped",

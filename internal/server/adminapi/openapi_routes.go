@@ -292,6 +292,14 @@ var routeDocs = map[string]routeDoc{
 	"DELETE /api/admin/v1/reports/{id}":    {Tag: "Reports", Summary: "Delete a scheduled report", Status: 204},
 	"POST /api/admin/v1/reports/{id}/send": {Tag: "Reports", Summary: "Send a report now, off its schedule", Response: reportJSON{}, Description: "A failed send answers 502 and is recorded on the report."},
 
+	// Conditional access
+	"GET /api/admin/v1/compliance/devices": {Tag: "Compliance", Summary: "Is this device compliant? For network access control and identity providers",
+		Query: []param{{Name: "mac", In: "query", Description: "A MAC address, in any common format."}, {Name: "serial", In: "query"},
+			{Name: "hostname", In: "query"}, {Name: "device_id", In: "query"}},
+		Response: complianceLookupJSON{}, Description: "Give exactly one identifier. compliant is true only for an active device compliant with every policy assigned to it; a device with no policy is not_evaluated, and not compliant. At most ten matches."},
+	"GET /api/admin/v1/compliance/jwks.json": {Tag: "Compliance", Summary: "The key compliance statements are signed with", Response: map[string]any{},
+		Description: "A JSON Web Key Set. Devices get signed statements (ES256 JWTs, aud retune-device-compliance) from the agent API and can present them; check them with this key."},
+
 	// Overview
 	"GET /api/admin/v1/dashboard":    {Tag: "Overview", Summary: "Fleet-wide counts for the overview page", Response: dashboardJSON{}},
 	"GET /api/admin/v1/openapi.json": {Tag: "Overview", Summary: "This document", Description: "OpenAPI 3.1.", Response: map[string]any{}},

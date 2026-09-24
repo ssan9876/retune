@@ -143,6 +143,10 @@ func (h *Handler) mountResources(mux *http.ServeMux, base string) {
 	h.handle(mux, "GET "+base+"/devices/{id}/compliance", h.read(h.deviceCompliance))
 
 	h.handle(mux, "GET "+base+"/dashboard", h.read(h.dashboard))
+	h.handle(mux, "GET "+base+"/compliance/devices", h.read(h.lookupCompliance))
+	// The key compliance statements are signed with is public: relying
+	// parties fetch it to check them.
+	h.handle(mux, "GET "+base+"/compliance/jwks.json", public(h.complianceJWKS))
 	// The OpenAPI document describes the API; it holds nothing secret.
 	h.handle(mux, "GET "+base+"/openapi.json", public(h.serveOpenAPI))
 

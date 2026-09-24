@@ -569,6 +569,33 @@
         },
         "type": "object"
       },
+      "AttestDeviceCompliance": {
+        "properties": {
+          "compliance": {
+            "type": "string"
+          },
+          "compliant": {
+            "type": "boolean"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "serial": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "Audit": {
         "properties": {
           "action": {
@@ -751,6 +778,17 @@
           },
           "result": {
             "$ref": "#/components/schemas/Result"
+          }
+        },
+        "type": "object"
+      },
+      "ComplianceLookup": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AttestDeviceCompliance"
+            },
+            "type": "array"
           }
         },
         "type": "object"
@@ -5345,6 +5383,99 @@
           "Compliance"
         ],
         "x-retune-access": "fleet+write"
+      }
+    },
+    "/compliance/devices": {
+      "get": {
+        "description": "Give exactly one identifier. compliant is true only for an active device compliant with every policy assigned to it; a device with no policy is not_evaluated, and not compliant. At most ten matches.\n\nAny signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getComplianceDevices",
+        "parameters": [
+          {
+            "description": "A MAC address, in any common format.",
+            "in": "query",
+            "name": "mac",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "serial",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "hostname",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "device_id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComplianceLookup"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Is this device compliant? For network access control and identity providers",
+        "tags": [
+          "Compliance"
+        ],
+        "x-retune-access": "scoped"
+      }
+    },
+    "/compliance/jwks.json": {
+      "get": {
+        "description": "A JSON Web Key Set. Devices get signed statements (ES256 JWTs, aud retune-device-compliance) from the agent API and can present them; check them with this key.\n\nNo sign-in.",
+        "operationId": "getComplianceJwksJson",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {},
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [],
+        "summary": "The key compliance statements are signed with",
+        "tags": [
+          "Compliance"
+        ],
+        "x-retune-access": "public"
       }
     },
     "/dashboard": {

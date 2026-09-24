@@ -19,6 +19,7 @@ import (
 	"retune/internal/protocol"
 	"retune/internal/server/agentversions"
 	"retune/internal/server/apps"
+	"retune/internal/server/attest"
 	"retune/internal/server/bitlocker"
 	"retune/internal/server/ca"
 	"retune/internal/server/commands"
@@ -41,6 +42,7 @@ type Handler struct {
 	AgentVersions   *agentversions.Service
 	BitLocker       *bitlocker.Service
 	LAPS            *laps.Service
+	Attest          *attest.Service
 	Store           *store.Store
 	Now             func() time.Time
 	CheckinInterval time.Duration
@@ -82,7 +84,28 @@ func (h *Handler) Routes() http.Handler {
 	mux.Handle("GET /api/agent/v1/bitlocker", h.requireDevice(h.bitlockerStatus))
 	mux.Handle("POST /api/agent/v1/bitlocker", h.requireDevice(h.escrowBitLocker))
 	mux.Handle("POST /api/agent/v1/admin-passwords", h.requireDevice(h.escrowAdminPassword))
+	mux.Handle("GET /api/agent/v1/compliance-statement", h.requireDevice(h.complianceStatement))
 	return mux
+}
+
+// complianceStatement signs a short-lived statement of this device's
+// compliance, for it to present to whatever gates access on it.
+func (h *Handler) complianceStatement(w http.ResponseWriter, r *http.Request) {
+	if h.Attest == nil {
+		writeError(w, http.StatusNotFound, "not_found", "this server doesn't issue compliance statements")
+		return
+	}
+	var certDER []byte
+	if cert, err := h.ClientCert(r); err == nil && cert != nil {
+		certDER = cert.Raw
+	}
+	token, exp, err := h.Attest.Statement(r.Context(), auth(r).Device.ID, certDER)
+	if err != nil {
+		h.Log.Error("compliance statement", "device_id", auth(r).Device.ID, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+		return
+	}
+	writeJSON(w, http.StatusOK, protocol.ComplianceStatementResponse{Token: token, ExpiresAt: exp})
 }
 
 func (h *Handler) enroll(w http.ResponseWriter, r *http.Request) {

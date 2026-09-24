@@ -15,6 +15,7 @@ import (
 	"retune/internal/server/agentversions"
 	"retune/internal/server/alerts"
 	"retune/internal/server/apps"
+	"retune/internal/server/attest"
 	"retune/internal/server/auth"
 	"retune/internal/server/bitlocker"
 	"retune/internal/server/commands"
@@ -51,6 +52,7 @@ type Handler struct {
 	BitLocker     *bitlocker.Service
 	LAPS          *laps.Service
 	Reports       *reports.Service
+	Attest        *attest.Service
 	Enroll        *enroll.Service
 	// SSO is nil when single sign-on is not configured.
 	SSO *auth.OIDC

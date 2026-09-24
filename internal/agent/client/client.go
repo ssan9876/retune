@@ -240,6 +240,14 @@ func (c *Client) FetchScript(ctx context.Context, id string, version int) (proto
 	return resp, err
 }
 
+// ComplianceStatement fetches a signed statement of this device's
+// compliance.
+func (c *Client) ComplianceStatement(ctx context.Context) (protocol.ComplianceStatementResponse, error) {
+	var resp protocol.ComplianceStatementResponse
+	err := c.do(ctx, http.MethodGet, "/api/agent/v1/compliance-statement", nil, &resp)
+	return resp, err
+}
+
 // ReportScriptRun tells the server what one execution did.
 func (c *Client) ReportScriptRun(ctx context.Context, id string, run protocol.ScriptRun) error {
 	return c.do(ctx, http.MethodPost, "/api/agent/v1/scripts/"+url.PathEscape(id)+"/runs", run, nil)
