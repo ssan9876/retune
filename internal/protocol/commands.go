@@ -22,7 +22,39 @@ const (
 	// CommandRotateAdminPassword sets a new random password on a local
 	// administrator account, escrowing it with the server first.
 	CommandRotateAdminPassword = "rotate_local_admin_password"
+	// CommandRenameComputer gives the device a new computer name, which
+	// takes effect when it next restarts.
+	CommandRenameComputer = "rename_computer"
 )
+
+// RenameComputerPayload configures CommandRenameComputer.
+type RenameComputerPayload struct {
+	Name string `json:"name"`
+	// Restart restarts the device a minute after renaming it, so the name
+	// takes effect now rather than at the next restart someone chooses.
+	Restart bool `json:"restart,omitempty"`
+}
+
+// ValidComputerName reports whether a name is one Windows accepts as a
+// computer (NetBIOS) name: 1 to 15 letters, digits and hyphens, not all
+// digits, not starting or ending with a hyphen.
+func ValidComputerName(name string) bool {
+	if len(name) == 0 || len(name) > 15 || name[0] == '-' || name[len(name)-1] == '-' {
+		return false
+	}
+	digits := true
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		switch {
+		case c >= '0' && c <= '9':
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c == '-':
+			digits = false
+		default:
+			return false
+		}
+	}
+	return !digits
+}
 
 // Bounds on rotate_local_admin_password.
 const (

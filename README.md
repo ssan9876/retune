@@ -619,6 +619,36 @@ Set-Service Retune -StartupType Automatic
 Start-Service Retune
 ```
 
+### Zero-touch provisioning
+
+Register devices by serial number before they arrive, and a new laptop
+configures itself: on **Provisioning**, add them one at a time or import a CSV
+from your supplier —
+
+```csv
+serial,name,groups,notes
+PF3ABC12,SALES-01,Sales laptops;EMEA,Jo's replacement
+PF3ABC13,SALES-02,Sales laptops
+PF3ABC14
+```
+
+— the computer name, the static groups (by name, separated by semicolons)
+and notes are optional. An import with any problem imports nothing and lists
+every problem. When a registered device enrolls it joins its groups at once,
+so its apps, scripts and profiles are waiting on its first check-in, and if it
+was given a name it is renamed (`rename_computer`; the name takes effect when
+it next restarts). A dynamic group can't be chosen: its rule decides who is in
+it.
+
+For the install itself, create an enrollment token with **Only devices
+registered on the Provisioning page** ticked and put the `msiexec` line it
+shows into your imaging, a provisioning package or your supplier's
+pre-install. Such a token enrolls only registered serial numbers, so one that
+leaks doesn't enroll strangers' machines. The serial is the device's own
+claim, though, so it isn't a secret: treat the token as the credential it is.
+This is Retune's equivalent of Windows Autopilot, which itself needs
+Microsoft's service.
+
 ## Grouping devices
 
 A group is either a list of devices you pick, or a rule evaluated over what the
@@ -1190,6 +1220,7 @@ shows on the **Commands** page.
 | Collect logs | zips the agent's logs, its last update record, and the System and Application event logs from the last 1–168 hours (up to 50 MiB; anything that won't fit is left out and listed) and uploads it |
 | Wipe | resets the device to factory settings through Windows' own MDM remote wipe; a *protected* wipe also removes the recovery partition's data and may leave a device that needs reinstalling |
 | Rotate admin password | sets a new random password on the built-in Administrator (or a named local account), escrowed with the server first |
+| Rename | gives the device a new computer name (1–15 letters, digits and hyphens), effective at the next restart, or a minute later if you ask it to restart; admins only |
 
 **Collected logs** are kept on the server in `DATA_DIR/command-artifacts`
 for 30 days, and downloaded from the command's result on the Commands page.

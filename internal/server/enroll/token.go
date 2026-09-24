@@ -17,6 +17,9 @@ var (
 	ErrTokenRevoked   = errors.New("enrollment token has been revoked")
 	ErrTokenExpired   = errors.New("enrollment token has expired")
 	ErrTokenExhausted = errors.New("enrollment token has no uses left")
+	// ErrNotRegistered is a registered-only token used by a device whose
+	// serial number nobody registered.
+	ErrNotRegistered = errors.New("this device's serial number is not registered, and the token enrolls only registered devices")
 )
 
 const tokenPrefix = "rt_"

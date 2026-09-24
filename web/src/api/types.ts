@@ -127,6 +127,8 @@ export interface Token {
   revoked_at?: string;
   created_by: string;
   created_at: string;
+  /** registered_only enrolls only devices registered by serial number. */
+  registered_only?: boolean;
 }
 
 export interface AuditEntry {

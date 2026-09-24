@@ -248,6 +248,16 @@ func normalizePayload(typ string, raw json.RawMessage) ([]byte, error) {
 			return nil, err
 		}
 		return json.Marshal(p)
+	case protocol.CommandRenameComputer:
+		var p protocol.RenameComputerPayload
+		if err := decodePayload(raw, &p); err != nil {
+			return nil, err
+		}
+		p.Name = strings.TrimSpace(p.Name)
+		if !protocol.ValidComputerName(p.Name) {
+			return nil, fmt.Errorf("%w: name must be 1 to 15 letters, digits and hyphens, not all digits", ErrBadRequest)
+		}
+		return json.Marshal(p)
 	case protocol.CommandRotateAdminPassword:
 		var p protocol.RotateAdminPasswordPayload
 		if err := decodePayload(raw, &p); err != nil {

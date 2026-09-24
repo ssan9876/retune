@@ -95,7 +95,8 @@ func (h *Handler) enroll(w http.ResponseWriter, r *http.Request) {
 	case err == nil:
 		writeJSON(w, http.StatusOK, resp)
 	case errors.Is(err, enroll.ErrTokenNotFound), errors.Is(err, enroll.ErrTokenRevoked),
-		errors.Is(err, enroll.ErrTokenExpired), errors.Is(err, enroll.ErrTokenExhausted):
+		errors.Is(err, enroll.ErrTokenExpired), errors.Is(err, enroll.ErrTokenExhausted),
+		errors.Is(err, enroll.ErrNotRegistered):
 		writeError(w, http.StatusForbidden, "enrollment_token_invalid", err.Error())
 	case errors.Is(err, ca.ErrBadCSR), errors.Is(err, enroll.ErrBadRequest):
 		writeError(w, http.StatusBadRequest, "bad_request", err.Error())

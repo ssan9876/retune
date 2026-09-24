@@ -13,6 +13,8 @@ type createTokenRequest struct {
 	Label      string `json:"label"`
 	MaxUses    *int   `json:"max_uses"`
 	ExpiresInH int    `json:"expires_in_hours"`
+	// RegisteredOnly enrolls only devices registered by serial number.
+	RegisteredOnly bool `json:"registered_only"`
 }
 
 func (h *Handler) createToken(w http.ResponseWriter, r *http.Request) {
@@ -20,7 +22,7 @@ func (h *Handler) createToken(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	opts := enroll.TokenOptions{Label: req.Label, MaxUses: req.MaxUses, CreatedBy: caller(r).Admin.Email}
+	opts := enroll.TokenOptions{Label: req.Label, MaxUses: req.MaxUses, CreatedBy: caller(r).Admin.Email, RegisteredOnly: req.RegisteredOnly}
 	if req.ExpiresInH > 0 {
 		exp := h.Now().Add(time.Duration(req.ExpiresInH) * time.Hour)
 		opts.ExpiresAt = &exp
@@ -37,7 +39,7 @@ func (h *Handler) createToken(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusCreated, createdEnrollmentToken{
 		ID: tok.ID.String(), Token: plain, Label: tok.Label,
-		MaxUses: tok.MaxUses, ExpiresAt: tok.ExpiresAt, CreatedAt: tok.CreatedAt,
+		MaxUses: tok.MaxUses, ExpiresAt: tok.ExpiresAt, CreatedAt: tok.CreatedAt, RegisteredOnly: tok.RegisteredOnly,
 	})
 }
 
@@ -50,6 +52,8 @@ type tokenJSON struct {
 	RevokedAt *time.Time `json:"revoked_at,omitempty"`
 	CreatedBy string     `json:"created_by"`
 	CreatedAt time.Time  `json:"created_at"`
+	// RegisteredOnly enrolls only devices registered by serial number.
+	RegisteredOnly bool `json:"registered_only"`
 }
 
 func (h *Handler) listTokens(w http.ResponseWriter, r *http.Request) {
@@ -63,6 +67,7 @@ func (h *Handler) listTokens(w http.ResponseWriter, r *http.Request) {
 		items = append(items, tokenJSON{
 			ID: t.ID.String(), Label: t.Label, MaxUses: t.MaxUses, UseCount: t.UseCount,
 			ExpiresAt: t.ExpiresAt, RevokedAt: t.RevokedAt, CreatedBy: t.CreatedBy, CreatedAt: t.CreatedAt,
+			RegisteredOnly: t.RegisteredOnly,
 		})
 	}
 	writeJSON(w, http.StatusOK, newListResponse(items, len(items), store.Page{Limit: len(items)}))

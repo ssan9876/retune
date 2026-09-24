@@ -35,6 +35,8 @@ type createdEnrollmentToken struct {
 	MaxUses   *int       `json:"max_uses"`
 	ExpiresAt *time.Time `json:"expires_at"`
 	CreatedAt time.Time  `json:"created_at"`
+	// RegisteredOnly enrolls only devices registered by serial number.
+	RegisteredOnly bool `json:"registered_only"`
 }
 
 type createAdminRequest struct {
@@ -275,6 +277,12 @@ var routeDocs = map[string]routeDoc{
 	"DELETE /api/admin/v1/alert-rules/{id}":              {Tag: "Alerts", Summary: "Delete an alert rule", Status: 204},
 	"GET /api/admin/v1/alerts":                           {Tag: "Alerts", Summary: "Alerts firing now", Response: itemsResponse[firingAlertJSON]{}},
 	"GET /api/admin/v1/alert-deliveries":                 {Tag: "Alerts", Summary: "Recent alert deliveries", Response: itemsResponse[deliveryJSON]{}},
+
+	// Provisioning
+	"GET /api/admin/v1/device-registrations":         {Tag: "Enrollment", Summary: "List devices registered in advance", Query: paging, Response: listResponse[registrationJSON]{}},
+	"POST /api/admin/v1/device-registrations":        {Tag: "Enrollment", Summary: "Register a device by serial number", Request: registrationRequest{}, Status: 201, Response: registrationJSON{}, Description: "When a device with this serial enrolls, it joins the static groups named and, with device_name, is renamed."},
+	"POST /api/admin/v1/device-registrations/import": {Tag: "Enrollment", Summary: "Register devices from a CSV", Request: registrationImport{}, Status: 201, Response: importResult{}, Description: "Columns: serial, then optionally the computer name, the static groups by name separated by semicolons, and notes. All or nothing: a file with any problem registers nothing and answers 400 listing every problem."},
+	"DELETE /api/admin/v1/device-registrations/{id}": {Tag: "Enrollment", Summary: "Remove a registration", Status: 204},
 
 	// Reports
 	"GET /api/admin/v1/reports":            {Tag: "Reports", Summary: "List scheduled reports", Response: itemsResponse[reportJSON]{}},

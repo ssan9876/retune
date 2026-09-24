@@ -27,6 +27,7 @@ export default function Tokens() {
   const [label, setLabel] = useState("");
   const [maxUses, setMaxUses] = useState("");
   const [expiresIn, setExpiresIn] = useState("168");
+  const [registeredOnly, setRegisteredOnly] = useState(false);
   const [created, setCreated] = useState<CreatedToken | null>(null);
   const [formError, setFormError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
@@ -35,7 +36,7 @@ export default function Tokens() {
     setBusy(true);
     setFormError(null);
     try {
-      const body: Record<string, unknown> = { label };
+      const body: Record<string, unknown> = { label, registered_only: registeredOnly };
       if (maxUses !== "") body.max_uses = Number(maxUses);
       if (expiresIn !== "") body.expires_in_hours = Number(expiresIn);
       setCreated(await api.post<CreatedToken>("/tokens", body));
@@ -131,7 +132,10 @@ export default function Tokens() {
             <tbody>
               {items.map((token) => (
                 <tr key={token.id}>
-                  <td>{token.label || "—"}</td>
+                  <td>
+                    {token.label || "—"}
+                    {token.registered_only ? <div className="hint">Registered devices only</div> : null}
+                  </td>
                   <td>
                     <StatusDot
                       status={tokenState(token) === "active" ? "active" : "retired"}
@@ -179,6 +183,10 @@ export default function Tokens() {
             onChange={(event) => setExpiresIn(event.target.value)}
           />
         </Field>
+        <label style={{ display: "block", marginBottom: "var(--space-2)" }}>
+          <input type="checkbox" checked={registeredOnly} onChange={(e) => setRegisteredOnly(e.target.checked)} />{" "}
+          Only devices registered on the Provisioning page
+        </label>
         <ErrorNote error={formError} />
         <div className="actions">
           <Button variant="primary" disabled={busy} onClick={() => void create()}>

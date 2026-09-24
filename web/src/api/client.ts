@@ -6,6 +6,8 @@ export class ApiError extends Error {
     readonly status: number,
     readonly code: string,
     message: string,
+    /** body is the whole error response, for errors that say more than a message. */
+    readonly body?: unknown,
   ) {
     super(message);
     this.name = "ApiError";
@@ -51,7 +53,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     if (response.status === 401) {
       unauthenticatedHandler?.();
     }
-    throw new ApiError(response.status, code ?? "error", message ?? response.statusText);
+    throw new ApiError(response.status, code ?? "error", message ?? response.statusText, payload);
   }
   return payload as T;
 }
@@ -84,7 +86,7 @@ async function postBinary<T>(
     if (response.status === 401) {
       unauthenticatedHandler?.();
     }
-    throw new ApiError(response.status, code ?? "error", message ?? response.statusText);
+    throw new ApiError(response.status, code ?? "error", message ?? response.statusText, payload);
   }
   return payload as T;
 }

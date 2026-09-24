@@ -837,6 +837,9 @@
           },
           "max_uses": {
             "type": "integer"
+          },
+          "registered_only": {
+            "type": "boolean"
           }
         },
         "type": "object"
@@ -870,6 +873,9 @@
           },
           "max_uses": {
             "type": "integer"
+          },
+          "registered_only": {
+            "type": "boolean"
           },
           "token": {
             "type": "string"
@@ -1279,6 +1285,31 @@
         },
         "type": "object"
       },
+      "ImportProblem": {
+        "properties": {
+          "line": {
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ImportResult": {
+        "properties": {
+          "created": {
+            "type": "integer"
+          },
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/ImportProblem"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
       "Inventory": {
         "properties": {
           "collected_at": {
@@ -1675,6 +1706,26 @@
         },
         "type": "object"
       },
+      "ListOfRegistration": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Registration"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
       "ListOfScript": {
         "properties": {
           "items": {
@@ -1961,11 +2012,17 @@
           "message": {
             "type": "string"
           },
+          "name": {
+            "type": "string"
+          },
           "protected": {
             "type": "boolean"
           },
           "reason": {
             "type": "string"
+          },
+          "restart": {
+            "type": "boolean"
           },
           "script": {
             "type": "string"
@@ -2003,6 +2060,71 @@
               "$ref": "#/components/schemas/Queued"
             },
             "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "Registration": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "device_name": {
+            "type": "string"
+          },
+          "enrolled_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "group_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "serial": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "RegistrationImport": {
+        "properties": {
+          "csv": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "RegistrationRequest": {
+        "properties": {
+          "device_name": {
+            "type": "string"
+          },
+          "group_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "serial": {
+            "type": "string"
           }
         },
         "type": "object"
@@ -2726,6 +2848,9 @@
           },
           "max_uses": {
             "type": "integer"
+          },
+          "registered_only": {
+            "type": "boolean"
           },
           "revoked_at": {
             "format": "date-time",
@@ -5248,6 +5373,181 @@
           "Overview"
         ],
         "x-retune-access": "scoped"
+      }
+    },
+    "/device-registrations": {
+      "get": {
+        "description": "Any signed-in admin or API token, not limited to some devices.",
+        "operationId": "getDeviceRegistrations",
+        "parameters": [
+          {
+            "description": "At most this many (default 50, at most 500).",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Skip this many.",
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOfRegistration"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "List devices registered in advance",
+        "tags": [
+          "Enrollment"
+        ],
+        "x-retune-access": "fleet"
+      },
+      "post": {
+        "description": "When a device with this serial enrolls, it joins the static groups named and, with device_name, is renamed.\n\nThe admin role, not limited to some devices.",
+        "operationId": "postDeviceRegistrations",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistrationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Registration"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Register a device by serial number",
+        "tags": [
+          "Enrollment"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/device-registrations/import": {
+      "post": {
+        "description": "Columns: serial, then optionally the computer name, the static groups by name separated by semicolons, and notes. All or nothing: a file with any problem registers nothing and answers 400 listing every problem.\n\nThe admin role, not limited to some devices.",
+        "operationId": "postDeviceRegistrationsImport",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistrationImport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResult"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Register devices from a CSV",
+        "tags": [
+          "Enrollment"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/device-registrations/{id}": {
+      "delete": {
+        "description": "The admin role, not limited to some devices.",
+        "operationId": "deleteDeviceRegistrationsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Remove a registration",
+        "tags": [
+          "Enrollment"
+        ],
+        "x-retune-access": "fleet+write"
       }
     },
     "/devices": {
