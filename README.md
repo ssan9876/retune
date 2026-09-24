@@ -1105,6 +1105,25 @@ this month's minimum build for each release in your fleet, and
 Microsoft's release information, so updating the minimums each month is up
 to you.
 
+### What each device is missing
+
+Once a day the agent asks Windows Update which updates the device is
+missing — the same search Settings runs — and reports them with its
+inventory: each update's title, KB number, whether it is a security or
+critical update and Microsoft's severity for it, and whether it needs a
+restart. The device page lists them, security updates first. The
+`max_missing_security_updates` compliance rule turns that into a verdict: a
+device missing more security updates than the rule allows is non-compliant,
+and one whose search failed, or hasn't reported one in a week, is unknown.
+
+**Install updates…** on a device (admins and helpdesk) installs what Windows
+Update is offering now — security and critical updates, or everything,
+drivers included — rather than waiting for its own schedule. It restarts only
+if you ask it to and an update needs it, five minutes after installing;
+otherwise the device reports its updates afresh straight away. Rings still
+decide what Windows Update offers: an update a ring is deferring isn't
+offered, so isn't installed.
+
 ## Compliance
 
 A **compliance policy** states what a healthy device looks like, as a list of
@@ -1132,6 +1151,7 @@ than holding the request open for a fleet's worth of work.
 | `defender_realtime` | Microsoft Defender on, with real-time protection |
 | `defender_signatures_within` | Defender's signatures updated within 1–30 days |
 | `firewall_enabled` | the firewall on for every profile, or the ones named |
+| `max_missing_security_updates` | at most `count` security or critical updates missing, by the device's last Windows Update search |
 
 The Defender and firewall rules read what the agent reports. A device where
 another antivirus is primary puts Defender in passive mode, and
@@ -1220,6 +1240,7 @@ shows on the **Commands** page.
 | Collect logs | zips the agent's logs, its last update record, and the System and Application event logs from the last 1–168 hours (up to 50 MiB; anything that won't fit is left out and listed) and uploads it |
 | Wipe | resets the device to factory settings through Windows' own MDM remote wipe; a *protected* wipe also removes the recovery partition's data and may leave a device that needs reinstalling |
 | Rotate admin password | sets a new random password on the built-in Administrator (or a named local account), escrowed with the server first |
+| Install updates | installs security and critical updates, or everything Windows Update offers, restarting only if asked and needed |
 | Rename | gives the device a new computer name (1–15 letters, digits and hyphens), effective at the next restart, or a minute later if you ask it to restart; admins only |
 
 **Collected logs** are kept on the server in `DATA_DIR/command-artifacts`

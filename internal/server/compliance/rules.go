@@ -45,7 +45,16 @@ const (
 	RuleDefenderRealtime         = "defender_realtime"
 	RuleDefenderSignaturesWithin = "defender_signatures_within"
 	RuleFirewallEnabled          = "firewall_enabled"
+
+	// RuleMaxMissingSecurityUpdates bounds how many security (and critical)
+	// updates Windows Update says the device is missing.
+	RuleMaxMissingSecurityUpdates = "max_missing_security_updates"
 )
+
+// updateScanStale is how old a Windows Update search may be before
+// max_missing_security_updates stops trusting it: the agent searches daily,
+// so a week means it has stopped.
+const updateScanStale = 7 * 24 * time.Hour
 
 // defender_signatures_within's bound. A month-old definition set is already
 // badly out of date; a rule allowing more would not be protecting anything.
@@ -163,7 +172,7 @@ func allowedFields(ruleType string) (fields map[string]bool, ok bool) {
 		return one("days"), true
 	case RuleNoPendingReboot:
 		return map[string]bool{}, true
-	case RuleMaxLocalAdmins:
+	case RuleMaxLocalAdmins, RuleMaxMissingSecurityUpdates:
 		return one("count"), true
 	case RuleForbiddenSoftware, RuleRequiredSoftware:
 		return one("name"), true
@@ -297,7 +306,7 @@ func parseRule(raw json.RawMessage) (Rule, error) {
 	case RuleNoPendingReboot:
 		return Rule{Type: ruleType}, nil
 
-	case RuleMaxLocalAdmins:
+	case RuleMaxLocalAdmins, RuleMaxMissingSecurityUpdates:
 		count, present, err := intField(m, "count")
 		if err != nil {
 			return Rule{}, err
@@ -456,7 +465,7 @@ func (r Rule) MarshalJSON() ([]byte, error) {
 			Type string `json:"type"`
 		}{r.Type})
 
-	case RuleMaxLocalAdmins:
+	case RuleMaxLocalAdmins, RuleMaxMissingSecurityUpdates:
 		return json.Marshal(struct {
 			Type  string `json:"type"`
 			Count int    `json:"count"`
@@ -595,6 +604,8 @@ func evaluateRule(r Rule, f Facts, now time.Time) (Failure, bool) {
 		return evalDefenderSignaturesWithin(r, f, now)
 	case RuleFirewallEnabled:
 		return evalFirewallEnabled(r, f)
+	case RuleMaxMissingSecurityUpdates:
+		return evalMaxMissingSecurityUpdates(r, f, now)
 	}
 	// ParseRules never produces any other Type, so this is unreachable in
 	// practice; treat it the same as any other fact the evaluator cannot
@@ -1041,4 +1052,34 @@ func defenderOf(f Facts) *protocol.DefenderStatus {
 		return nil
 	}
 	return f.Inventory.Defender
+}
+
+// evalMaxMissingSecurityUpdates counts the security updates the device's
+// last Windows Update search found missing. No search, a failed one or a
+// stale one is unknown: the device may be fully patched, or not.
+func evalMaxMissingSecurityUpdates(r Rule, f Facts, now time.Time) (Failure, bool) {
+	if f.Inventory == nil || f.Inventory.WindowsUpdates == nil {
+		return unknownFailure(r.Type, "the device has not reported a Windows Update search; its agent may predate this rule"), true
+	}
+	wu := f.Inventory.WindowsUpdates
+	if wu.Error != "" {
+		return unknownFailure(r.Type, "the last Windows Update search failed: "+wu.Error), true
+	}
+	if now.Sub(wu.ScannedAt) > updateScanStale {
+		return unknownFailure(r.Type, fmt.Sprintf("the last Windows Update search was on %s", wu.ScannedAt.UTC().Format("2 January 2006"))), true
+	}
+	missing := wu.SecurityPending()
+	if len(missing) <= r.Count {
+		return Failure{}, false
+	}
+	names := make([]string, 0, len(missing))
+	for _, u := range missing {
+		if u.KB != "" {
+			names = append(names, u.KB)
+		} else {
+			names = append(names, u.Title)
+		}
+	}
+	return nonCompliant(r.Type, fmt.Sprintf("%d security updates are missing (at most %d allowed): %s",
+		len(missing), r.Count, strings.Join(names, ", "))), true
 }

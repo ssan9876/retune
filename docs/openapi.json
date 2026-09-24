@@ -2024,6 +2024,12 @@
           "restart": {
             "type": "boolean"
           },
+          "restart_policy": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
           "script": {
             "type": "string"
           },

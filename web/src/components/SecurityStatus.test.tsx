@@ -46,3 +46,34 @@ describe("SecurityStatus", () => {
     }
   });
 });
+
+describe("SecurityStatus Windows Update", () => {
+  it("lists missing updates, security first", () => {
+    render(
+      <SecurityStatus
+        document={{
+          windows_updates: {
+            scanned_at: new Date().toISOString(),
+            pending: [
+              { title: "A driver", security: false },
+              { title: "2026-09 Cumulative Update (KB5065426)", kb: "KB5065426", severity: "Critical", security: true, reboot_required: true },
+            ],
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText(/2 updates missing, 1 of them security/)).toBeInTheDocument();
+    const items = screen.getAllByRole("listitem");
+    expect(items[0]).toHaveTextContent("Critical security: 2026-09 Cumulative Update (KB5065426) (needs a restart)");
+    expect(items[1]).toHaveTextContent("A driver");
+  });
+
+  it("says when nothing is missing, a search failed, or none has been reported", () => {
+    const { rerender } = render(<SecurityStatus document={{ windows_updates: { scanned_at: new Date().toISOString(), pending: [] } }} />);
+    expect(screen.getByText(/nothing missing/)).toBeInTheDocument();
+    rerender(<SecurityStatus document={{ windows_updates: { scanned_at: new Date().toISOString(), pending: [], error: "0x8024402C" } }} />);
+    expect(screen.getByText(/failed: 0x8024402C/)).toBeInTheDocument();
+    rerender(<SecurityStatus document={{}} />);
+    expect(screen.getByText(/not reported yet/)).toBeInTheDocument();
+  });
+});

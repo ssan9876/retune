@@ -34,6 +34,7 @@ const RULE_TYPES = [
   { value: "defender_realtime", label: "Defender real-time protection on" },
   { value: "defender_signatures_within", label: "Defender signatures updated within" },
   { value: "firewall_enabled", label: "Firewall on" },
+  { value: "max_missing_security_updates", label: "Maximum missing security updates" },
 ];
 
 const FIREWALL_PROFILES = ["domain", "private", "public"];
@@ -72,6 +73,8 @@ function blankRule(type: string): ComplianceRule {
       return { type, days: 3 };
     case "firewall_enabled":
       return { type };
+    case "max_missing_security_updates":
+      return { type, count: 0 };
     default:
       return { type: "os_build_min", build: "" };
   }
@@ -113,7 +116,8 @@ function ruleError(rule: ComplianceRule): string | undefined {
     }
     case "no_pending_reboot":
       return undefined;
-    case "max_local_admins": {
+    case "max_local_admins":
+    case "max_missing_security_updates": {
       const c = rule.count;
       return c !== undefined && Number.isInteger(c) && c >= 0 && c <= 100 ? undefined : "Between 0 and 100.";
     }
@@ -269,6 +273,22 @@ function RuleFields({
       );
     case "no_pending_reboot":
       return <p className="hint">No parameters: the device must not have a reboot pending.</p>;
+    case "max_missing_security_updates":
+      return (
+        <Field
+          label="Security updates that may be missing"
+          hint="Counted from the device's own daily Windows Update search. No search yet, a failed one or one over a week old is unknown."
+          error={err}
+        >
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={rule.count ?? ""}
+            onChange={(e) => set({ count: e.target.value === "" ? undefined : Number(e.target.value) })}
+          />
+        </Field>
+      );
     case "max_local_admins":
       return (
         <Field label="Maximum local admins" error={err}>

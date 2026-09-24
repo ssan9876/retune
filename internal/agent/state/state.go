@@ -180,6 +180,42 @@ func (s *Store) PruneLedger(before time.Time) (int, error) {
 	return removed, err
 }
 
+var keyUpdateScan = []byte("update_scan")
+
+// UpdateScan is the last Windows Update search, if there has been one.
+func (s *Store) UpdateScan() (protocol.UpdateStatus, bool, error) {
+	var st protocol.UpdateStatus
+	found := false
+	err := s.db.View(func(tx *bolt.Tx) error {
+		raw := tx.Bucket(bucketMeta).Get(keyUpdateScan)
+		if raw == nil {
+			return nil
+		}
+		found = true
+		return json.Unmarshal(raw, &st)
+	})
+	return st, found, err
+}
+
+// SetUpdateScan remembers a Windows Update search.
+func (s *Store) SetUpdateScan(st protocol.UpdateStatus) error {
+	raw, err := json.Marshal(st)
+	if err != nil {
+		return err
+	}
+	return s.db.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bucketMeta).Put(keyUpdateScan, raw)
+	})
+}
+
+// ClearUpdateScan forgets the last search, so the next inventory searches
+// again.
+func (s *Store) ClearUpdateScan() error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bucketMeta).Delete(keyUpdateScan)
+	})
+}
+
 // InventoryHash is the hash the server acknowledged for the last upload.
 func (s *Store) InventoryHash() (string, error) {
 	var hash string

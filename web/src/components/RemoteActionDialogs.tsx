@@ -73,6 +73,82 @@ export function CollectLogsDialog({
   );
 }
 
+/** InstallUpdatesDialog installs what Windows Update is offering the device
+ * now. */
+export function InstallUpdatesDialog({
+  deviceId,
+  hostname,
+  open,
+  onClose,
+  onQueued,
+}: {
+  deviceId: string;
+  hostname: string;
+  open: boolean;
+  onClose: () => void;
+  onQueued: () => void;
+}) {
+  const [scope, setScope] = useState("security");
+  const [restart, setRestart] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setScope("security");
+      setRestart(false);
+      setError(null);
+    }
+  }, [open]);
+
+  async function install() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post("/commands", {
+        device_ids: [deviceId],
+        type: "install_updates",
+        scope,
+        restart_policy: restart ? "if_required" : "never",
+      });
+      onQueued();
+      onClose();
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog title={`Install updates on ${hostname}`} open={open} onClose={onClose}>
+      <Field label="Install">
+        <select value={scope} onChange={(e) => setScope(e.target.value)}>
+          <option value="security">Security and critical updates</option>
+          <option value="all">Everything Windows Update offers, drivers included</option>
+        </select>
+      </Field>
+      <label style={{ display: "block", marginBottom: "var(--space-2)" }}>
+        <input type="checkbox" checked={restart} onChange={(e) => setRestart(e.target.checked)} /> Restart five
+        minutes later if an update needs it
+      </label>
+      <p className="hint">
+        Downloading and installing can take a while. The result shows on the Commands page, and the device reports its
+        updates afresh when it is done.
+      </p>
+      <ErrorNote error={error} />
+      <div className="actions">
+        <Button variant="primary" onClick={() => void install()} disabled={busy}>
+          Install updates
+        </Button>
+        <Button variant="quiet" onClick={onClose}>
+          Cancel
+        </Button>
+      </div>
+    </Dialog>
+  );
+}
+
 /** validComputerName matches the server's check on a computer name. */
 export function validComputerName(name: string): boolean {
   return /^[A-Za-z0-9-]{1,15}$/.test(name) && !/^\d+$/.test(name) && !name.startsWith("-") && !name.endsWith("-");

@@ -46,7 +46,32 @@ func (f FileKeyStore) Save(ctx context.Context, certPEM, keyPEM []byte) error {
 	if err := writeNew(filepath.Join(f.Dir, "ca.key"), keyPEM, 0o600); err != nil {
 		return err
 	}
-	return writeNew(filepath.Join(f.Dir, "ca.crt"), certPEM, 0o644)
+	// The certificate is what Load reads first, so it appears whole or not
+	// at all: another server starting beside this one never reads half.
+	return publishNew(filepath.Join(f.Dir, "ca.crt"), certPEM, 0o644)
+}
+
+// publishNew writes a file that must not already exist, all at once: the
+// content goes to a temporary file, which is then hard-linked into place.
+// Linking fails if the name is taken, so it is as exclusive as O_EXCL.
+func publishNew(path string, data []byte, perm os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	defer os.Remove(name)
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(name, perm); err != nil {
+		return err
+	}
+	return os.Link(name, path)
 }
 
 // EnvKeyStore reads the CA from configuration supplied by the environment,

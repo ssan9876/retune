@@ -5,7 +5,7 @@ import { api } from "../api/client";
 import type { DeviceCompliance, DeviceDetail as Detail } from "../api/types";
 import { AdminPasswords } from "../components/AdminPasswords";
 import { RecoveryKeys } from "../components/RecoveryKeys";
-import { CollectLogsDialog, RenameDialog, WipeDialog } from "../components/RemoteActionDialogs";
+import { CollectLogsDialog, InstallUpdatesDialog, RenameDialog, WipeDialog } from "../components/RemoteActionDialogs";
 import { RunScriptDialog } from "../components/RunScriptDialog";
 import { SecurityStatus } from "../components/SecurityStatus";
 import { StatusDot } from "../components/StatusDot";
@@ -26,6 +26,7 @@ export default function DeviceDetail() {
   const [logsOpen, setLogsOpen] = useState(false);
   const [wipeOpen, setWipeOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [updatesOpen, setUpdatesOpen] = useState(false);
   const [passwordsToken, setPasswordsToken] = useState(0);
 
   const load = useCallback(() => {
@@ -172,6 +173,7 @@ export default function DeviceDetail() {
             Lock
           </Button>
           <Button onClick={() => setLogsOpen(true)}>Collect logs</Button>
+          <Button onClick={() => setUpdatesOpen(true)}>Install updates…</Button>
           <Button
             onClick={() =>
               void queueSimple(
@@ -278,6 +280,13 @@ export default function DeviceDetail() {
         onQueued={load}
       />
       <CollectLogsDialog deviceId={device.id} open={logsOpen} onClose={() => setLogsOpen(false)} onQueued={load} />
+      <InstallUpdatesDialog
+        deviceId={device.id}
+        hostname={device.hostname}
+        open={updatesOpen}
+        onClose={() => setUpdatesOpen(false)}
+        onQueued={load}
+      />
       <RenameDialog
         deviceId={device.id}
         hostname={device.hostname}

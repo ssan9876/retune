@@ -6,6 +6,60 @@ import { relative } from "../pages/Devices";
 interface SecurityDocument {
   defender?: DefenderStatus;
   firewall?: FirewallProfileState[];
+  windows_updates?: UpdateStatus;
+}
+
+interface PendingUpdate {
+  title: string;
+  kb?: string;
+  severity?: string;
+  security: boolean;
+  reboot_required?: boolean;
+}
+
+interface UpdateStatus {
+  scanned_at: string;
+  pending: PendingUpdate[];
+  error?: string;
+}
+
+/** UpdatesStatus lists what the device's last Windows Update search found
+ * missing, security updates first. */
+function UpdatesStatus({ status }: { status?: UpdateStatus }) {
+  if (!status) {
+    return <p className="hint">Windows Update: not reported yet. The agent searches once a day.</p>;
+  }
+  if (status.error) {
+    return (
+      <p className="hint">
+        Windows Update: the last search, {relative(status.scanned_at)}, failed: {status.error}
+      </p>
+    );
+  }
+  const pending = [...status.pending].sort((a, b) => Number(b.security) - Number(a.security));
+  const security = pending.filter((u) => u.security).length;
+  return (
+    <div>
+      <p>
+        Windows Update, searched {relative(status.scanned_at)}:{" "}
+        {pending.length === 0
+          ? "nothing missing."
+          : `${pending.length} update${pending.length === 1 ? "" : "s"} missing, ${security} of them security.`}
+      </p>
+      {pending.length > 0 ? (
+        <ul>
+          {pending.map((u, i) => (
+            <li key={`${u.kb ?? ""}${i}`}>
+              {u.security ? <strong>{u.severity ? `${u.severity} ` : ""}security</strong> : null}
+              {u.security ? ": " : ""}
+              {u.title}
+              {u.reboot_required ? <span className="hint"> (needs a restart)</span> : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
 }
 
 const NOT_REPORTED = "not reported";
@@ -73,6 +127,7 @@ export function SecurityStatus({ document }: { document: unknown }) {
           </div>
         ))}
       </dl>
+      <UpdatesStatus status={doc.windows_updates} />
     </section>
   );
 }

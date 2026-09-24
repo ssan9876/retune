@@ -25,7 +25,37 @@ const (
 	// CommandRenameComputer gives the device a new computer name, which
 	// takes effect when it next restarts.
 	CommandRenameComputer = "rename_computer"
+	// CommandInstallUpdates installs what Windows Update offers now,
+	// rather than when its own schedule gets round to it.
+	CommandInstallUpdates = "install_updates"
 )
+
+// install_updates scopes and restart choices.
+const (
+	UpdatesSecurity = "security"
+	UpdatesAll      = "all"
+
+	UpdateRestartNever      = "never"
+	UpdateRestartIfRequired = "if_required"
+)
+
+// InstallUpdatesPayload configures CommandInstallUpdates.
+type InstallUpdatesPayload struct {
+	// Scope is security (security and critical updates) or all (every
+	// software update offered, drivers included).
+	Scope string `json:"scope"`
+	// Restart is never, or if_required: restart five minutes after
+	// installing, when an update needs it.
+	Restart string `json:"restart"`
+}
+
+// InstallUpdatesResult is what the agent reports in a command's stdout.
+type InstallUpdatesResult struct {
+	Installed      int      `json:"installed"`
+	Failed         int      `json:"failed"`
+	RebootRequired bool     `json:"reboot_required"`
+	Titles         []string `json:"titles,omitempty"`
+}
 
 // RenameComputerPayload configures CommandRenameComputer.
 type RenameComputerPayload struct {
