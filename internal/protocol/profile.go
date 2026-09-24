@@ -241,6 +241,13 @@ type Setting struct {
 	SecretSet    bool          `json:"secret_set,omitempty"`
 	AutoConnect  *bool         `json:"auto_connect,omitempty"`
 	Hidden       bool          `json:"hidden,omitempty"`
+	// 802.1X (wpa2_enterprise): the sign-in method, the RADIUS server names
+	// and the SHA-1 thumbprints of the root CAs trusted to have issued their
+	// certificates, and whether the machine, the user or either signs in.
+	EAPMethod              string   `json:"eap_method,omitempty"`
+	ServerNames            []string `json:"server_names,omitempty"`
+	TrustedRootThumbprints []string `json:"trusted_root_thumbprints,omitempty"`
+	AuthMode               string   `json:"auth_mode,omitempty"`
 
 	// VPN. The connection's name is Name.
 	Server         string `json:"server,omitempty"`

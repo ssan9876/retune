@@ -31,6 +31,7 @@ The working list for making Retune usable by an enterprise, started on 2026-09-2
 | Server key rotation | #28 |
 | Scheduled email reports | #29 |
 | High availability guide, and CA creation safe for replicas starting together | #30 |
+| Enterprise (802.1X) Wi-Fi: PEAP and EAP-TLS, not yet tried against a RADIUS server | #31 |
 
 ## To do, in order (round two)
 
@@ -46,11 +47,26 @@ The first list is done. These are the gaps an enterprise would still hit, limite
 | 16 | **Server key rotation**: re-seal every stored secret under a new `secret.key` | a key suspected of exposure can be retired | done, #28 |
 | 17 | **Scheduled reports by email**: compliance and inventory CSVs | auditors and managers get the numbers without a console account | done, #29 |
 | 18 | **High availability guide**: two replicas, shared storage, what is already safe | no single point of failure | done, #30 |
-| 19 | **Enterprise (802.1X) Wi-Fi** | most corporate networks | needs a VM and a RADIUS server to verify |
+| 19 | **Enterprise (802.1X) Wi-Fi** | most corporate networks | done, #31; needs a check against a real RADIUS server |
+
+## To do, in order (round three: the Intune-style gaps)
+
+Round two is done. These close the larger gaps between Retune and Intune, as far as they can be built and checked from here. Where Microsoft's own service is the real thing (Autopilot, Entra ID conditional access), the item is the Retune-native equivalent, and says so.
+
+| # | item | why | notes |
+|---|---|---|---|
+| 20 | **Sign-in throttling shared across servers** | with several replicas, failed-password limits apply per replica today | small; found writing the HA guide |
+| 21 | **Zero-touch provisioning**: devices pre-registered by serial number, enrolled with a name and groups decided in advance, from a one-line install | Autopilot's job: a new laptop arrives, is unboxed, and configures itself | Retune-native; Autopilot itself needs Microsoft's service |
+| 22 | **Windows Update reporting and install-now**: which updates each device is missing, when it last installed, and a command to install now | update rings set policy; admins also need to see and act on the result | Windows Update Agent API through PowerShell |
+| 23 | **Device compliance for conditional access**: an API network access control and identity providers can ask "is this device compliant?", and a signed compliance statement a device can present | conditional access: only compliant devices reach company resources | Entra ID's partner compliance API needs Microsoft's approval; this is the open equivalent |
+| 24 | **Remote help**: an interactive PowerShell session to a device from the console, recorded | helpdesk fixes a machine without walking to it | a full remote desktop needs screen capture and a relay; this is the shell part |
+| 25 | **A macOS agent**: enrollment, inventory, scripts and commands on macOS | most fleets aren't only Windows | checked in CI on a macOS runner; configuration profiles stay Windows-only |
+| 26 | **Multi-tenant administration**: several organisations on one server, each seeing only its own | managed service providers | the schema already carries a tenant on every row |
 
 ## Can't be done from here
 
-- **Conditional access and Autopilot:** both need Microsoft's services.
+- **Autopilot and Entra ID conditional access themselves:** both need Microsoft's services; items 21 and 23 are the Retune-native equivalents.
+- **iOS and Android:** managing them needs Apple's push certificates and MDM enrollment, and Google's Android Enterprise enrollment - both vendor programmes.
 - **Authenticode signing of the MSI and agent:** needs a code-signing certificate, which is a purchase.
 - **Checking wipe, BitLocker, update rings and network profiles on a real machine:** needs a disposable Windows VM.
 - **macOS and Linux agents; multi-tenant administration:** these are product decisions, listed in `drafts/deferred.md`.

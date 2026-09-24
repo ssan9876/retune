@@ -2393,6 +2393,9 @@
           "active_hours_start": {
             "type": "integer"
           },
+          "auth_mode": {
+            "type": "string"
+          },
           "authentication": {
             "type": "string"
           },
@@ -2424,6 +2427,9 @@
             "type": "string"
           },
           "dns_suffix": {
+            "type": "string"
+          },
+          "eap_method": {
             "type": "string"
           },
           "ensure": {
@@ -2522,6 +2528,12 @@
           "server": {
             "type": "string"
           },
+          "server_names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "split_tunneling": {
             "type": "boolean"
           },
@@ -2542,6 +2554,12 @@
           },
           "target_version": {
             "type": "string"
+          },
+          "trusted_root_thumbprints": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "tunnel": {
             "type": "string"

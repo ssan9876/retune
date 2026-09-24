@@ -276,5 +276,20 @@ describe("wifiProblem", () => {
     expect(wifiProblem(wifi({ ssid: "x".repeat(33) }))).toMatch(/1 to 32/);
     expect(wifiProblem(wifi({ ssid: 'Say "hi"', passphrase: "correct horse" }))).toMatch(/quotes/);
   });
+  it("checks an 802.1X network's server validation", () => {
+    const enterprise = (extra: Record<string, unknown>) =>
+      wifi({
+        security: "wpa2_enterprise",
+        eap_method: "peap",
+        server_names: ["radius.contoso.com"],
+        trusted_root_thumbprints: ["A1:B2:C3:D4:E5:F6:07:18:29:3A:4B:5C:6D:7E:8F:90:01:12:23:34"],
+        ...extra,
+      });
+    expect(wifiProblem(enterprise({}))).toBeUndefined();
+    expect(wifiProblem(enterprise({ eap_method: undefined }))).toMatch(/sign in/);
+    expect(wifiProblem(enterprise({ server_names: [] }))).toMatch(/RADIUS/);
+    expect(wifiProblem(enterprise({ trusted_root_thumbprints: [] }))).toMatch(/thumbprints/);
+    expect(wifiProblem(enterprise({ trusted_root_thumbprints: ["nope"] }))).toMatch(/SHA-1/);
+  });
 });
 

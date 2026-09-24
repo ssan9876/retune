@@ -32,8 +32,40 @@ const KINDS = [
 const WIFI_SECURITY = [
   { value: "wpa2_personal", label: "WPA2-Personal" },
   { value: "wpa3_personal", label: "WPA3-Personal" },
+  { value: "wpa2_enterprise", label: "WPA2-Enterprise (802.1X)" },
   { value: "open", label: "Open (no password)" },
 ];
+
+/** splitList reads a list typed one per line or separated by commas. */
+function splitList(text: string): string[] {
+  return text
+    .split(/[\n,;]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/** ListArea edits a list one per line, keeping what is typed - a new empty
+ * line included - while handing the tidied list up. */
+function ListArea({ label, value, onChange }: { label: string; value: string[]; onChange: (v: string[]) => void }) {
+  const joined = value.join("\n");
+  const [text, setText] = useState(joined);
+  useEffect(() => {
+    // Replaced from outside, such as another setting opened: show it.
+    setText((cur) => (splitList(cur).join("\n") === joined ? cur : joined));
+  }, [joined]);
+  return (
+    <textarea
+      rows={2}
+      className="mono"
+      aria-label={label}
+      value={text}
+      onChange={(e) => {
+        setText(e.target.value);
+        onChange(splitList(e.target.value));
+      }}
+    />
+  );
+}
 
 /** wifiProblem matches the server's checks on a Wi-Fi setting. */
 export function wifiProblem(s: Setting): string | undefined {
@@ -42,6 +74,18 @@ export function wifiProblem(s: Setting): string | undefined {
   if (bytes === 0 || bytes > 32) return "The network name is 1 to 32 bytes.";
   if (/["\u0000-\u001f]/.test(ssid)) return "The network name can't contain quotes or control characters.";
   if (s.security === "open") return undefined;
+  if (s.security === "wpa2_enterprise") {
+    if (s.eap_method !== "peap" && s.eap_method !== "tls") return "Choose how devices sign in.";
+    const names = s.server_names ?? [];
+    if (names.length === 0 || names.length > 8) return "Name 1 to 8 RADIUS servers, so devices check who they talk to.";
+    const roots = s.trusted_root_thumbprints ?? [];
+    if (roots.length === 0 || roots.length > 8) return "Give 1 to 8 thumbprints of the CA that issued the RADIUS certificate.";
+    for (const r of roots) {
+      if (!/^[0-9a-f]{40}$/.test(r.toLowerCase().replace(/[\s:-]/g, "")))
+        return `${r} is not a SHA-1 thumbprint (40 hex digits).`;
+    }
+    return undefined;
+  }
   const pass = s.passphrase ?? "";
   if (pass === "") return s.secret_set ? undefined : "A password-protected network needs its passphrase.";
   if (pass.length < 8 || pass.length > 63 || !/^[\x20-\x7e]+$/.test(pass))
@@ -561,7 +605,20 @@ function SettingFields({
         <Field label="Security">
           <select
             value={setting.security ?? "wpa2_personal"}
-            onChange={(e) => set({ security: e.target.value, passphrase: "" })}
+            onChange={(e) =>
+              set(
+                e.target.value === "wpa2_enterprise"
+                  ? { security: e.target.value, passphrase: "", eap_method: "peap", auth_mode: "machine_or_user" }
+                  : {
+                      security: e.target.value,
+                      passphrase: "",
+                      eap_method: undefined,
+                      server_names: undefined,
+                      trusted_root_thumbprints: undefined,
+                      auth_mode: undefined,
+                    },
+              )
+            }
           >
             {WIFI_SECURITY.map((w) => (
               <option key={w.value} value={w.value}>
@@ -570,7 +627,46 @@ function SettingFields({
             ))}
           </select>
         </Field>
-        {setting.security !== "open" ? (
+        {setting.security === "wpa2_enterprise" ? (
+          <>
+            <Field label="Devices sign in with">
+              <select value={setting.eap_method ?? "peap"} onChange={(e) => set({ eap_method: e.target.value })}>
+                <option value="peap">Their Windows sign-in (PEAP-MSCHAPv2)</option>
+                <option value="tls">A certificate (EAP-TLS)</option>
+              </select>
+            </Field>
+            <Field label="Who signs in">
+              <select value={setting.auth_mode ?? "machine_or_user"} onChange={(e) => set({ auth_mode: e.target.value })}>
+                <option value="machine_or_user">The machine, then the user once someone signs in</option>
+                <option value="machine">The machine only</option>
+                <option value="user">The user only</option>
+              </select>
+            </Field>
+            <Field label="RADIUS server names" hint="The names on the RADIUS servers' certificates, one per line.">
+              <ListArea
+                label="RADIUS server names"
+                value={setting.server_names ?? []}
+                onChange={(v) => set({ server_names: v })}
+              />
+            </Field>
+            <Field
+              label="Trusted root CA thumbprints"
+              hint="SHA-1 thumbprints of the CA that issued those certificates, one per line. Devices trust no other server."
+            >
+              <ListArea
+                label="Trusted root CA thumbprints"
+                value={setting.trusted_root_thumbprints ?? []}
+                onChange={(v) => set({ trusted_root_thumbprints: v })}
+              />
+            </Field>
+            <p className="hint">
+              {setting.eap_method === "tls"
+                ? "Each device (or user) needs a certificate from your PKI already, for example through Active Directory Certificate Services autoenrollment."
+                : "Devices sign in with the machine's domain account, and users with their own."}{" "}
+              The root CA itself can be installed with a certificate setting in this profile.
+            </p>
+          </>
+        ) : setting.security !== "open" ? (
           <Field
             label="Passphrase"
             hint={
