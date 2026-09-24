@@ -81,6 +81,10 @@ type Service struct {
 	MaxSessionLifetime time.Duration
 	Limiter    *Limiter
 	Issuer     string
+	// Throttle counts failed sign-ins in the database, shared by every server
+	// behind a load balancer. When it is nil, Limiter counts them in this
+	// server's memory instead.
+	Throttle Throttle
 	// LocalLoginDisabled refuses every password sign-in.
 	LocalLoginDisabled bool
 	// SSOScopesManaged says the identity provider sets SSO accounts'
@@ -124,15 +128,21 @@ func (s *Service) Authenticate(ctx context.Context, email, password, totpCode st
 	if len(key) > maxEmailLength || len(password) > maxPasswordLength {
 		return store.Admin{}, ErrInvalidCredentials
 	}
-	if s.Limiter != nil && !s.Limiter.Allowed(key) {
-		return store.Admin{}, ErrTooManyAttempts
+	if t := s.throttle(); t != nil {
+		allowed, err := t.Allowed(ctx, key)
+		if err != nil {
+			return store.Admin{}, err
+		}
+		if !allowed {
+			return store.Admin{}, ErrTooManyAttempts
+		}
 	}
 	admin, err := s.Store.Q().GetAdminByEmail(ctx, store.DefaultTenantID, key)
 	if errors.Is(err, store.ErrNotFound) {
 		if _, err := verifyPassword(ctx, dummyHash(), password); err != nil { // keep the timing similar
 			return store.Admin{}, err
 		}
-		s.fail(key)
+		s.fail(ctx, key)
 		return store.Admin{}, ErrInvalidCredentials
 	}
 	if err != nil {
@@ -145,7 +155,7 @@ func (s *Service) Authenticate(ctx context.Context, email, password, totpCode st
 		if _, err := verifyPassword(ctx, dummyHash(), password); err != nil {
 			return store.Admin{}, err
 		}
-		s.fail(key)
+		s.fail(ctx, key)
 		return store.Admin{}, ErrInvalidCredentials
 	}
 	ok, err := verifyPassword(ctx, admin.PasswordHash, password)
@@ -153,7 +163,7 @@ func (s *Service) Authenticate(ctx context.Context, email, password, totpCode st
 		return store.Admin{}, err
 	}
 	if !ok {
-		s.fail(key)
+		s.fail(ctx, key)
 		return store.Admin{}, ErrInvalidCredentials
 	}
 	if admin.DisabledAt != nil {
@@ -169,7 +179,7 @@ func (s *Service) Authenticate(ctx context.Context, email, password, totpCode st
 		}
 		step, ok := matchTOTP(secret, totpCode, s.Now())
 		if !ok {
-			s.fail(key)
+			s.fail(ctx, key)
 			return store.Admin{}, ErrTOTPInvalid
 		}
 		// A code is good for a minute or so; whoever watched it being typed
@@ -179,12 +189,14 @@ func (s *Service) Authenticate(ctx context.Context, email, password, totpCode st
 			return store.Admin{}, err
 		}
 		if !fresh {
-			s.fail(key)
+			s.fail(ctx, key)
 			return store.Admin{}, ErrTOTPInvalid
 		}
 	}
-	if s.Limiter != nil {
-		s.Limiter.Reset(key)
+	if t := s.throttle(); t != nil {
+		// Best effort: a sign-in that worked isn't refused because its
+		// failures couldn't be cleared.
+		_ = t.Reset(ctx, key)
 	}
 	now := s.Now()
 	err = s.Store.InTx(ctx, func(q *store.Queries) error {
@@ -203,9 +215,23 @@ func (s *Service) Authenticate(ctx context.Context, email, password, totpCode st
 	return admin, nil
 }
 
-func (s *Service) fail(key string) {
-	if s.Limiter != nil {
-		s.Limiter.Fail(key)
+// throttle is Throttle when set, shared by every server; else the in-memory
+// Limiter; else none.
+func (s *Service) throttle() Throttle {
+	switch {
+	case s.Throttle != nil:
+		return s.Throttle
+	case s.Limiter != nil:
+		return memoryThrottle{s.Limiter}
+	}
+	return nil
+}
+
+func (s *Service) fail(ctx context.Context, key string) {
+	if t := s.throttle(); t != nil {
+		// Best effort, like Reset: if the database can't be written, the
+		// sign-in fails anyway.
+		_ = t.Fail(ctx, key)
 	}
 }
 

@@ -165,7 +165,8 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	reporter := &reports.Service{Store: st, Mailer: alerter.AttachmentMailer(), Now: time.Now, Log: log}
 	authSvc := &auth.Service{
 		Store: st, Now: time.Now, SessionTTL: cfg.SessionTTL, MaxSessionLifetime: cfg.SessionMaxLifetime,
-		Limiter: auth.NewLimiter(10, 15*time.Minute, time.Now), Issuer: "Retune", Key: secretKey,
+		Throttle: &auth.StoreThrottle{Store: st, Max: 10, Window: 15 * time.Minute, Now: time.Now},
+		Issuer:   "Retune", Key: secretKey,
 	}
 	if n, err := authSvc.SealTOTPSecrets(ctx); err != nil {
 		return nil, fmt.Errorf("seal authenticator secrets: %w", err)

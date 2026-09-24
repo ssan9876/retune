@@ -83,6 +83,7 @@ the process is alive.
 | two-person approvals | deciding one is a conditional update, so two approvers at once can't both run it |
 | creating the CA and the secret key | exclusive file creation; the losers use the winner's |
 | rotating the secret key | refuses to run while any server is connected (each holds a lock saying so) |
+| sign-in throttling | failed passwords are counted in the database: ten per account in fifteen minutes, however the balancer spreads the guesses |
 
 This is exercised by a test that starts two servers at the same moment
 against one database and one empty `DATA_DIR`, signs in through one and uses
@@ -91,10 +92,6 @@ through the other, and seals a secret on one and opens it on the other.
 
 ## What is still per server
 
-- **Sign-in throttling** counts failed passwords in each server's memory: ten
-  failures in fifteen minutes per account, *per server*. Behind a balancer
-  spreading requests, an attacker gets that allowance once per replica. With
-  single sign-on, your identity provider's own protections apply instead.
 - **Metrics.** The fleet gauges come from the database and read the same on
   every server, but the `retune_sweeper_*` series count only the jobs that
   server ran. Scrape every server, and sum.

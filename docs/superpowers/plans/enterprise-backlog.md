@@ -32,6 +32,7 @@ The working list for making Retune usable by an enterprise, started on 2026-09-2
 | Scheduled email reports | #29 |
 | High availability guide, and CA creation safe for replicas starting together | #30 |
 | Enterprise (802.1X) Wi-Fi: PEAP and EAP-TLS, not yet tried against a RADIUS server | #31 |
+| Sign-in throttling shared across servers | #32 |
 
 ## To do, in order (round two)
 
@@ -55,7 +56,7 @@ Round two is done. These close the larger gaps between Retune and Intune, as far
 
 | # | item | why | notes |
 |---|---|---|---|
-| 20 | **Sign-in throttling shared across servers** | with several replicas, failed-password limits apply per replica today | small; found writing the HA guide |
+| 20 | **Sign-in throttling shared across servers** | with several replicas, failed-password limits apply per replica today | done, #32 |
 | 21 | **Zero-touch provisioning**: devices pre-registered by serial number, enrolled with a name and groups decided in advance, from a one-line install | Autopilot's job: a new laptop arrives, is unboxed, and configures itself | Retune-native; Autopilot itself needs Microsoft's service |
 | 22 | **Windows Update reporting and install-now**: which updates each device is missing, when it last installed, and a command to install now | update rings set policy; admins also need to see and act on the result | Windows Update Agent API through PowerShell |
 | 23 | **Device compliance for conditional access**: an API network access control and identity providers can ask "is this device compliant?", and a signed compliance statement a device can present | conditional access: only compliant devices reach company resources | Entra ID's partner compliance API needs Microsoft's approval; this is the open equivalent |
