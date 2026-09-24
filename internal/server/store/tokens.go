@@ -8,11 +8,11 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const tokenCols = `id, token_hash, label, expires_at, max_uses, use_count, revoked_at, created_by, created_at`
+const tokenCols = `id, token_hash, label, expires_at, max_uses, use_count, revoked_at, created_by, created_at, registered_only`
 
 func scanToken(row pgx.Row) (EnrollmentToken, error) {
 	var t EnrollmentToken
-	err := row.Scan(&t.ID, &t.TokenHash, &t.Label, &t.ExpiresAt, &t.MaxUses, &t.UseCount, &t.RevokedAt, &t.CreatedBy, &t.CreatedAt)
+	err := row.Scan(&t.ID, &t.TokenHash, &t.Label, &t.ExpiresAt, &t.MaxUses, &t.UseCount, &t.RevokedAt, &t.CreatedBy, &t.CreatedAt, &t.RegisteredOnly)
 	return t, notFound(err)
 }
 
@@ -21,9 +21,9 @@ func (q *Queries) CreateEnrollmentToken(ctx context.Context, t EnrollmentToken) 
 		t.CreatedAt = time.Now().UTC()
 	}
 	_, err := q.db.Exec(ctx, `
-		INSERT INTO enrollment_tokens (id, tenant_id, token_hash, label, expires_at, max_uses, created_by, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		t.ID, DefaultTenantID, t.TokenHash, t.Label, t.ExpiresAt, t.MaxUses, t.CreatedBy, t.CreatedAt)
+		INSERT INTO enrollment_tokens (id, tenant_id, token_hash, label, expires_at, max_uses, created_by, created_at, registered_only)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		t.ID, DefaultTenantID, t.TokenHash, t.Label, t.ExpiresAt, t.MaxUses, t.CreatedBy, t.CreatedAt, t.RegisteredOnly)
 	return err
 }
 

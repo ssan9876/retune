@@ -68,6 +68,8 @@ func (e *Executor) Execute(ctx context.Context, c protocol.Command) protocol.Com
 		e.wipe(ctx, c.Payload, &res)
 	case protocol.CommandRotateAdminPassword:
 		e.rotateAdminPassword(ctx, c, &res)
+	case protocol.CommandRenameComputer:
+		e.renameComputer(ctx, c.Payload, &res)
 	default:
 		fail(&res, fmt.Sprintf("unsupported command type %q", c.Type))
 	}
@@ -126,6 +128,40 @@ func (e *Executor) restart(raw json.RawMessage, res *protocol.CommandResult) {
 	}
 	if err := e.Restarter.Restart(time.Duration(p.DelaySeconds)*time.Second, p.Message); err != nil {
 		fail(res, err.Error())
+	}
+}
+
+// renameComputer renames the machine. The name is checked again here, as
+// well as by the server: it goes into a PowerShell command line.
+func (e *Executor) renameComputer(ctx context.Context, raw json.RawMessage, res *protocol.CommandResult) {
+	var p protocol.RenameComputerPayload
+	if err := json.Unmarshal(raw, &p); err != nil {
+		fail(res, fmt.Sprintf("invalid rename_computer payload: %v", err))
+		return
+	}
+	if !protocol.ValidComputerName(p.Name) {
+		fail(res, fmt.Sprintf("%q is not a computer name", p.Name))
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	stdout, stderr := NewCapped(protocol.MaxOutputBytes), NewCapped(protocol.MaxOutputBytes)
+	code, err := e.Runner.RunPowerShell(ctx, "Rename-Computer -NewName '"+p.Name+"' -Force -ErrorAction Stop", stdout, stderr)
+	res.Stdout, res.Stderr = stdout.String(), stderr.String()
+	switch {
+	case err != nil:
+		fail(res, err.Error())
+		return
+	case code != 0:
+		res.Status, res.ExitCode = protocol.ResultFailed, code
+		return
+	}
+	if !p.Restart {
+		res.Stdout = strings.TrimSpace(res.Stdout+"\nRenamed to "+p.Name+"; the name takes effect when the device next restarts.") + "\n"
+		return
+	}
+	if err := e.Restarter.Restart(time.Minute, "Restarting to finish renaming this computer to "+p.Name+"."); err != nil {
+		fail(res, "renamed, but the restart to finish it failed: "+err.Error())
 	}
 }
 

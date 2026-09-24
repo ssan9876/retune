@@ -18,6 +18,7 @@ import Login from "./pages/Login";
 import MaintenanceWindows from "./pages/MaintenanceWindows";
 import Overview from "./pages/Overview";
 import Profiles from "./pages/Profiles";
+import Provisioning from "./pages/Provisioning";
 import Reports from "./pages/Reports";
 import Scripts from "./pages/Scripts";
 import Tokens from "./pages/Tokens";
@@ -42,6 +43,7 @@ export default function App() {
         <Route path="/compliance" element={<Compliance />} />
         <Route path="/commands" element={<Commands />} />
         <Route path="/tokens" element={<Tokens />} />
+        <Route path="/provisioning" element={<Provisioning />} />
         <Route path="/approvals" element={<Approvals />} />
         <Route path="/alerts" element={<Alerts />} />
         <Route path="/reports" element={<Reports />} />

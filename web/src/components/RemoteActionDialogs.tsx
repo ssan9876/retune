@@ -73,6 +73,79 @@ export function CollectLogsDialog({
   );
 }
 
+/** validComputerName matches the server's check on a computer name. */
+export function validComputerName(name: string): boolean {
+  return /^[A-Za-z0-9-]{1,15}$/.test(name) && !/^\d+$/.test(name) && !name.startsWith("-") && !name.endsWith("-");
+}
+
+/** RenameDialog gives a device a new computer name. */
+export function RenameDialog({
+  deviceId,
+  hostname,
+  open,
+  onClose,
+  onQueued,
+}: {
+  deviceId: string;
+  hostname: string;
+  open: boolean;
+  onClose: () => void;
+  onQueued: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [restart, setRestart] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setName("");
+      setRestart(false);
+      setError(null);
+    }
+  }, [open]);
+
+  async function rename() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post("/commands", { device_ids: [deviceId], type: "rename_computer", name: name.trim(), restart });
+      onQueued();
+      onClose();
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const valid = validComputerName(name.trim());
+  return (
+    <Dialog title={`Rename ${hostname}`} open={open} onClose={onClose}>
+      <Field
+        label="New computer name"
+        error={name.trim() && !valid ? "Up to 15 letters, digits and hyphens, not all digits." : undefined}
+      >
+        <input value={name} onChange={(e) => setName(e.target.value)} />
+      </Field>
+      <label style={{ display: "block", marginBottom: "var(--space-2)" }}>
+        <input type="checkbox" checked={restart} onChange={(e) => setRestart(e.target.checked)} /> Restart a minute
+        later, so the name takes effect now
+      </label>
+      <p className="hint">Without a restart, the new name takes effect the next time the device restarts.</p>
+      <ErrorNote error={error} />
+      <div className="actions">
+        <Button variant="primary" onClick={() => void rename()} disabled={busy || !valid}>
+          Rename
+        </Button>
+        <Button variant="quiet" onClick={onClose}>
+          Cancel
+        </Button>
+      </div>
+    </Dialog>
+  );
+}
+
 /** WipeDialog resets a device to factory settings, once the administrator has
  * typed its hostname and said why. */
 export function WipeDialog({

@@ -72,6 +72,9 @@ type queueRequest struct {
 	// rotate_local_admin_password
 	Account string `json:"account"`
 	Length  int    `json:"length"`
+	// rename_computer
+	Name    string `json:"name,omitempty"`
+	Restart bool   `json:"restart,omitempty"`
 }
 
 func (h *Handler) listCommands(w http.ResponseWriter, r *http.Request) {
@@ -238,8 +241,10 @@ func payloadFor(req queueRequest) (json.RawMessage, error) {
 		return json.Marshal(protocol.WipePayload{Protected: req.Protected, Expires: req.Expires, Signature: req.Signature})
 	case protocol.CommandRotateAdminPassword:
 		return json.Marshal(protocol.RotateAdminPasswordPayload{Account: req.Account, Length: req.Length})
+	case protocol.CommandRenameComputer:
+		return json.Marshal(protocol.RenameComputerPayload{Name: req.Name, Restart: req.Restart})
 	default:
-		return nil, errors.New("type must be run_powershell, restart, refresh_inventory, lock, collect_logs, wipe or rotate_local_admin_password")
+		return nil, errors.New("type must be run_powershell, restart, refresh_inventory, lock, collect_logs, wipe, rotate_local_admin_password or rename_computer")
 	}
 }
 

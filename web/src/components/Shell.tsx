@@ -24,6 +24,7 @@ const SECTIONS: Section[] = [
       { to: "/devices", label: "All devices", icon: "device" },
       { to: "/groups", label: "Groups", icon: "group" },
       { to: "/tokens", label: "Enrollment", icon: "key", fleet: true },
+      { to: "/provisioning", label: "Provisioning", icon: "check", fleet: true },
       { to: "/commands", label: "Commands", icon: "terminal" },
     ],
   },

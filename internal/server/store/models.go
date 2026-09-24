@@ -25,6 +25,8 @@ type EnrollmentToken struct {
 	RevokedAt *time.Time
 	CreatedBy string
 	CreatedAt time.Time
+	// RegisteredOnly enrolls only devices registered in advance.
+	RegisteredOnly bool
 }
 
 // Device is an enrolled endpoint.

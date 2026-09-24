@@ -2,6 +2,7 @@ package enroll
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -31,6 +32,8 @@ type TokenOptions struct {
 	MaxUses   *int
 	ExpiresAt *time.Time
 	CreatedBy string
+	// RegisteredOnly enrolls only devices registered by serial number.
+	RegisteredOnly bool
 }
 
 // CreateToken stores a new token and returns its plaintext (shown once).
@@ -48,7 +51,7 @@ func (s *Service) CreateToken(ctx context.Context, o TokenOptions) (string, stor
 	}
 	tok := store.EnrollmentToken{
 		ID: id, TokenHash: hash, Label: o.Label, MaxUses: o.MaxUses,
-		ExpiresAt: o.ExpiresAt, CreatedBy: o.CreatedBy, CreatedAt: s.Now(),
+		ExpiresAt: o.ExpiresAt, CreatedBy: o.CreatedBy, CreatedAt: s.Now(), RegisteredOnly: o.RegisteredOnly,
 	}
 	err = s.Store.InTx(ctx, func(q *store.Queries) error {
 		if err := q.CreateEnrollmentToken(ctx, tok); err != nil {
@@ -57,7 +60,7 @@ func (s *Service) CreateToken(ctx context.Context, o TokenOptions) (string, stor
 		return q.InsertAudit(ctx, store.AuditEntry{
 			Actor: o.CreatedBy, Action: "enrollment_token.created",
 			TargetKind: "enrollment_token", TargetID: id.String(),
-			Details: map[string]any{"label": o.Label},
+			Details: map[string]any{"label": o.Label, "registered_only": o.RegisteredOnly},
 		})
 	})
 	if err != nil {
@@ -106,6 +109,23 @@ func (s *Service) Enroll(ctx context.Context, req protocol.EnrollRequest) (proto
 		}
 		if err := CheckUsable(tok, now); err != nil {
 			return err
+		}
+		// A device registered in advance gets its groups and name. The
+		// serial is the device's own claim: a registered-only token keeps a
+		// leaked token from enrolling any machine, but not one that lies
+		// about its serial.
+		var reg *store.DeviceRegistration
+		if serial := strings.TrimSpace(req.Device.Serial); serial != "" {
+			r, err := q.RegistrationForSerial(ctx, serial)
+			switch {
+			case err == nil:
+				reg = &r
+			case !errors.Is(err, store.ErrNotFound):
+				return err
+			}
+		}
+		if tok.RegisteredOnly && reg == nil {
+			return ErrNotRegistered
 		}
 
 		deviceID, err := uuid.NewV7()
@@ -157,6 +177,11 @@ func (s *Service) Enroll(ctx context.Context, req protocol.EnrollRequest) (proto
 		if err := q.AddGroupMember(ctx, store.BuiltinGroupID, deviceID, now); err != nil {
 			return err
 		}
+		if reg != nil {
+			if err := provision(ctx, q, *reg, deviceID, req.Device.Hostname, now, details); err != nil {
+				return err
+			}
+		}
 		if err := q.InsertAudit(ctx, store.AuditEntry{
 			Actor: "token:" + tok.ID.String(), Action: "device.enrolled",
 			TargetKind: "device", TargetID: deviceID.String(), Details: details,
@@ -170,4 +195,45 @@ func (s *Service) Enroll(ctx context.Context, req protocol.EnrollRequest) (proto
 		return protocol.EnrollResponse{}, err
 	}
 	return resp, nil
+}
+
+// renameTTL is how long a provisioning rename waits for its device.
+const renameTTL = 7 * 24 * time.Hour
+
+// provision applies a registration to the device it became: into its static
+// groups, and renamed if it was given a name. A group since deleted, or made
+// dynamic, is skipped: membership of a dynamic group is its rule's to decide.
+func provision(ctx context.Context, q *store.Queries, reg store.DeviceRegistration, deviceID uuid.UUID,
+	hostname string, now time.Time, details map[string]any) error {
+	details["registration_id"] = reg.ID.String()
+	var joined []string
+	for _, gid := range reg.GroupIDs {
+		g, err := q.GetGroup(ctx, store.DefaultTenantID, gid)
+		if errors.Is(err, store.ErrNotFound) || (err == nil && g.Kind != store.GroupStatic) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if err := q.AddGroupMember(ctx, gid, deviceID, now); err != nil {
+			return err
+		}
+		joined = append(joined, g.Name)
+	}
+	details["groups"] = joined
+	if reg.DeviceName != "" && !strings.EqualFold(reg.DeviceName, hostname) {
+		payload, err := json.Marshal(protocol.RenameComputerPayload{Name: reg.DeviceName})
+		if err != nil {
+			return err
+		}
+		if err := q.CreateCommand(ctx, store.Command{
+			ID: uuid.Must(uuid.NewV7()), DeviceID: deviceID, Type: protocol.CommandRenameComputer,
+			Payload: payload, Status: store.CommandQueued, CreatedBy: "registration:" + reg.ID.String(),
+			CreatedAt: now, ExpiresAt: now.Add(renameTTL),
+		}); err != nil {
+			return err
+		}
+		details["rename_to"] = reg.DeviceName
+	}
+	return q.MarkRegistrationEnrolled(ctx, reg.ID, deviceID, now)
 }

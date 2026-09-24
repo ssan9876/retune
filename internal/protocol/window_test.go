@@ -78,3 +78,16 @@ func TestWindowsOpen(t *testing.T) {
 		t.Error("an unreadable window must hold changes back")
 	}
 }
+
+func TestValidComputerName(t *testing.T) {
+	for _, good := range []string{"PC1", "LAPTOP-042", "a", "ABCDEFGHIJKLMNO"} {
+		if !ValidComputerName(good) {
+			t.Errorf("%q should be valid", good)
+		}
+	}
+	for _, bad := range []string{"", "12345", "-PC", "PC-", "ABCDEFGHIJKLMNOP", "PC 1", "PC_1", "PC.corp", "PC'1"} {
+		if ValidComputerName(bad) {
+			t.Errorf("%q should be refused", bad)
+		}
+	}
+}

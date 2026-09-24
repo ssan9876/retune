@@ -5,7 +5,7 @@ import { api } from "../api/client";
 import type { DeviceCompliance, DeviceDetail as Detail } from "../api/types";
 import { AdminPasswords } from "../components/AdminPasswords";
 import { RecoveryKeys } from "../components/RecoveryKeys";
-import { CollectLogsDialog, WipeDialog } from "../components/RemoteActionDialogs";
+import { CollectLogsDialog, RenameDialog, WipeDialog } from "../components/RemoteActionDialogs";
 import { RunScriptDialog } from "../components/RunScriptDialog";
 import { SecurityStatus } from "../components/SecurityStatus";
 import { StatusDot } from "../components/StatusDot";
@@ -25,6 +25,7 @@ export default function DeviceDetail() {
   const [scriptOpen, setScriptOpen] = useState(false);
   const [logsOpen, setLogsOpen] = useState(false);
   const [wipeOpen, setWipeOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
   const [passwordsToken, setPasswordsToken] = useState(0);
 
   const load = useCallback(() => {
@@ -183,6 +184,7 @@ export default function DeviceDetail() {
           </Button>
           {canWrite ? (
             <>
+              <Button onClick={() => setRenameOpen(true)}>Rename…</Button>
               <Button variant="danger" onClick={() => setWipeOpen(true)}>
                 Wipe…
               </Button>
@@ -276,6 +278,13 @@ export default function DeviceDetail() {
         onQueued={load}
       />
       <CollectLogsDialog deviceId={device.id} open={logsOpen} onClose={() => setLogsOpen(false)} onQueued={load} />
+      <RenameDialog
+        deviceId={device.id}
+        hostname={device.hostname}
+        open={renameOpen}
+        onClose={() => setRenameOpen(false)}
+        onQueued={load}
+      />
       <WipeDialog
         deviceId={device.id}
         hostname={device.hostname}
