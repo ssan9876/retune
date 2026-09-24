@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"retune/internal/server/alerts"
 	"retune/internal/server/app"
 	"retune/internal/server/store"
@@ -304,5 +306,25 @@ func TestReadOnlyAdminsSeeOnlyAWebhooksHost(t *testing.T) {
 	}
 	if _, body := admin.do(http.MethodGet, "/notification-channels", nil); !strings.Contains(string(body), "SECRETSECRET") {
 		t.Errorf("an admin should see the whole URL to edit it: %s", body)
+	}
+}
+
+// A rule that can't be saved as asked is the caller's mistake, said as one:
+// a 400 naming what's wrong, never a server error.
+func TestAnInvalidRuleIsABadRequest(t *testing.T) {
+	_, _, c, _ := alertingApp(t)
+	ch := createChannel(t, c, map[string]any{
+		"name": "Ops mailbox", "kind": "email",
+		"config": map[string]any{"to": []string{"ops@example.com"}},
+	})
+	for name, body := range map[string]map[string]any{
+		"no name":         {"kind": store.AlertDeviceStale, "params": map[string]any{"hours": 1}, "channel_id": ch["id"]},
+		"no channel":      {"name": "Quiet", "kind": store.AlertDeviceStale, "params": map[string]any{"hours": 1}},
+		"bad channel id":  {"name": "Quiet", "kind": store.AlertDeviceStale, "params": map[string]any{"hours": 1}, "channel_id": "nope"},
+		"unknown channel": {"name": "Quiet", "kind": store.AlertDeviceStale, "params": map[string]any{"hours": 1}, "channel_id": uuid.NewString()},
+	} {
+		if status, raw := c.do(http.MethodPost, "/alert-rules", body); status != http.StatusBadRequest {
+			t.Errorf("%s: %d %s, want 400", name, status, raw)
+		}
 	}
 }

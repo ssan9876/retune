@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -350,7 +351,7 @@ func (h *Handler) createAlertRule(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	rule, err := h.alertRuleFrom(req, store.AlertRule{
+	rule, err := h.alertRuleFrom(r.Context(), req, store.AlertRule{
 		CreatedAt: h.Now(), CreatedBy: caller(r).Admin.Email, Enabled: true,
 	})
 	if err != nil {
@@ -406,7 +407,7 @@ func (h *Handler) updateAlertRule(w http.ResponseWriter, r *http.Request) {
 		h.writeAlertError(w, "alert rule", err)
 		return
 	}
-	rule, err := h.alertRuleFrom(req, existing)
+	rule, err := h.alertRuleFrom(ctx, req, existing)
 	if err != nil {
 		h.writeAlertError(w, "alert rule", err)
 		return
@@ -443,13 +444,13 @@ func (h *Handler) deleteAlertRule(w http.ResponseWriter, r *http.Request) {
 // alertRuleFrom validates a request onto an existing rule (or a blank one for
 // a create), so the same parsing covers both and a rule is never stored with
 // parameters its kind does not understand.
-func (h *Handler) alertRuleFrom(req alertRuleRequest, base store.AlertRule) (store.AlertRule, error) {
+func (h *Handler) alertRuleFrom(ctx context.Context, req alertRuleRequest, base store.AlertRule) (store.AlertRule, error) {
 	rule := base
 	if name := strings.TrimSpace(req.Name); name != "" {
 		rule.Name = name
 	}
 	if rule.Name == "" {
-		return store.AlertRule{}, errors.New("a rule needs a name")
+		return store.AlertRule{}, fmt.Errorf("%w: a rule needs a name", alerts.ErrBadRule)
 	}
 	if req.Kind != "" {
 		rule.Kind = req.Kind
@@ -472,12 +473,18 @@ func (h *Handler) alertRuleFrom(req alertRuleRequest, base store.AlertRule) (sto
 	if req.ChannelID != "" {
 		id, err := uuid.Parse(req.ChannelID)
 		if err != nil {
-			return store.AlertRule{}, errors.New("channel_id must be a UUID")
+			return store.AlertRule{}, fmt.Errorf("%w: channel_id must be a UUID", alerts.ErrBadRule)
 		}
 		rule.ChannelID = id
 	}
 	if rule.ChannelID == (uuid.UUID{}) {
-		return store.AlertRule{}, errors.New("a rule needs a channel to deliver to")
+		return store.AlertRule{}, fmt.Errorf("%w: a rule needs a channel to deliver to", alerts.ErrBadRule)
+	}
+	switch _, err := h.Store.Q().GetNotificationChannel(ctx, store.DefaultTenantID, rule.ChannelID); {
+	case errors.Is(err, store.ErrNotFound):
+		return store.AlertRule{}, fmt.Errorf("%w: there is no such channel", alerts.ErrBadRule)
+	case err != nil:
+		return store.AlertRule{}, err
 	}
 	if req.Enabled != nil {
 		rule.Enabled = *req.Enabled
