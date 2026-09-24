@@ -222,5 +222,8 @@ func defaultDataDir() string {
 		}
 		return `C:\ProgramData\Retune`
 	}
+	if runtime.GOOS == "darwin" {
+		return "/Library/Application Support/Retune"
+	}
 	return "/var/lib/retune"
 }

@@ -619,6 +619,38 @@ Set-Service Retune -StartupType Automatic
 Start-Service Retune
 ```
 
+### On a Mac
+
+The macOS agent (Apple silicon or Intel, macOS 13 or later) runs as a launchd
+daemon, as root. Build it with `make agent-mac`, copy the binary for the
+Mac's processor to `/usr/local/bin/retune-agent`, then:
+
+```bash
+sudo retune-agent enroll --server https://mdm.example.com --token <TOKEN> --pin <FINGERPRINT>
+sudo retune-agent install
+```
+
+`install` writes `/Library/LaunchDaemons/com.retune.agent.plist` and starts
+the daemon; `uninstall` stops and removes it. The agent keeps its state in
+`/Library/Application Support/Retune`, readable by root only, and logs to
+`/var/log/retune-agent.log`.
+
+A Mac reports its model, serial number, hardware UUID, macOS version,
+processor, memory, startup volume (with FileVault in the BitLocker column),
+network interfaces, applications (outside `/System`), local accounts, the
+`admin` group and the application firewall — as all three firewall profiles,
+so the firewall compliance rule works unchanged. Scripts run with PowerShell 7
+(`pwsh`), so one script can target both platforms; install it on the Mac
+first, or scripts fail saying it is missing. Restart works (`shutdown` counts
+in whole minutes), and the remote shell is `zsh` as root.
+
+Not on a Mac yet: configuration profiles, lock, wipe, local administrator
+passwords, log collection, Windows Update reporting, app deployment, and
+self-update — update the binary with your own tooling, then
+`sudo launchctl kickstart -k system/com.retune.agent`. Each of those fails on
+a Mac with a reason rather than silently. The device key is a file in the
+root-only state directory, not in the Keychain.
+
 ### Zero-touch provisioning
 
 Register devices by serial number before they arrive, and a new laptop
@@ -1285,7 +1317,7 @@ simply falls back to its check-in interval.
 | Wipe | resets the device to factory settings through Windows' own MDM remote wipe; a *protected* wipe also removes the recovery partition's data and may leave a device that needs reinstalling |
 | Rotate admin password | sets a new random password on the built-in Administrator (or a named local account), escrowed with the server first |
 | Install updates | installs security and critical updates, or everything Windows Update offers, restarting only if asked and needed |
-| Remote shell | an interactive PowerShell session, as SYSTEM, recorded; admins only (see below) |
+| Remote shell | an interactive PowerShell session as SYSTEM (zsh as root on a Mac), recorded; admins only (see below) |
 | Rename | gives the device a new computer name (1–15 letters, digits and hyphens), effective at the next restart, or a minute later if you ask it to restart; admins only |
 
 **Remote shell** opens a PowerShell session on the device from the console:

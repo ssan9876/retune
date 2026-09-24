@@ -35,7 +35,8 @@ const STATUS_WORDS: Record<RemoteSessionInfo["status"], string> = {
   ended: "ended",
 };
 
-/** RemoteSession is an administrator's PowerShell on a device, as SYSTEM:
+/** RemoteSession is an administrator's shell on a device - PowerShell as
+ * SYSTEM on Windows, zsh as root on a Mac:
  * everything typed and written is kept as the session's record. */
 export default function RemoteSession() {
   const { id = "" } = useParams();
@@ -121,8 +122,8 @@ export default function RemoteSession() {
         </p>
       ) : null}
       <p className="hint">
-        PowerShell, as SYSTEM. A line runs when you press Enter; end a multi-line block with an empty line. Everything
-        typed and shown here is kept with the session.
+        PowerShell as SYSTEM on Windows, zsh as root on a Mac. A line runs when you press Enter; end a multi-line
+        PowerShell block with an empty line. Everything typed and shown here is kept with the session.
       </p>
       <ErrorNote error={error} />
       <pre

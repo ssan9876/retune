@@ -69,6 +69,30 @@ jobs:
       - name: Build the server image
         run: docker build -f deploy/docker/Dockerfile -t retune-server:ci .
 
+  # macOS covers the Mac agent: its inventory collector, script runner and
+  # launchd daemon. The server is not built here; the Linux job covers it.
+  macos:
+    name: macOS — agent tests
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+          cache-dependency-path: go.sum
+
+      - name: Vet
+        run: go vet ./internal/agent/... ./internal/protocol/ ./cmd/retune-agent/
+
+      - name: Test
+        run: go test -short ./internal/agent/... ./internal/protocol/ ./cmd/retune-agent/
+
+      # Inventory from the runner itself: every tool the collector reads must
+      # exist and parse on a real Mac.
+      - name: Collect inventory
+        run: go test -run TestCollectOnMac -v ./internal/agent/inventory/
+
   # Windows covers the agent code that only exists there: DPAPI, the WMI and
   # registry inventory collector, and running PowerShell. Docker on Windows
   # runners cannot start Linux containers, so -short skips the Postgres tests

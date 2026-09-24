@@ -37,6 +37,7 @@ The working list for making Retune usable by an enterprise, started on 2026-09-2
 | Windows Update reporting, install_updates, and max_missing_security_updates | #34 |
 | Conditional access: compliance lookup API and signed device statements | #35 |
 | Remote help: recorded remote PowerShell sessions, and commands delivered in seconds | #36 |
+| A macOS agent: inventory, scripts through pwsh, restart, remote zsh, launchd daemon | #37 |
 
 ## To do, in order (round two)
 
@@ -65,7 +66,7 @@ Round two is done. These close the larger gaps between Retune and Intune, as far
 | 22 | **Windows Update reporting and install-now**: which updates each device is missing, when it last installed, and a command to install now | update rings set policy; admins also need to see and act on the result | done, #34 |
 | 23 | **Device compliance for conditional access**: an API network access control and identity providers can ask "is this device compliant?", and a signed compliance statement a device can present | conditional access: only compliant devices reach company resources | done, #35 |
 | 24 | **Remote help**: an interactive PowerShell session to a device from the console, recorded | helpdesk fixes a machine without walking to it | done, #36; the shell, not a remote desktop |
-| 25 | **A macOS agent**: enrollment, inventory, scripts and commands on macOS | most fleets aren't only Windows | checked in CI on a macOS runner; configuration profiles stay Windows-only |
+| 25 | **A macOS agent**: enrollment, inventory, scripts and commands on macOS | most fleets aren't only Windows | done, #37; profiles, lock, wipe, apps and self-update stay Windows-only |
 | 26 | **Multi-tenant administration**: several organisations on one server, each seeing only its own | managed service providers | the schema already carries a tenant on every row |
 
 ## Can't be done from here
