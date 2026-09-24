@@ -307,6 +307,10 @@ export interface Setting {
   secret_set?: boolean;
   auto_connect?: boolean;
   hidden?: boolean;
+  eap_method?: string;
+  server_names?: string[];
+  trusted_root_thumbprints?: string[];
+  auth_mode?: string;
   server?: string;
   tunnel?: string;
   authentication?: string;

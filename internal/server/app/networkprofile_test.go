@@ -127,3 +127,23 @@ func TestVPNProfileValidates(t *testing.T) {
 		t.Fatalf("a name with script in it: %d", status)
 	}
 }
+
+// An 802.1X network carries no secret: it is stored and sent as given.
+func TestEnterpriseWiFiProfile(t *testing.T) {
+	a, srv := newTestApp(t)
+	admin := signedIn(t, a, srv, store.RoleAdmin)
+	wifi := map[string]any{"kind": "wifi", "ssid": "Contoso Secure", "security": "wpa2_enterprise",
+		"eap_method": "tls", "auth_mode": "machine", "server_names": []string{"radius.contoso.com"},
+		"trusted_root_thumbprints": []string{"a1b2c3d4e5f60718293a4b5c6d7e8f9001122334"}}
+	status, body := admin.do(http.MethodPost, "/profiles", map[string]any{"name": "Secure Wi-Fi", "settings": []map[string]any{wifi}})
+	if status != http.StatusCreated {
+		t.Fatalf("create: %d %s", status, body)
+	}
+	if !strings.Contains(string(body), `"eap_method":"tls"`) || strings.Contains(string(body), `"secret_set":true`) {
+		t.Fatalf("created = %s", body)
+	}
+	delete(wifi, "trusted_root_thumbprints")
+	if status, body := admin.do(http.MethodPost, "/profiles", map[string]any{"name": "Unchecked", "settings": []map[string]any{wifi}}); status != http.StatusBadRequest {
+		t.Fatalf("no trusted root: %d %s", status, body)
+	}
+}

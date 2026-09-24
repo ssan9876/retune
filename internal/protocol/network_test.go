@@ -73,3 +73,41 @@ func TestVPNValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestEnterpriseWiFiValidation(t *testing.T) {
+	good := Setting{Kind: KindWiFi, SSID: "Contoso Secure", Security: WiFiWPA2Enterprise, EAPMethod: EAPPEAP,
+		ServerNames:            []string{"radius.contoso.com", "*.radius.contoso.com"},
+		TrustedRootThumbprints: []string{"A1:B2:C3:D4:E5:F6:07:18:29:3A:4B:5C:6D:7E:8F:90:01:12:23:34"}}
+	if err := good.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	tls := good
+	tls.EAPMethod, tls.AuthMode = EAPTLS, OneXMachine
+	if err := tls.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for name, change := range map[string]func(*Setting){
+		"no method":        func(s *Setting) { s.EAPMethod = "" },
+		"unknown method":   func(s *Setting) { s.EAPMethod = "leap" },
+		"no server names":  func(s *Setting) { s.ServerNames = nil },
+		"a bad server":     func(s *Setting) { s.ServerNames = []string{"radius contoso"} },
+		"no trusted root":  func(s *Setting) { s.TrustedRootThumbprints = nil },
+		"a short root":     func(s *Setting) { s.TrustedRootThumbprints = []string{"a1b2"} },
+		"a passphrase":     func(s *Setting) { s.Passphrase = "correct horse" },
+		"a bad auth mode":  func(s *Setting) { s.AuthMode = "guest" },
+		"too many servers": func(s *Setting) { s.ServerNames = make([]string, 9) },
+	} {
+		s := good
+		change(&s)
+		if err := s.Validate(); !errors.Is(err, ErrBadSetting) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	personal := Setting{Kind: KindWiFi, SSID: "Home", Security: WiFiWPA2Personal, Passphrase: "correct horse", EAPMethod: EAPPEAP}
+	if err := personal.Validate(); !errors.Is(err, ErrBadSetting) {
+		t.Errorf("802.1X fields on a personal network: %v", err)
+	}
+	if got := NormalizeThumbprint(" A1:B2 c3-d4 "); got != "a1b2c3d4" {
+		t.Errorf("NormalizeThumbprint = %q", got)
+	}
+}

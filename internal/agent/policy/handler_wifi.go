@@ -44,6 +44,7 @@ type wlanProfile struct {
 	Encryption     string   `xml:"MSM>security>authEncryption>encryption"`
 	UseOneX        bool     `xml:"MSM>security>authEncryption>useOneX"`
 	SharedKey      *wlanKey `xml:"MSM>security>sharedKey,omitempty"`
+	OneX           *oneX    `xml:"MSM>security>OneX,omitempty"`
 }
 
 type wlanKey struct {
@@ -57,6 +58,8 @@ var wlanAuth = map[string][2]string{
 	protocol.WiFiOpen:         {"open", "none"},
 	protocol.WiFiWPA2Personal: {"WPA2PSK", "AES"},
 	protocol.WiFiWPA3Personal: {"WPA3SAE", "AES"},
+	// 802.1X: WPA2 with a OneX element saying how to sign in.
+	protocol.WiFiWPA2Enterprise: {"WPA2", "AES"},
 }
 
 // RenderWLANProfile turns a setting into the profile XML netsh imports. It is
@@ -75,7 +78,15 @@ func RenderWLANProfile(s protocol.Setting) ([]byte, error) {
 		Name: s.SSID, SSID: s.SSID, NonBroadcast: s.Hidden, ConnectionType: "ESS", ConnectionMode: mode,
 		Authentication: auth[0], Encryption: auth[1],
 	}
-	if s.Security != protocol.WiFiOpen {
+	switch s.Security {
+	case protocol.WiFiOpen:
+	case protocol.WiFiWPA2Enterprise:
+		o, err := renderOneX(s)
+		if err != nil {
+			return nil, err
+		}
+		p.UseOneX, p.OneX = true, o
+	default:
 		if s.Passphrase == "" {
 			return nil, errors.New("the definition has no passphrase for this network")
 		}
@@ -153,7 +164,7 @@ func (h WiFiHandler) Get(ctx context.Context, s protocol.Setting) (State, error)
 }
 
 func (h WiFiHandler) Test(ctx context.Context, s protocol.Setting) (bool, error) {
-	have, _, err := h.export(ctx, s.SSID)
+	have, raw, err := h.export(ctx, s.SSID)
 	if err != nil || have == nil {
 		return false, err
 	}
@@ -171,10 +182,19 @@ func (h WiFiHandler) Test(ctx context.Context, s protocol.Setting) (bool, error)
 		}
 		return p.SharedKey.KeyMaterial
 	}
-	return have.SSID == w.SSID && have.NonBroadcast == w.NonBroadcast &&
+	same := have.SSID == w.SSID && have.NonBroadcast == w.NonBroadcast &&
 		strings.EqualFold(have.ConnectionMode, w.ConnectionMode) &&
 		strings.EqualFold(have.Authentication, w.Authentication) &&
-		strings.EqualFold(have.Encryption, w.Encryption) && key(have) == key(&w), nil
+		strings.EqualFold(have.Encryption, w.Encryption) && key(have) == key(&w) &&
+		have.UseOneX == w.UseOneX
+	if same && w.UseOneX {
+		o, err := renderOneX(s)
+		if err != nil {
+			return false, err
+		}
+		same = oneXMatches(raw, o)
+	}
+	return same, nil
 }
 
 // add imports profile XML for every user.

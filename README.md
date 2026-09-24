@@ -932,7 +932,7 @@ scripts and assigned to groups the same way.
 | `bitlocker` | requiring the system drive to be encrypted, and escrowing its recovery key |
 | `defender` | Microsoft Defender's real-time monitoring, cloud protection, sample submission, PUA protection and cloud block level |
 | `certificate` | a certificate in the machine's trusted root, intermediate or trusted publisher store |
-| `wifi` | a Wi-Fi network for every user: open, WPA2-Personal or WPA3-Personal |
+| `wifi` | a Wi-Fi network for every user: open, WPA2-Personal, WPA3-Personal or WPA2-Enterprise (802.1X) |
 | `vpn` | a VPN connection for every user: IKEv2 or SSTP |
 
 Each setting is applied as: test, then set only if needed, then **test again**.
@@ -972,7 +972,8 @@ machine it is assigned to. Client certificates and certificates issued
 through SCEP aren't supported.
 
 A `wifi` setting adds a network profile for every user of the machine, from
-its name (SSID), security (`open`, `wpa2_personal`, `wpa3_personal`),
+its name (SSID), security (`open`, `wpa2_personal`, `wpa3_personal`,
+`wpa2_enterprise`),
 whether to connect automatically and whether the network is hidden. **The
 passphrase is write-only**: it is sealed with the server key as soon as it
 arrives, the console and API only ever say it is set, and it is opened only
@@ -980,8 +981,29 @@ when an assigned device fetches its profile over its mutual-TLS connection.
 Leave it empty when editing to keep it; changing it makes a new version. On
 the device it reaches `netsh` in a file that is deleted straight after, never
 on a command line. A machine without a wireless adapter reports the setting
-`not_applicable`, which counts as done. Enterprise (802.1X) networks aren't
-supported yet.
+`not_applicable`, which counts as done.
+
+A **`wpa2_enterprise`** (802.1X) network has no passphrase: each device, or
+each user, proves who it is to your RADIUS server. Choose how:
+
+- `"eap_method": "peap"` — PEAP-MSCHAPv2 with the Windows sign-in: the
+  machine's domain account, and the user's own once someone signs in;
+- `"eap_method": "tls"` — EAP-TLS with a certificate already in the machine's
+  or user's store, from your PKI (Active Directory Certificate Services
+  autoenrollment, say; Retune doesn't issue client certificates).
+
+and who signs in with `"auth_mode"`: `machine_or_user` (the default),
+`machine` or `user`. Two things are required, because without them a device
+would give its credentials to any access point claiming the network's name:
+`"server_names"`, the names on your RADIUS servers' certificates, and
+`"trusted_root_thumbprints"`, the SHA-1 thumbprints of the CA that issued them
+(paste them with or without colons and spaces). Devices trust no other server
+and never ask the user whether to. Install that root CA with a `certificate`
+setting in the same profile. Drift is checked on the method, who signs in, the
+server names and the thumbprints.
+
+This has been checked against the WLAN profile schema Windows documents, not
+yet on a network with a RADIUS server: try it on a test device first.
 
 A `vpn` setting adds a connection for every user: a name, a server, IKEv2 or
 SSTP, and EAP, MS-CHAP v2 or (IKEv2 only) a machine certificate to sign in,
