@@ -1,7 +1,9 @@
-@import "@fontsource/ibm-plex-sans/400.css";
-@import "@fontsource/ibm-plex-sans/500.css";
-@import "@fontsource/ibm-plex-sans/600.css";
-@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/figtree/400.css";
+@import "@fontsource/figtree/500.css";
+@import "@fontsource/figtree/600.css";
+@import "@fontsource/figtree/700.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
 @import "./tokens.css";
 
 *,
@@ -19,6 +21,19 @@ body {
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  caret-color: var(--primary);
+  accent-color: var(--primary);
+}
+
+/* The parts of the page the browser draws still belong to the console. */
+::selection {
+  background: var(--primary-wash-strong);
+  color: var(--ink);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--rule-strong) transparent;
 }
 
 /* Figures line up in a column whether or not they sit in a numeric cell:
@@ -36,7 +51,7 @@ h3 {
   line-height: 1.3;
   margin: 0;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
 }
 
 h1 {
@@ -50,7 +65,8 @@ h2 {
 code,
 .mono {
   font-family: var(--font-mono);
-  font-size: 0.9em;
+  font-size: 0.88em;
+  letter-spacing: -0.01em;
 }
 
 a {
@@ -73,7 +89,7 @@ tbody td:first-child {
 :focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
-  border-radius: 3px;
+  border-radius: 6px;
 }
 
 button {
@@ -98,12 +114,13 @@ button {
   color: var(--ink-muted);
 }
 
-/* A list sits on its own white pane over the page's grey, the way every list
-   in the admin centre does: the pane is the boundary of the data, so a table
-   never floats loose on the background. */
+/* A list sits on its own white pane over the page's tint: the pane is the
+   boundary of the data, so a table never floats loose on the background. In
+   light the pane's edge is its shadow; in dark, where shadows barely read,
+   --pane-border draws it. */
 .table-scroll {
   background: var(--surface);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--pane-border);
   border-radius: var(--radius-pane);
   box-shadow: var(--shadow-card);
   /* The header's tint has square corners of its own; without this it pokes
@@ -123,6 +140,10 @@ button {
 @media (max-width: 720px) {
   .table-scroll {
     overflow-x: auto;
+  }
+
+  .table-scroll td {
+    white-space: nowrap;
   }
 }
 
@@ -173,8 +194,61 @@ th {
   z-index: 1;
 }
 
+/* Identifiers hold their line: a hostname broken over three lines is harder
+   to read than a table that scrolls sideways. */
+td .mono,
+td code,
+td.mono {
+  white-space: nowrap;
+}
+
 td.numeric,
 th.numeric {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+/* Every select and text input shares the control style, wherever it sits.
+   :where() keeps this at zero specificity, so component rules such as the
+   header search and .field still decide their own look. */
+:where(select, textarea, input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="submit"], [type="button"])) {
+  min-height: 36px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background-color: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-sm);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+:where(select) {
+  appearance: none;
+  padding-right: calc(var(--space-3) + 18px);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' fill='none' stroke='%235e5a72' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--space-3) center;
+  cursor: pointer;
+}
+
+@media (prefers-color-scheme: dark) {
+  :where(select) {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' fill='none' stroke='%23aca8c0' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+}
+
+:where(select, textarea, input):hover {
+  border-color: color-mix(in srgb, var(--primary) 25%, var(--rule-strong));
+}
+
+:where(select, textarea, input):focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--primary) 60%, var(--rule-strong));
+  box-shadow: var(--focus-ring);
+}
+
+:where(select, textarea, input):disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }

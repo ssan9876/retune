@@ -205,6 +205,7 @@ export default function Overview() {
 
         <Tile title="Agent versions" hint="Active devices">
           <BarList
+            mono
             empty="No data reported yet."
             rows={agentVersions.map((entry) => ({ label: entry.version, value: entry.count }))}
           />
@@ -212,6 +213,7 @@ export default function Overview() {
 
         <Tile title="OS builds" hint="Active devices">
           <BarList
+            mono
             empty="No data reported yet."
             rows={osBuilds.map((entry) => ({ label: entry.build, value: entry.count }))}
           />

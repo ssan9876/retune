@@ -7,3 +7,4 @@
 !/internal/server/console/dist/.gitkeep
 /scratch-agent/
 /deploy/docker/certs/
+/web/.impeccable/

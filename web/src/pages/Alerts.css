@@ -4,7 +4,7 @@
 
 .alerts__section {
   background: var(--surface);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--pane-border);
   border-radius: var(--radius-pane);
   box-shadow: var(--shadow-card);
   padding: var(--pane-padding);
@@ -48,7 +48,7 @@
 .alerts__badge {
   margin-left: var(--space-2);
   padding: 1px 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--surface-sunken);
   font-size: var(--text-xs);
   color: var(--ink-muted);

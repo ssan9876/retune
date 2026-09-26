@@ -1,61 +1,87 @@
 .button {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-2);
-  height: 34px;
+  height: 36px;
   padding: 0 var(--space-4);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--rule-strong);
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--ink);
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
-  transition: background var(--transition), border-color var(--transition);
+  box-shadow: 0 1px 2px rgba(38, 30, 90, 0.05);
+  transition: background var(--transition), border-color var(--transition), box-shadow var(--transition),
+    transform var(--transition), color var(--transition);
 }
 
 .button:hover:not(:disabled) {
-  background: var(--surface-sunken);
-  border-color: color-mix(in srgb, var(--ink) 20%, var(--rule));
+  background: var(--surface-hover);
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--rule-strong));
+  color: var(--primary);
 }
 
 .button:active:not(:disabled) {
-  transform: translateY(0.5px);
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
+.button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .button:disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .button--primary {
   background: var(--primary);
   border-color: var(--primary);
   color: var(--primary-ink);
-  box-shadow: var(--shadow-card);
+  box-shadow: 0 1px 2px rgba(38, 30, 90, 0.12), 0 4px 12px color-mix(in srgb, var(--primary) 28%, transparent);
 }
 
-/* Darker on hover, not brighter: a brightened purple goes lilac and reads as
+/* Deeper on hover, not brighter: a brightened indigo goes lilac and reads as
    disabled rather than as pressed-in-waiting. */
 .button--primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--primary) 85%, #000);
-  border-color: color-mix(in srgb, var(--primary) 85%, #000);
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+  color: var(--primary-ink);
+  box-shadow: 0 1px 2px rgba(38, 30, 90, 0.14), 0 6px 16px color-mix(in srgb, var(--primary) 34%, transparent);
+}
+
+.button--primary:focus-visible {
+  box-shadow: var(--focus-ring), 0 4px 12px color-mix(in srgb, var(--primary) 28%, transparent);
 }
 
 .button--quiet {
   border-color: transparent;
   background: transparent;
   color: var(--ink-muted);
+  box-shadow: none;
 }
 
 .button--quiet:hover:not(:disabled) {
   border-color: transparent;
+  background: var(--primary-wash);
   color: var(--primary);
 }
 
 .button--danger {
   color: var(--status-retired);
-  border-color: color-mix(in srgb, var(--status-retired) 40%, var(--rule));
+  border-color: color-mix(in srgb, var(--status-retired) 35%, var(--rule-strong));
+}
+
+.button--danger:hover:not(:disabled) {
+  color: var(--status-retired);
+  background: var(--status-retired-wash);
+  border-color: color-mix(in srgb, var(--status-retired) 55%, var(--rule-strong));
 }
 
 .field {
@@ -66,21 +92,46 @@
 
 .field label {
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .field input,
 .field select,
 .field textarea {
   width: 100%;
-  min-height: 34px;
+  min-height: 38px;
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--rule-strong);
   border-radius: var(--radius);
-  background: var(--surface);
+  background-color: var(--surface);
   color: var(--ink);
   font: inherit;
   font-size: var(--text-sm);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+/* Room for the chevron the base style draws. */
+.field select {
+  padding-right: calc(var(--space-3) + 18px);
+}
+
+.field input:hover,
+.field select:hover,
+.field textarea:hover {
+  border-color: color-mix(in srgb, var(--primary) 25%, var(--rule-strong));
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--primary) 60%, var(--rule-strong));
+  box-shadow: var(--focus-ring);
+}
+
+.field input::placeholder,
+.field textarea::placeholder {
+  color: var(--ink-faint);
 }
 
 .field textarea {
@@ -97,63 +148,71 @@
 
 .field .error {
   font-size: var(--text-xs);
+  font-weight: 500;
   color: var(--status-retired);
   margin: 0;
 }
 
+/* A note is a tinted well, not a bordered box: the tint says what kind of
+   message it is before a word of it is read. */
 .note {
   padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--rule);
   border-radius: var(--radius);
+  background: var(--surface-sunken);
   color: var(--ink);
   font-size: var(--text-sm);
 }
 
 .note--error {
-  border-color: color-mix(in srgb, var(--status-retired) 40%, var(--rule));
-  background: color-mix(in srgb, var(--status-retired) 8%, var(--surface));
+  background: var(--status-retired-wash);
+  color: color-mix(in srgb, var(--status-retired) 45%, var(--ink));
 }
 
 .note--pending {
-  border-color: color-mix(in srgb, var(--status-stale) 40%, var(--rule));
-  background: color-mix(in srgb, var(--status-stale) 8%, var(--surface));
+  background: var(--status-stale-wash);
+  color: color-mix(in srgb, var(--status-stale) 45%, var(--ink));
 }
 
 .note--success {
-  border-color: color-mix(in srgb, var(--status-active) 40%, var(--rule));
-  background: color-mix(in srgb, var(--status-active) 8%, var(--surface));
+  background: var(--status-active-wash);
+  color: color-mix(in srgb, var(--status-active) 45%, var(--ink));
 }
 
 .empty {
   display: grid;
+  justify-items: center;
   gap: var(--space-2);
-  padding: var(--space-8);
+  padding: var(--space-8) var(--space-6);
   text-align: center;
   color: var(--ink-muted);
-  border: 1px dashed var(--rule);
   border-radius: var(--radius-pane);
   background: var(--surface);
+  box-shadow: var(--shadow-card);
 }
 
 .empty h2 {
   color: var(--ink);
 }
 
-/* A status is a tinted pill: the dot alone was a small mark on a wide row,
-   and the tint gives the word a shape the eye finds while scanning a column
-   of them. Colour is still never the only signal - the word is always there. */
+.empty p {
+  max-width: 52ch;
+}
+
+/* A status is a pill on its own wash: the tint gives the word a shape the eye
+   finds while scanning a column of them, and colour is never the only signal -
+   the word is always there. */
 .status {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 6px;
   white-space: nowrap;
-  padding: 2px var(--space-2) 2px var(--space-2);
-  border-radius: 10px;
+  padding: 1px 10px 1px 8px;
+  border-radius: var(--radius-pill);
   font-size: var(--text-xs);
-  font-weight: 500;
-  line-height: 1.5;
-  color: var(--status-neutral);
-  background: color-mix(in srgb, var(--status-neutral) 10%, transparent);
+  font-weight: 600;
+  line-height: 1.6;
+  color: color-mix(in srgb, var(--status-neutral) 80%, var(--ink));
+  background: var(--status-neutral-wash);
 }
 
 .status::before {
@@ -166,17 +225,18 @@
 }
 
 .status--active {
-  color: color-mix(in srgb, var(--status-active) 80%, var(--ink));
-  background: color-mix(in srgb, var(--status-active) 12%, transparent);
+  color: color-mix(in srgb, var(--status-active) 85%, var(--ink));
+  background: var(--status-active-wash);
 }
 
 .status--active::before {
   background: var(--status-active);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-active) 18%, transparent);
 }
 
 .status--stale {
-  color: color-mix(in srgb, var(--status-stale) 80%, var(--ink));
-  background: color-mix(in srgb, var(--status-stale) 12%, transparent);
+  color: color-mix(in srgb, var(--status-stale) 85%, var(--ink));
+  background: var(--status-stale-wash);
 }
 
 .status--stale::before {
@@ -184,8 +244,8 @@
 }
 
 .status--retired {
-  color: color-mix(in srgb, var(--status-retired) 80%, var(--ink));
-  background: color-mix(in srgb, var(--status-retired) 12%, transparent);
+  color: color-mix(in srgb, var(--status-retired) 85%, var(--ink));
+  background: var(--status-retired-wash);
 }
 
 .status--retired::before {
@@ -199,13 +259,31 @@
   padding: 0;
   background: var(--surface);
   border: 1px solid var(--rule);
-  border-radius: var(--radius-pane);
+  border-radius: 16px;
   box-shadow: var(--shadow-raised);
   color: var(--ink);
 }
 
+.dialog[open] {
+  animation: dialog-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
 .dialog::backdrop {
-  background: rgba(11, 14, 18, 0.55);
+  background: color-mix(in srgb, #1b1830 45%, transparent);
+  backdrop-filter: blur(3px);
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog[open] {
+    animation: none;
+  }
 }
 
 .dialog__surface {
@@ -219,8 +297,6 @@
   align-items: center;
   justify-content: space-between;
   margin-bottom: var(--space-5);
-  padding-bottom: var(--space-3);
-  border-bottom: 1px solid var(--rule);
 }
 
 .spinner {
@@ -242,4 +318,17 @@
     min-height: 44px;
     height: auto;
   }
+}
+
+
+.devices__search:hover,
+.audit__filters input:hover {
+  border-color: color-mix(in srgb, var(--primary) 25%, var(--rule-strong));
+}
+
+.devices__search:focus,
+.audit__filters input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--primary) 60%, var(--rule-strong));
+  box-shadow: var(--focus-ring);
 }

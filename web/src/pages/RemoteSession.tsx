@@ -148,7 +148,7 @@ export default function RemoteSession() {
         {chunks.map((c) => (
           <span
             key={c.seq}
-            style={c.stream === "in" ? { fontWeight: 600 } : c.stream === "err" ? { color: "var(--danger, #b3261e)" } : undefined}
+            style={c.stream === "in" ? { fontWeight: 600 } : c.stream === "err" ? { color: "var(--status-retired)" } : undefined}
           >
             {c.stream === "in" ? `PS> ${c.data}` : c.data}
           </span>

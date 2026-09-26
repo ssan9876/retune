@@ -1,19 +1,44 @@
+/* The first screen anyone sees: the form on a white panel floating over the
+   page's tint, with the same mark as the header, so it already feels like
+   the console it opens. The glow behind it is the mark's own indigo, faint
+   enough that it only warms the ground. */
 .login {
   min-height: 100vh;
   display: grid;
   place-items: center;
   padding: var(--space-6);
+  background:
+    radial-gradient(60rem 36rem at 50% -10%, color-mix(in srgb, var(--primary) 12%, transparent), transparent 70%),
+    var(--paper);
 }
 
 .login__panel {
-  width: min(380px, 100%);
+  width: min(420px, 100%);
+  padding: var(--space-8);
+  border: 1px solid var(--pane-border);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
 }
 
 .login__mark {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   font-size: var(--text-2xl);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  margin-bottom: var(--space-1);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin-bottom: var(--space-2);
+}
+
+.login__mark .icon {
+  width: 36px;
+  height: 36px;
+  padding: 7px;
+  border-radius: 10px;
+  background: var(--brand-mark);
+  color: #ffffff;
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--primary) 35%, transparent);
 }
 
 .login__lede {
@@ -22,13 +47,26 @@
   margin: 0 0 var(--space-6);
 }
 
+/* The sign-in button spans the panel: it is the one thing to do here. */
+.login__panel form .button--primary,
+.login__panel .login__sso {
+  width: 100%;
+  height: 40px;
+}
+
+@media (max-width: 480px) {
+  .login__panel {
+    padding: var(--space-6) var(--space-5);
+  }
+}
+
 .login__setup {
   margin-top: var(--space-6);
   padding: var(--space-3);
-  border: 1px solid var(--rule);
+  font-size: var(--text-sm);
+  border: 0;
   border-radius: var(--radius);
   background: var(--surface-sunken);
-  font-size: var(--text-sm);
 }
 
 .login__setup code {

@@ -23,7 +23,7 @@
   gap: var(--space-5);
   margin-bottom: var(--space-6);
   padding: var(--pane-padding);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--pane-border);
   border-radius: var(--radius-pane);
   background: var(--surface);
   box-shadow: var(--shadow-card);
@@ -95,7 +95,7 @@
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: var(--space-5);
   padding: var(--pane-padding);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--pane-border);
   border-radius: var(--radius-pane);
   box-shadow: var(--shadow-card);
   background: var(--surface);
@@ -118,7 +118,7 @@
 .security {
   margin-bottom: var(--space-6);
   padding: var(--pane-padding);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--pane-border);
   border-radius: var(--radius-pane);
   box-shadow: var(--shadow-card);
   background: var(--surface);
@@ -201,8 +201,9 @@
    recovery key is a deliberate act and is recorded. */
 .recovery__confirm,
 .recovery__key {
-  border-left: 2px solid var(--primary);
-  padding-left: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius);
+  background: var(--primary-wash);
   margin-top: var(--space-4);
   font-size: var(--text-sm);
 }

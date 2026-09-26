@@ -1,0 +1,1122 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-26T17:57:26.008Z",
+  "title": "Design System: Retune",
+  "extensions": {
+    "colorMeta": {
+      "paper": {
+        "role": "neutral",
+        "displayName": "Lilac Paper",
+        "canonical": "#f6f5fa",
+        "oklch": "oklch(97.2% 0.007 295.5)",
+        "theme": "light",
+        "tonalRamp": [
+          "oklch(15% 0.007 295.5)",
+          "oklch(26% 0.007 295.5)",
+          "oklch(37% 0.007 295.5)",
+          "oklch(48% 0.007 295.5)",
+          "oklch(60% 0.007 295.5)",
+          "oklch(72% 0.007 295.5)",
+          "oklch(84% 0.007 295.5)",
+          "oklch(95% 0.007 295.5)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Pane White",
+        "canonical": "#ffffff",
+        "oklch": "oklch(100% 0 89.9)",
+        "theme": "light",
+        "tonalRamp": [
+          "oklch(15% 0 89.9)",
+          "oklch(26% 0 89.9)",
+          "oklch(37% 0 89.9)",
+          "oklch(48% 0 89.9)",
+          "oklch(60% 0 89.9)",
+          "oklch(72% 0 89.9)",
+          "oklch(84% 0 89.9)",
+          "oklch(95% 0 89.9)"
+        ]
+      },
+      "surface-sunken": {
+        "role": "neutral",
+        "displayName": "Sunken Lilac",
+        "canonical": "#f1eff7",
+        "oklch": "oklch(95.6% 0.011 297.6)",
+        "theme": "light",
+        "tonalRamp": [
+          "oklch(15% 0.011 297.6)",
+          "oklch(26% 0.011 297.6)",
+          "oklch(37% 0.011 297.6)",
+          "oklch(48% 0.011 297.6)",
+          "oklch(60% 0.011 297.6)",
+          "oklch(72% 0.011 297.6)",
+          "oklch(84% 0.011 297.6)",
+          "oklch(95% 0.011 297.6)"
+        ]
+      },
+      "surface-hover": {
+        "role": "neutral",
+        "displayName": "Hover Lilac",
+        "canonical": "#f7f6fc",
+        "oklch": "oklch(97.6% 0.008 293.9)",
+        "theme": "light",
+        "tonalRamp": [
+          "oklch(15% 0.008 293.9)",
+          "oklch(26% 0.008 293.9)",
+          "oklch(37% 0.008 293.9)",
+          "oklch(48% 0.008 293.9)",
+          "oklch(60% 0.008 293.9)",
+          "oklch(72% 0.008 293.9)",
+          "oklch(84% 0.008 293.9)",
+          "oklch(95% 0.008 293.9)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#1e1c2a",
+        "oklch": "oklch(23.5% 0.027 290.7)",
+        "theme": "light",
+        "tonalRamp": [
+          "oklch(15% 0.027 290.7)",
+          "oklch(26% 0.027 290.7)",
+          "oklch(37% 0.027 290.7)",
+          "oklch(48% 0.027 290.7)",
+          "oklch(60% 0.027 290.7)",
+          "oklch(72% 0.027 290.7)",
+          "oklch(84% 0.027 290.7)",
+          "oklch(95% 0.027 290.7)"
+        ]
+      },
+      "ink-muted": {
+        "role": "neutral",
+        "displayName": "Muted Ink",
+        "canonical": "#5e5a72",
+        "oklch": "oklch(48% 0.038 292.5)",
+        "theme": "light",
+        "tonalRamp": [
+          "oklch(15% 0.038 292.5)",
+          "oklch(26% 0.038 292.5)",
+          "oklch(37% 0.038 292.5)",
+          "oklch(48% 0.038 292.5)",
+          "oklch(60% 0.038 292.5)",
+          "oklch(72% 0.038 292.5)",
+          "oklch(84% 0.038 292.5)",
+          "oklch(95% 0.038 292.5)"
+        ]
+      },
+      "ink-faint": {
+        "role": "neutral",
+        "displayName": "Faint Ink",
+        "canonical": "#6b6782",
+        "oklch": "oklch(52.7% 0.042 291.7)",
+        "theme": "light",
+        "tonalRamp": [
+          "oklch(15% 0.042 291.7)",
+          "oklch(26% 0.042 291.7)",
+          "oklch(37% 0.042 291.7)",
+          "oklch(48% 0.042 291.7)",
+          "oklch(60% 0.042 291.7)",
+          "oklch(72% 0.042 291.7)",
+          "oklch(84% 0.042 291.7)",
+          "oklch(95% 0.042 291.7)"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Rule",
+        "canonical": "#e7e4f0",
+        "oklch": "oklch(92.5% 0.016 297.5)",
+        "theme": "light",
+        "tonalRamp": [
+          "oklch(15% 0.016 297.5)",
+          "oklch(26% 0.016 297.5)",
+          "oklch(37% 0.016 297.5)",
+          "oklch(48% 0.016 297.5)",
+          "oklch(60% 0.016 297.5)",
+          "oklch(72% 0.016 297.5)",
+          "oklch(84% 0.016 297.5)",
+          "oklch(95% 0.016 297.5)"
+        ]
+      },
+      "rule-strong": {
+        "role": "neutral",
+        "displayName": "Strong Rule",
+        "canonical": "#d6d2e3",
+        "oklch": "oklch(87.2% 0.024 296.7)",
+        "theme": "light",
+        "tonalRamp": [
+          "oklch(15% 0.024 296.7)",
+          "oklch(26% 0.024 296.7)",
+          "oklch(37% 0.024 296.7)",
+          "oklch(48% 0.024 296.7)",
+          "oklch(60% 0.024 296.7)",
+          "oklch(72% 0.024 296.7)",
+          "oklch(84% 0.024 296.7)",
+          "oklch(95% 0.024 296.7)"
+        ]
+      },
+      "primary": {
+        "role": "primary",
+        "displayName": "Retune Indigo",
+        "canonical": "#5552d4",
+        "oklch": "oklch(51.9% 0.194 278.2)",
+        "theme": "light",
+        "tonalRamp": [
+          "oklch(15% 0.194 278.2)",
+          "oklch(26% 0.194 278.2)",
+          "oklch(37% 0.194 278.2)",
+          "oklch(48% 0.194 278.2)",
+          "oklch(60% 0.194 278.2)",
+          "oklch(72% 0.194 278.2)",
+          "oklch(84% 0.194 278.2)",
+          "oklch(95% 0.194 278.2)"
+        ]
+      },
+      "primary-hover": {
+        "role": "primary",
+        "displayName": "Deep Indigo",
+        "canonical": "#4744c2",
+        "oklch": "oklch(47.1% 0.191 277.2)",
+        "theme": "light",
+        "tonalRamp": [
+          "oklch(15% 0.191 277.2)",
+          "oklch(26% 0.191 277.2)",
+          "oklch(37% 0.191 277.2)",
+          "oklch(48% 0.191 277.2)",
+          "oklch(60% 0.191 277.2)",
+          "oklch(72% 0.191 277.2)",
+          "oklch(84% 0.191 277.2)",
+          "oklch(95% 0.191 277.2)"
+        ]
+      },
+      "primary-ink": {
+        "role": "primary",
+        "displayName": "Indigo Label",
+        "canonical": "#ffffff",
+        "oklch": "oklch(100% 0 89.9)",
+        "theme": "light",
+        "tonalRamp": [
+          "oklch(15% 0 89.9)",
+          "oklch(26% 0 89.9)",
+          "oklch(37% 0 89.9)",
+          "oklch(48% 0 89.9)",
+          "oklch(60% 0 89.9)",
+          "oklch(72% 0 89.9)",
+          "oklch(84% 0 89.9)",
+          "oklch(95% 0 89.9)"
+        ]
+      },
+      "primary-wash": {
+        "role": "primary",
+        "displayName": "Indigo Wash",
+        "canonical": "#eceafd",
+        "oklch": "oklch(94.4% 0.026 290.7)",
+        "theme": "light",
+        "tonalRamp": [
+          "oklch(15% 0.026 290.7)",
+          "oklch(26% 0.026 290.7)",
+          "oklch(37% 0.026 290.7)",
+          "oklch(48% 0.026 290.7)",
+          "oklch(60% 0.026 290.7)",
+          "oklch(72% 0.026 290.7)",
+          "oklch(84% 0.026 290.7)",
+          "oklch(95% 0.026 290.7)"
+        ]
+      },
+      "primary-wash-strong": {
+        "role": "primary",
+        "displayName": "Strong Indigo Wash",
+        "canonical": "#dedbfb",
+        "oklch": "oklch(90.4% 0.044 289.8)",
+        "theme": "light",
+        "tonalRamp": [
+          "oklch(15% 0.044 289.8)",
+          "oklch(26% 0.044 289.8)",
+          "oklch(37% 0.044 289.8)",
+          "oklch(48% 0.044 289.8)",
+          "oklch(60% 0.044 289.8)",
+          "oklch(72% 0.044 289.8)",
+          "oklch(84% 0.044 289.8)",
+          "oklch(95% 0.044 289.8)"
+        ]
+      },
+      "mark-start": {
+        "role": "primary",
+        "displayName": "Mark Gradient Start",
+        "canonical": "#6d6af0",
+        "oklch": "oklch(59.9% 0.196 279.7)",
+        "theme": "light",
+        "tonalRamp": [
+          "oklch(15% 0.196 279.7)",
+          "oklch(26% 0.196 279.7)",
+          "oklch(37% 0.196 279.7)",
+          "oklch(48% 0.196 279.7)",
+          "oklch(60% 0.196 279.7)",
+          "oklch(72% 0.196 279.7)",
+          "oklch(84% 0.196 279.7)",
+          "oklch(95% 0.196 279.7)"
+        ]
+      },
+      "mark-end": {
+        "role": "primary",
+        "displayName": "Mark Gradient End",
+        "canonical": "#4a46c9",
+        "oklch": "oklch(48.2% 0.197 277.4)",
+        "theme": "light",
+        "tonalRamp": [
+          "oklch(15% 0.197 277.4)",
+          "oklch(26% 0.197 277.4)",
+          "oklch(37% 0.197 277.4)",
+          "oklch(48% 0.197 277.4)",
+          "oklch(60% 0.197 277.4)",
+          "oklch(72% 0.197 277.4)",
+          "oklch(84% 0.197 277.4)",
+          "oklch(95% 0.197 277.4)"
+        ]
+      },
+      "nav-ink": {
+        "role": "neutral",
+        "displayName": "Nav Ink",
+        "canonical": "#3d3a4e",
+        "oklch": "oklch(36% 0.034 291.4)",
+        "theme": "light",
+        "tonalRamp": [
+          "oklch(15% 0.034 291.4)",
+          "oklch(26% 0.034 291.4)",
+          "oklch(37% 0.034 291.4)",
+          "oklch(48% 0.034 291.4)",
+          "oklch(60% 0.034 291.4)",
+          "oklch(72% 0.034 291.4)",
+          "oklch(84% 0.034 291.4)",
+          "oklch(95% 0.034 291.4)"
+        ]
+      },
+      "status-active": {
+        "role": "status",
+        "displayName": "Active Green",
+        "canonical": "#13794a",
+        "oklch": "oklch(51% 0.115 156.8)",
+        "theme": "light",
+        "tonalRamp": [
+          "oklch(15% 0.115 156.8)",
+          "oklch(26% 0.115 156.8)",
+          "oklch(37% 0.115 156.8)",
+          "oklch(48% 0.115 156.8)",
+          "oklch(60% 0.115 156.8)",
+          "oklch(72% 0.115 156.8)",
+          "oklch(84% 0.115 156.8)",
+          "oklch(95% 0.115 156.8)"
+        ]
+      },
+      "status-active-wash": {
+        "role": "status",
+        "displayName": "Active Wash",
+        "canonical": "#e3f4ea",
+        "oklch": "oklch(95.2% 0.022 160.2)",
+        "theme": "light",
+        "tonalRamp": [
+          "oklch(15% 0.022 160.2)",
+          "oklch(26% 0.022 160.2)",
+          "oklch(37% 0.022 160.2)",
+          "oklch(48% 0.022 160.2)",
+          "oklch(60% 0.022 160.2)",
+          "oklch(72% 0.022 160.2)",
+          "oklch(84% 0.022 160.2)",
+          "oklch(95% 0.022 160.2)"
+        ]
+      },
+      "status-stale": {
+        "role": "status",
+        "displayName": "Stale Amber",
+        "canonical": "#9a5b07",
+        "oklch": "oklch(53.1% 0.117 64.3)",
+        "theme": "light",
+        "tonalRamp": [
+          "oklch(15% 0.117 64.3)",
+          "oklch(26% 0.117 64.3)",
+          "oklch(37% 0.117 64.3)",
+          "oklch(48% 0.117 64.3)",
+          "oklch(60% 0.117 64.3)",
+          "oklch(72% 0.117 64.3)",
+          "oklch(84% 0.117 64.3)",
+          "oklch(95% 0.117 64.3)"
+        ]
+      },
+      "status-stale-wash": {
+        "role": "status",
+        "displayName": "Stale Wash",
+        "canonical": "#fbefd9",
+        "oklch": "oklch(95.6% 0.032 82.8)",
+        "theme": "light",
+        "tonalRamp": [
+          "oklch(15% 0.032 82.8)",
+          "oklch(26% 0.032 82.8)",
+          "oklch(37% 0.032 82.8)",
+          "oklch(48% 0.032 82.8)",
+          "oklch(60% 0.032 82.8)",
+          "oklch(72% 0.032 82.8)",
+          "oklch(84% 0.032 82.8)",
+          "oklch(95% 0.032 82.8)"
+        ]
+      },
+      "status-retired": {
+        "role": "status",
+        "displayName": "Retired Red",
+        "canonical": "#c13b35",
+        "oklch": "oklch(54.8% 0.172 27)",
+        "theme": "light",
+        "tonalRamp": [
+          "oklch(15% 0.172 27)",
+          "oklch(26% 0.172 27)",
+          "oklch(37% 0.172 27)",
+          "oklch(48% 0.172 27)",
+          "oklch(60% 0.172 27)",
+          "oklch(72% 0.172 27)",
+          "oklch(84% 0.172 27)",
+          "oklch(95% 0.172 27)"
+        ]
+      },
+      "status-retired-wash": {
+        "role": "status",
+        "displayName": "Retired Wash",
+        "canonical": "#fce6e4",
+        "oklch": "oklch(94.2% 0.024 23.8)",
+        "theme": "light",
+        "tonalRamp": [
+          "oklch(15% 0.024 23.8)",
+          "oklch(26% 0.024 23.8)",
+          "oklch(37% 0.024 23.8)",
+          "oklch(48% 0.024 23.8)",
+          "oklch(60% 0.024 23.8)",
+          "oklch(72% 0.024 23.8)",
+          "oklch(84% 0.024 23.8)",
+          "oklch(95% 0.024 23.8)"
+        ]
+      },
+      "status-neutral": {
+        "role": "status",
+        "displayName": "Neutral Slate",
+        "canonical": "#5d6275",
+        "oklch": "oklch(49.9% 0.031 273.6)",
+        "theme": "light",
+        "tonalRamp": [
+          "oklch(15% 0.031 273.6)",
+          "oklch(26% 0.031 273.6)",
+          "oklch(37% 0.031 273.6)",
+          "oklch(48% 0.031 273.6)",
+          "oklch(60% 0.031 273.6)",
+          "oklch(72% 0.031 273.6)",
+          "oklch(84% 0.031 273.6)",
+          "oklch(95% 0.031 273.6)"
+        ]
+      },
+      "status-neutral-wash": {
+        "role": "status",
+        "displayName": "Neutral Wash",
+        "canonical": "#eeedf3",
+        "oklch": "oklch(94.9% 0.008 293.9)",
+        "theme": "light",
+        "tonalRamp": [
+          "oklch(15% 0.008 293.9)",
+          "oklch(26% 0.008 293.9)",
+          "oklch(37% 0.008 293.9)",
+          "oklch(48% 0.008 293.9)",
+          "oklch(60% 0.008 293.9)",
+          "oklch(72% 0.008 293.9)",
+          "oklch(84% 0.008 293.9)",
+          "oklch(95% 0.008 293.9)"
+        ]
+      },
+      "paper-dark": {
+        "role": "neutral",
+        "displayName": "Lilac Paper (dark)",
+        "canonical": "#15141c",
+        "oklch": "oklch(19.6% 0.016 290.6)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(15% 0.016 290.6)",
+          "oklch(26% 0.016 290.6)",
+          "oklch(37% 0.016 290.6)",
+          "oklch(48% 0.016 290.6)",
+          "oklch(60% 0.016 290.6)",
+          "oklch(72% 0.016 290.6)",
+          "oklch(84% 0.016 290.6)",
+          "oklch(95% 0.016 290.6)"
+        ]
+      },
+      "surface-dark": {
+        "role": "neutral",
+        "displayName": "Pane White (dark)",
+        "canonical": "#1e1c28",
+        "oklch": "oklch(23.4% 0.023 292.2)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(15% 0.023 292.2)",
+          "oklch(26% 0.023 292.2)",
+          "oklch(37% 0.023 292.2)",
+          "oklch(48% 0.023 292.2)",
+          "oklch(60% 0.023 292.2)",
+          "oklch(72% 0.023 292.2)",
+          "oklch(84% 0.023 292.2)",
+          "oklch(95% 0.023 292.2)"
+        ]
+      },
+      "surface-sunken-dark": {
+        "role": "neutral",
+        "displayName": "Sunken Lilac (dark)",
+        "canonical": "#282634",
+        "oklch": "oklch(27.7% 0.026 291.2)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(15% 0.026 291.2)",
+          "oklch(26% 0.026 291.2)",
+          "oklch(37% 0.026 291.2)",
+          "oklch(48% 0.026 291.2)",
+          "oklch(60% 0.026 291.2)",
+          "oklch(72% 0.026 291.2)",
+          "oklch(84% 0.026 291.2)",
+          "oklch(95% 0.026 291.2)"
+        ]
+      },
+      "surface-hover-dark": {
+        "role": "neutral",
+        "displayName": "Hover Lilac (dark)",
+        "canonical": "#242230",
+        "oklch": "oklch(26.1% 0.026 291)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(15% 0.026 291)",
+          "oklch(26% 0.026 291)",
+          "oklch(37% 0.026 291)",
+          "oklch(48% 0.026 291)",
+          "oklch(60% 0.026 291)",
+          "oklch(72% 0.026 291)",
+          "oklch(84% 0.026 291)",
+          "oklch(95% 0.026 291)"
+        ]
+      },
+      "ink-dark": {
+        "role": "neutral",
+        "displayName": "Ink (dark)",
+        "canonical": "#eeecf6",
+        "oklch": "oklch(94.8% 0.013 295.3)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(15% 0.013 295.3)",
+          "oklch(26% 0.013 295.3)",
+          "oklch(37% 0.013 295.3)",
+          "oklch(48% 0.013 295.3)",
+          "oklch(60% 0.013 295.3)",
+          "oklch(72% 0.013 295.3)",
+          "oklch(84% 0.013 295.3)",
+          "oklch(95% 0.013 295.3)"
+        ]
+      },
+      "ink-muted-dark": {
+        "role": "neutral",
+        "displayName": "Muted Ink (dark)",
+        "canonical": "#aca8c0",
+        "oklch": "oklch(74.3% 0.034 293.2)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(15% 0.034 293.2)",
+          "oklch(26% 0.034 293.2)",
+          "oklch(37% 0.034 293.2)",
+          "oklch(48% 0.034 293.2)",
+          "oklch(60% 0.034 293.2)",
+          "oklch(72% 0.034 293.2)",
+          "oklch(84% 0.034 293.2)",
+          "oklch(95% 0.034 293.2)"
+        ]
+      },
+      "ink-faint-dark": {
+        "role": "neutral",
+        "displayName": "Faint Ink (dark)",
+        "canonical": "#8d89a3",
+        "oklch": "oklch(64.2% 0.039 292.3)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(15% 0.039 292.3)",
+          "oklch(26% 0.039 292.3)",
+          "oklch(37% 0.039 292.3)",
+          "oklch(48% 0.039 292.3)",
+          "oklch(60% 0.039 292.3)",
+          "oklch(72% 0.039 292.3)",
+          "oklch(84% 0.039 292.3)",
+          "oklch(95% 0.039 292.3)"
+        ]
+      },
+      "rule-dark": {
+        "role": "neutral",
+        "displayName": "Rule (dark)",
+        "canonical": "#302d3d",
+        "oklch": "oklch(30.7% 0.029 293.2)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(15% 0.029 293.2)",
+          "oklch(26% 0.029 293.2)",
+          "oklch(37% 0.029 293.2)",
+          "oklch(48% 0.029 293.2)",
+          "oklch(60% 0.029 293.2)",
+          "oklch(72% 0.029 293.2)",
+          "oklch(84% 0.029 293.2)",
+          "oklch(95% 0.029 293.2)"
+        ]
+      },
+      "rule-strong-dark": {
+        "role": "neutral",
+        "displayName": "Strong Rule (dark)",
+        "canonical": "#3d3a4c",
+        "oklch": "oklch(35.9% 0.031 292.4)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(15% 0.031 292.4)",
+          "oklch(26% 0.031 292.4)",
+          "oklch(37% 0.031 292.4)",
+          "oklch(48% 0.031 292.4)",
+          "oklch(60% 0.031 292.4)",
+          "oklch(72% 0.031 292.4)",
+          "oklch(84% 0.031 292.4)",
+          "oklch(95% 0.031 292.4)"
+        ]
+      },
+      "pane-border-dark": {
+        "role": "neutral",
+        "displayName": "Pane Edge (dark only)",
+        "canonical": "#2b2938",
+        "oklch": "oklch(29% 0.027 290.7)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(15% 0.027 290.7)",
+          "oklch(26% 0.027 290.7)",
+          "oklch(37% 0.027 290.7)",
+          "oklch(48% 0.027 290.7)",
+          "oklch(60% 0.027 290.7)",
+          "oklch(72% 0.027 290.7)",
+          "oklch(84% 0.027 290.7)",
+          "oklch(95% 0.027 290.7)"
+        ]
+      },
+      "primary-dark": {
+        "role": "primary",
+        "displayName": "Retune Indigo (dark)",
+        "canonical": "#a09df7",
+        "oklch": "oklch(73.5% 0.129 284.3)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(15% 0.129 284.3)",
+          "oklch(26% 0.129 284.3)",
+          "oklch(37% 0.129 284.3)",
+          "oklch(48% 0.129 284.3)",
+          "oklch(60% 0.129 284.3)",
+          "oklch(72% 0.129 284.3)",
+          "oklch(84% 0.129 284.3)",
+          "oklch(95% 0.129 284.3)"
+        ]
+      },
+      "primary-hover-dark": {
+        "role": "primary",
+        "displayName": "Deep Indigo (dark)",
+        "canonical": "#b4b2fa",
+        "oklch": "oklch(79.2% 0.102 285.1)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(15% 0.102 285.1)",
+          "oklch(26% 0.102 285.1)",
+          "oklch(37% 0.102 285.1)",
+          "oklch(48% 0.102 285.1)",
+          "oklch(60% 0.102 285.1)",
+          "oklch(72% 0.102 285.1)",
+          "oklch(84% 0.102 285.1)",
+          "oklch(95% 0.102 285.1)"
+        ]
+      },
+      "primary-ink-dark": {
+        "role": "primary",
+        "displayName": "Indigo Label (dark)",
+        "canonical": "#16151d",
+        "oklch": "oklch(20.1% 0.016 290.6)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(15% 0.016 290.6)",
+          "oklch(26% 0.016 290.6)",
+          "oklch(37% 0.016 290.6)",
+          "oklch(48% 0.016 290.6)",
+          "oklch(60% 0.016 290.6)",
+          "oklch(72% 0.016 290.6)",
+          "oklch(84% 0.016 290.6)",
+          "oklch(95% 0.016 290.6)"
+        ]
+      },
+      "primary-wash-dark": {
+        "role": "primary",
+        "displayName": "Indigo Wash (dark)",
+        "canonical": "#2a2850",
+        "oklch": "oklch(30.1% 0.071 283.5)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(15% 0.071 283.5)",
+          "oklch(26% 0.071 283.5)",
+          "oklch(37% 0.071 283.5)",
+          "oklch(48% 0.071 283.5)",
+          "oklch(60% 0.071 283.5)",
+          "oklch(72% 0.071 283.5)",
+          "oklch(84% 0.071 283.5)",
+          "oklch(95% 0.071 283.5)"
+        ]
+      },
+      "primary-wash-strong-dark": {
+        "role": "primary",
+        "displayName": "Strong Indigo Wash (dark)",
+        "canonical": "#34315f",
+        "oklch": "oklch(34.1% 0.079 284.3)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(15% 0.079 284.3)",
+          "oklch(26% 0.079 284.3)",
+          "oklch(37% 0.079 284.3)",
+          "oklch(48% 0.079 284.3)",
+          "oklch(60% 0.079 284.3)",
+          "oklch(72% 0.079 284.3)",
+          "oklch(84% 0.079 284.3)",
+          "oklch(95% 0.079 284.3)"
+        ]
+      },
+      "header-dark": {
+        "role": "neutral",
+        "displayName": "Header Charcoal (dark)",
+        "canonical": "#1a1923",
+        "oklch": "oklch(21.9% 0.019 289.3)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(15% 0.019 289.3)",
+          "oklch(26% 0.019 289.3)",
+          "oklch(37% 0.019 289.3)",
+          "oklch(48% 0.019 289.3)",
+          "oklch(60% 0.019 289.3)",
+          "oklch(72% 0.019 289.3)",
+          "oklch(84% 0.019 289.3)",
+          "oklch(95% 0.019 289.3)"
+        ]
+      },
+      "nav-active-dark": {
+        "role": "neutral",
+        "displayName": "Active Pill Charcoal (dark)",
+        "canonical": "#262435",
+        "oklch": "oklch(27% 0.031 289.5)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(15% 0.031 289.5)",
+          "oklch(26% 0.031 289.5)",
+          "oklch(37% 0.031 289.5)",
+          "oklch(48% 0.031 289.5)",
+          "oklch(60% 0.031 289.5)",
+          "oklch(72% 0.031 289.5)",
+          "oklch(84% 0.031 289.5)",
+          "oklch(95% 0.031 289.5)"
+        ]
+      },
+      "status-active-dark": {
+        "role": "status",
+        "displayName": "Active Green (dark)",
+        "canonical": "#4cc795",
+        "oklch": "oklch(74.8% 0.132 163.1)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(15% 0.132 163.1)",
+          "oklch(26% 0.132 163.1)",
+          "oklch(37% 0.132 163.1)",
+          "oklch(48% 0.132 163.1)",
+          "oklch(60% 0.132 163.1)",
+          "oklch(72% 0.132 163.1)",
+          "oklch(84% 0.132 163.1)",
+          "oklch(95% 0.132 163.1)"
+        ]
+      },
+      "status-active-wash-dark": {
+        "role": "status",
+        "displayName": "Active Wash (dark)",
+        "canonical": "#173327",
+        "oklch": "oklch(29.5% 0.041 164.1)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(15% 0.041 164.1)",
+          "oklch(26% 0.041 164.1)",
+          "oklch(37% 0.041 164.1)",
+          "oklch(48% 0.041 164.1)",
+          "oklch(60% 0.041 164.1)",
+          "oklch(72% 0.041 164.1)",
+          "oklch(84% 0.041 164.1)",
+          "oklch(95% 0.041 164.1)"
+        ]
+      },
+      "status-stale-dark": {
+        "role": "status",
+        "displayName": "Stale Amber (dark)",
+        "canonical": "#e0a54c",
+        "oklch": "oklch(76.1% 0.126 74.9)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(15% 0.126 74.9)",
+          "oklch(26% 0.126 74.9)",
+          "oklch(37% 0.126 74.9)",
+          "oklch(48% 0.126 74.9)",
+          "oklch(60% 0.126 74.9)",
+          "oklch(72% 0.126 74.9)",
+          "oklch(84% 0.126 74.9)",
+          "oklch(95% 0.126 74.9)"
+        ]
+      },
+      "status-stale-wash-dark": {
+        "role": "status",
+        "displayName": "Stale Wash (dark)",
+        "canonical": "#3a2c14",
+        "oklch": "oklch(30.3% 0.043 79.5)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(15% 0.043 79.5)",
+          "oklch(26% 0.043 79.5)",
+          "oklch(37% 0.043 79.5)",
+          "oklch(48% 0.043 79.5)",
+          "oklch(60% 0.043 79.5)",
+          "oklch(72% 0.043 79.5)",
+          "oklch(84% 0.043 79.5)",
+          "oklch(95% 0.043 79.5)"
+        ]
+      },
+      "status-retired-dark": {
+        "role": "status",
+        "displayName": "Retired Red (dark)",
+        "canonical": "#f07a72",
+        "oklch": "oklch(71.3% 0.147 25.4)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(15% 0.147 25.4)",
+          "oklch(26% 0.147 25.4)",
+          "oklch(37% 0.147 25.4)",
+          "oklch(48% 0.147 25.4)",
+          "oklch(60% 0.147 25.4)",
+          "oklch(72% 0.147 25.4)",
+          "oklch(84% 0.147 25.4)",
+          "oklch(95% 0.147 25.4)"
+        ]
+      },
+      "status-retired-wash-dark": {
+        "role": "status",
+        "displayName": "Retired Wash (dark)",
+        "canonical": "#3d1d1c",
+        "oklch": "oklch(27.5% 0.05 22.7)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(15% 0.05 22.7)",
+          "oklch(26% 0.05 22.7)",
+          "oklch(37% 0.05 22.7)",
+          "oklch(48% 0.05 22.7)",
+          "oklch(60% 0.05 22.7)",
+          "oklch(72% 0.05 22.7)",
+          "oklch(84% 0.05 22.7)",
+          "oklch(95% 0.05 22.7)"
+        ]
+      },
+      "status-neutral-dark": {
+        "role": "status",
+        "displayName": "Neutral Slate (dark)",
+        "canonical": "#9aa0b3",
+        "oklch": "oklch(70.7% 0.028 271.7)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(15% 0.028 271.7)",
+          "oklch(26% 0.028 271.7)",
+          "oklch(37% 0.028 271.7)",
+          "oklch(48% 0.028 271.7)",
+          "oklch(60% 0.028 271.7)",
+          "oklch(72% 0.028 271.7)",
+          "oklch(84% 0.028 271.7)",
+          "oklch(95% 0.028 271.7)"
+        ]
+      },
+      "status-neutral-wash-dark": {
+        "role": "status",
+        "displayName": "Neutral Wash (dark)",
+        "canonical": "#2b2a36",
+        "oklch": "oklch(29.1% 0.022 288.8)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(15% 0.022 288.8)",
+          "oklch(26% 0.022 288.8)",
+          "oklch(37% 0.022 288.8)",
+          "oklch(48% 0.022 288.8)",
+          "oklch(60% 0.022 288.8)",
+          "oklch(72% 0.022 288.8)",
+          "oklch(84% 0.022 288.8)",
+          "oklch(95% 0.022 288.8)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Page Title",
+        "purpose": "The page title in each page's command bar."
+      },
+      "figure": {
+        "displayName": "KPI Figure",
+        "purpose": "KPI tile values; tabular."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Default h1 outside the command bar."
+      },
+      "title": {
+        "displayName": "Section Title",
+        "purpose": "h2 section heads and dialog titles."
+      },
+      "pane-title": {
+        "displayName": "Pane Title",
+        "purpose": "Head of each chart pane or tile."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Running text; empty-state copy caps at 52ch."
+      },
+      "body-sm": {
+        "displayName": "Body Small",
+        "purpose": "Table cells, controls, buttons, nav links, legends."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Column heads, status chips, rail section labels, hints, crumbs. Sentence case."
+      },
+      "mono": {
+        "displayName": "Identifier Mono",
+        "purpose": "Hostnames, serials, versions, tokens, script bodies; never wraps."
+      }
+    },
+    "shadows": [
+      {
+        "name": "card",
+        "value": "0 1px 3px rgba(38, 30, 90, 0.08), 0 4px 14px rgba(38, 30, 90, 0.07)",
+        "dark": "0 1px 2px rgba(0, 0, 0, 0.35), 0 4px 14px rgba(0, 0, 0, 0.22)",
+        "purpose": "Resting panes, KPI tiles, table panes, empty states, the active nav pill."
+      },
+      {
+        "name": "raised",
+        "value": "0 2px 6px rgba(38, 30, 90, 0.08), 0 12px 32px rgba(38, 30, 90, 0.12)",
+        "dark": "0 2px 8px rgba(0, 0, 0, 0.45), 0 16px 40px rgba(0, 0, 0, 0.4)",
+        "purpose": "Dialogs, menus, search results, the login panel, linked KPI tile hover."
+      },
+      {
+        "name": "bar",
+        "value": "0 1px 0 rgba(38, 30, 90, 0.06), 0 4px 16px rgba(38, 30, 90, 0.05)",
+        "dark": "0 1px 0 rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.25)",
+        "purpose": "The header's bottom edge only."
+      },
+      {
+        "name": "button-primary-glow",
+        "value": "0 1px 2px rgba(38, 30, 90, 0.12), 0 4px 12px color-mix(in srgb, var(--primary) 28%, transparent)",
+        "purpose": "Primary button at rest."
+      },
+      {
+        "name": "focus-ring",
+        "value": "0 0 0 3px color-mix(in srgb, var(--primary) 28%, transparent)",
+        "purpose": "Focused controls and buttons; other focusables get a 2px primary outline at 2px offset."
+      },
+      {
+        "name": "pane-border",
+        "value": "1px solid transparent",
+        "dark": "1px solid #2b2938",
+        "purpose": "Light panes are edged by shadow alone; dark panes draw a 1px edge because soft shadows do not read on the dark ground."
+      },
+      {
+        "name": "login-glow",
+        "value": "radial-gradient(60rem 36rem at 50% -10%, color-mix(in srgb, var(--primary) 12%, transparent), transparent 70%)",
+        "purpose": "Faint wash of the mark's indigo behind the login panel. First screen only."
+      }
+    ],
+    "motion": [
+      {
+        "name": "transition",
+        "value": "180ms cubic-bezier(0.2, 0.8, 0.2, 1)",
+        "purpose": "Every state change: background, border, shadow, colour, rail collapse. Zeroed under prefers-reduced-motion."
+      },
+      {
+        "name": "dialog-in",
+        "value": "220ms cubic-bezier(0.2, 0.8, 0.2, 1); from opacity 0, translateY(8px) scale(0.985)",
+        "purpose": "Dialogs rise 8px on open; removed under prefers-reduced-motion."
+      },
+      {
+        "name": "barlist-grow",
+        "value": "scaleX(0) to 1 over the transition token",
+        "purpose": "Chart bars grow in on first paint."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone-narrow",
+        "value": "480px"
+      },
+      {
+        "name": "chart-stack",
+        "value": "560px"
+      },
+      {
+        "name": "mobile",
+        "value": "720px"
+      },
+      {
+        "name": "suite-name-drop",
+        "value": "900px"
+      }
+    ],
+    "themes": {
+      "mechanism": "prefers-color-scheme: dark overrides the same custom properties in web/src/styles/tokens.css; frontmatter keys ending in -dark record the dark values.",
+      "source": "web/src/styles/tokens.css"
+    }
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one obvious action in a context: indigo ground, deeper on hover, 1px press.",
+      "html": "<button class=\"ds-btn-primary\">Deploy script</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; height: 36px; padding: 0 16px; border: 1px solid #5552d4; border-radius: 8px; background: #5552d4; color: #fff; font-family: Figtree, system-ui, sans-serif; font-size: 0.875rem; font-weight: 600; cursor: pointer; box-shadow: 0 1px 2px rgba(38,30,90,0.12), 0 4px 12px color-mix(in srgb, #5552d4 28%, transparent); transition: background 180ms cubic-bezier(0.2,0.8,0.2,1), box-shadow 180ms cubic-bezier(0.2,0.8,0.2,1), transform 180ms cubic-bezier(0.2,0.8,0.2,1); } .ds-btn-primary:hover { background: #4744c2; border-color: #4744c2; box-shadow: 0 1px 2px rgba(38,30,90,0.14), 0 6px 16px color-mix(in srgb, #5552d4 34%, transparent); } .ds-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, #5552d4 28%, transparent), 0 4px 12px color-mix(in srgb, #5552d4 28%, transparent); } .ds-btn-primary:active { transform: translateY(1px); box-shadow: none; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Default action: white, strong-rule border, turns indigo on hover.",
+      "html": "<button class=\"ds-btn\">Export all devices</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; height: 36px; padding: 0 16px; border: 1px solid #d6d2e3; border-radius: 8px; background: #fff; color: #1e1c2a; font-family: Figtree, system-ui, sans-serif; font-size: 0.875rem; font-weight: 600; cursor: pointer; box-shadow: 0 1px 2px rgba(38,30,90,0.05); transition: background 180ms cubic-bezier(0.2,0.8,0.2,1), border-color 180ms cubic-bezier(0.2,0.8,0.2,1), color 180ms cubic-bezier(0.2,0.8,0.2,1), transform 180ms cubic-bezier(0.2,0.8,0.2,1); } .ds-btn:hover { background: #f7f6fc; border-color: color-mix(in srgb, #5552d4 30%, #d6d2e3); color: #5552d4; } .ds-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, #5552d4 28%, transparent); } .ds-btn:active { transform: translateY(1px); box-shadow: none; }"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Destructive action: secondary shape in retired red, red wash on hover.",
+      "html": "<button class=\"ds-btn-danger\">Wipe device</button>",
+      "css": ".ds-btn-danger { display: inline-flex; align-items: center; height: 36px; padding: 0 16px; border: 1px solid color-mix(in srgb, #c13b35 35%, #d6d2e3); border-radius: 8px; background: #fff; color: #c13b35; font-family: Figtree, system-ui, sans-serif; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: background 180ms cubic-bezier(0.2,0.8,0.2,1), border-color 180ms cubic-bezier(0.2,0.8,0.2,1); } .ds-btn-danger:hover { background: #fce6e4; border-color: color-mix(in srgb, #c13b35 55%, #d6d2e3); } .ds-btn-danger:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, #5552d4 28%, transparent); }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Every select, textarea and text input: white, strong-rule border, indigo-tinted focus ring.",
+      "html": "<input class=\"ds-input\" placeholder=\"Hostname, serial or model\" />",
+      "css": ".ds-input { min-height: 36px; width: 240px; padding: 8px 12px; border: 1px solid #d6d2e3; border-radius: 8px; background: #fff; color: #1e1c2a; font-family: Figtree, system-ui, sans-serif; font-size: 0.875rem; transition: border-color 180ms cubic-bezier(0.2,0.8,0.2,1), box-shadow 180ms cubic-bezier(0.2,0.8,0.2,1); } .ds-input::placeholder { color: #6b6782; } .ds-input:hover { border-color: color-mix(in srgb, #5552d4 25%, #d6d2e3); } .ds-input:focus { outline: none; border-color: color-mix(in srgb, #5552d4 60%, #d6d2e3); box-shadow: 0 0 0 3px color-mix(in srgb, #5552d4 28%, transparent); }"
+    },
+    {
+      "name": "Nav Rail",
+      "kind": "nav",
+      "refersTo": "nav-item-active",
+      "description": "Borderless rail on the page tint; the current page is a raised white pill with an indigo label.",
+      "html": "<nav class=\"ds-rail\"><div class=\"ds-rail-h\">Devices</div><a href=\"#\" class=\"ds-rail-a\" aria-current=\"page\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2\" y=\"3\" width=\"20\" height=\"14\" rx=\"2\"/><path d=\"M8 21h8M12 17v4\"/></svg>All devices</a><a href=\"#\" class=\"ds-rail-a\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"9\" cy=\"7\" r=\"4\"/><path d=\"M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2\"/></svg>Groups</a></nav>",
+      "css": ".ds-rail { width: 240px; padding: 16px 12px; background: #f6f5fa; font-family: Figtree, system-ui, sans-serif; } .ds-rail-h { padding: 0 12px 8px; font-size: 0.8125rem; font-weight: 600; color: #6b6782; } .ds-rail-a { display: flex; align-items: center; gap: 12px; height: 36px; padding: 0 12px; margin-top: 2px; border-radius: 8px; color: #3d3a4e; text-decoration: none; font-size: 0.875rem; font-weight: 500; transition: background 180ms cubic-bezier(0.2,0.8,0.2,1), color 180ms cubic-bezier(0.2,0.8,0.2,1); } .ds-rail-a svg { opacity: 0.7; } .ds-rail-a:hover { background: color-mix(in srgb, #eceafd 60%, transparent); color: #1e1c2a; } .ds-rail-a:hover svg, .ds-rail-a[aria-current='page'] svg { opacity: 1; } .ds-rail-a[aria-current='page'] { background: #fff; color: #5552d4; font-weight: 600; box-shadow: 0 1px 3px rgba(38,30,90,0.08), 0 4px 14px rgba(38,30,90,0.07); } .ds-rail-a:focus-visible { outline: 2px solid #5552d4; outline-offset: 2px; }"
+    },
+    {
+      "name": "Status Chips",
+      "kind": "chip",
+      "refersTo": "status-chip-active",
+      "description": "Status as word plus dot on its own wash; four tones only.",
+      "html": "<span class=\"ds-status ds-status--active\">active</span> <span class=\"ds-status ds-status--stale\">stale</span> <span class=\"ds-status ds-status--retired\">retired</span> <span class=\"ds-status\">not evaluated</span>",
+      "css": ".ds-status { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; padding: 1px 10px 1px 8px; border-radius: 999px; font-family: Figtree, system-ui, sans-serif; font-size: 0.8125rem; font-weight: 600; line-height: 1.6; color: color-mix(in srgb, #5d6275 80%, #1e1c2a); background: #eeedf3; } .ds-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #5d6275; } .ds-status--active { color: color-mix(in srgb, #13794a 85%, #1e1c2a); background: #e3f4ea; } .ds-status--active::before { background: #13794a; box-shadow: 0 0 0 3px color-mix(in srgb, #13794a 18%, transparent); } .ds-status--stale { color: color-mix(in srgb, #9a5b07 85%, #1e1c2a); background: #fbefd9; } .ds-status--stale::before { background: #9a5b07; } .ds-status--retired { color: color-mix(in srgb, #c13b35 85%, #1e1c2a); background: #fce6e4; } .ds-status--retired::before { background: #c13b35; }"
+    },
+    {
+      "name": "KPI Tile",
+      "kind": "card",
+      "refersTo": "pane",
+      "description": "A white pane floating on the Card shadow; linked tiles lift to Raised on hover.",
+      "html": "<a href=\"#\" class=\"ds-kpi\"><span class=\"ds-kpi-l\">Devices</span><span class=\"ds-kpi-v\">7502</span><span class=\"ds-kpi-n\">7502 active now</span></a>",
+      "css": ".ds-kpi { display: grid; gap: 4px; width: 200px; padding: 20px; background: #fff; border: 1px solid transparent; border-radius: 12px; box-shadow: 0 1px 3px rgba(38,30,90,0.08), 0 4px 14px rgba(38,30,90,0.07); color: #1e1c2a; text-decoration: none; font-family: Figtree, system-ui, sans-serif; transition: box-shadow 180ms cubic-bezier(0.2,0.8,0.2,1), transform 180ms cubic-bezier(0.2,0.8,0.2,1); } .ds-kpi:hover { box-shadow: 0 2px 6px rgba(38,30,90,0.08), 0 12px 32px rgba(38,30,90,0.12); transform: translateY(-1px); } .ds-kpi:focus-visible { outline: 2px solid #5552d4; outline-offset: 2px; } .ds-kpi-l { font-size: 0.875rem; font-weight: 600; color: #5e5a72; } .ds-kpi-v { font-size: 2rem; font-weight: 700; line-height: 1.1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; } .ds-kpi-n { font-size: 0.8125rem; color: #5e5a72; }"
+    },
+    {
+      "name": "Device Table",
+      "kind": "custom",
+      "refersTo": "table-row",
+      "description": "A table in its own pane: sunken header band, 44px rows, mono identifiers that never wrap, faint indigo row hover.",
+      "html": "<div class=\"ds-table\"><table><thead><tr><th>Hostname</th><th>Status</th><th>Last seen</th></tr></thead><tbody><tr><td><span class=\"ds-mono\">LOADSIM-00000-4489</span></td><td>active</td><td>10 hours ago</td></tr><tr><td><span class=\"ds-mono\">LOADSIM-00000-558c</span></td><td>active</td><td>10 hours ago</td></tr></tbody></table></div>",
+      "css": ".ds-table { background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(38,30,90,0.08), 0 4px 14px rgba(38,30,90,0.07); overflow: hidden; font-family: Figtree, system-ui, sans-serif; } .ds-table table { border-collapse: collapse; width: 100%; } .ds-table th, .ds-table td { text-align: left; padding: 8px 16px; height: 44px; border-bottom: 1px solid #e7e4f0; font-size: 0.875rem; font-variant-numeric: tabular-nums; color: #1e1c2a; } .ds-table th { height: auto; padding: 12px 16px; background: #f1eff7; color: #5e5a72; font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.01em; } .ds-table tbody tr { transition: background 180ms cubic-bezier(0.2,0.8,0.2,1); } .ds-table tbody tr:hover { background: color-mix(in srgb, #5552d4 4%, #fff); } .ds-table tbody tr:last-child td { border-bottom: 0; } .ds-table td:first-child { font-weight: 500; } .ds-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 0.88em; letter-spacing: -0.01em; white-space: nowrap; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Calm Studio",
+    "overview": "Retune is the same working console an endpoint engineer lives in all day, re-materialised from hard Fluent chrome into a soft, calm studio. Tonal layers and gentle depth do the work that hairlines and a saturated top band used to do: a lilac-tinted near-white page, white panes floating on soft two-layer shadows, and a sunken tone for wells, tracks and table heads. It should feel like a place, not a form. The fleet's state reads at a glance, actions are obvious, and nothing shouts except status.\n\nDensity is not negotiable. Tables keep 44px rows, identifiers never wrap, the nav rail keeps every destination visible, and KPI tiles and chart panes pack on a 16px gutter. Softness comes from material (tone, shadow, 12px pane and 8px control corners, pill chips), never from padding bloat or a consumer-app bounce. The system rejects the Intune admin-center clone look: no indigo top band, no 2px corners, no grey ramps, no borders drawn around everything.\n\nDark mode is designed, not inverted: an indigo-tinted charcoal where the page is the deepest layer, panes a step up and wells a step further, lifted by tone. Where soft shadows cannot read on the dark ground, a single 1px pane edge takes over.\n\n**Provenance.** This world is an evolution of the incumbent console, pinned by the user's own words (\"i like how everything looks now but I want it to look more inviting and softer\"). FORM was fixed by that request; no concept roll ran, by design. Future work extends this world; it does not re-roll it.",
+    "keyCharacteristics": [
+      "Lilac-tinted page ground with white panes that float on soft, indigo-tinted two-layer shadows.",
+      "Light header with a single saturated object, the indigo mark tile; no colour band.",
+      "Borderless tinted nav rail; the current page is a raised white pill.",
+      "Indigo is scarce: mark, active nav pill, focus, primary actions, text links, single-series data.",
+      "Status is always a word plus a dot on its own wash, never colour alone.",
+      "Figtree for every UI word, JetBrains Mono for every identifier.",
+      "Admin-center density held intact: 44px rows, nowrap identifiers, 16px gutters."
+    ],
+    "rules": [
+      {
+        "name": "The Rationed Indigo Rule",
+        "body": "Indigo appears only on the mark, the active nav pill, focus, primary actions, text links (which need an affordance) and single-series data such as the Enrollments bar chart. Anything else that wants indigo is either one of those or does not get it.",
+        "section": "colors"
+      },
+      {
+        "name": "The Status Is Meaning Rule",
+        "body": "The four status hues carry state and nothing else. Never use them for decoration, category colour or emphasis.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tinted Neutral Rule",
+        "body": "Every neutral carries a little of the mark's indigo. No pure greys, light or dark.",
+        "section": "colors"
+      },
+      {
+        "name": "The Contrast Floor Rule",
+        "body": "Every text token clears 4.5:1 against the page and pane grounds it sits on: ink-faint is #6b6782 in light (4.98:1 on paper) and #8d89a3 in dark (4.98:1 on the dark pane); status-neutral is #5d6275 in light. A lighter \"faint\" is a defect, not a style.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Figures Rule",
+        "body": "Every table cell, count and figure uses tabular numerals, so numbers are read against each other in a column.",
+        "section": "typography"
+      },
+      {
+        "name": "The Identifier Rule",
+        "body": "Anything a machine issued (hostname, serial, version, token, hash) is set in JetBrains Mono and never wraps.",
+        "section": "typography"
+      },
+      {
+        "name": "The Edge Is The Shadow Rule",
+        "body": "In light, a pane is separated from the page by tone and shadow, never by a border. Hairlines are reserved for table row dividers and control borders.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Dark Edge Exception",
+        "body": "In dark, and only in dark, panes draw a 1px pane-border edge, because soft shadows vanish on the charcoal ground. It is a single quiet line, never a light glowing border.",
+        "section": "elevation"
+      },
+      {
+        "name": "The One Ambient Glow",
+        "body": "The login screen carries a faint radial wash of the mark's own indigo (12%, `radial-gradient(60rem 36rem at 50% -10%, ...)`) behind the panel. First screen only; no other surface gets a gradient ground.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** set every page on the lilac paper and put content in white panes at 12px corners with the Card shadow and 20px padding.",
+      "**Do** keep tables at 44px rows inside their own pane, with tabular figures, nowrap identifiers in JetBrains Mono, and sideways scrolling on narrow screens.",
+      "**Do** show status as the word plus a dot on its wash, in one of the four status tones.",
+      "**Do** reserve indigo for the mark, the active nav pill, focus, primary actions, text links and single-series data.",
+      "**Do** let dark mode separate layers by tone, and draw the 1px pane-border edge on dark panes only.",
+      "**Do** use the shared 180ms curve for every state change and honour reduced motion.",
+      "**Do** hold every text token at 4.5:1 or better on its ground."
+    ],
+    "donts": [
+      "**Don't** bring back the indigo top band, 2px corners, grey ramps, or borders around every pane: the Intune admin-center clone look.",
+      "**Don't** draw pane borders in light mode; the shadow is the edge.",
+      "**Don't** use a status colour for decoration or show state by colour alone.",
+      "**Don't** trade density for softness: no taller rows, no looser tables, no fewer nav items.",
+      "**Don't** go bubbly or consumer-app: no radii beyond 16px on containers, no bouncy motion, no playful illustration.",
+      "**Don't** put gradient or glow grounds on any screen but login.",
+      "**Don't** set UI text in the monospace or identifiers in Figtree.",
+      "**Don't** set labels, column heads or section names in uppercase or as eyebrow kickers over titles."
+    ]
+  }
+}

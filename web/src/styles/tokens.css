@@ -1,35 +1,52 @@
 :root {
   /* Surfaces and text. Light is the default; dark mirrors it below.
-     The neutrals are the Fluent ramp the Intune admin center uses: a warm
-     near-white page, white panes, and a slightly darker nav rail, so the
-     three layers separate without a single drop shadow. */
-  --paper: #faf9f8;
+     Every neutral carries a little of the indigo in the mark, so the page
+     reads as one calm material rather than a stack of greys: a lilac-tinted
+     ground, white panes that float on it, and a sunken tone for wells and
+     table heads. Layers separate by tone and soft depth, not by hairlines. */
+  --paper: #f6f5fa;
   --surface: #ffffff;
-  --surface-sunken: #f3f2f1;
-  --ink: #1b1a19;
-  --ink-muted: #605e5c;
-  --rule: #e1dfdd;
+  --surface-sunken: #f1eff7;
+  --surface-hover: #f7f6fc;
+  --ink: #1e1c2a;
+  --ink-muted: #5e5a72;
+  --ink-faint: #6b6782;
+  --rule: #e7e4f0;
+  --rule-strong: #d6d2e3;
+  /* A pane's edge: its shadow draws it in light, so no line is needed. */
+  --pane-border: transparent;
 
-  /* One primary, used for actions and focus only. */
-  --primary: #5b5bd6;
+  /* One primary, used for actions, the current place and focus only. */
+  --primary: #5552d4;
+  --primary-hover: #4744c2;
   --primary-ink: #ffffff;
-  --primary-wash: #eceafc;
+  --primary-wash: #eceafd;
+  --primary-wash-strong: #dedbfb;
 
-  /* Chrome: the top bar is the brand surface, the nav rail sits between it
-     and the page. Kept apart from --primary so the accent can change without
-     repainting the frame. */
-  --brand-bar: #3b3499;
-  --brand-bar-top: #4a41b8;
-  --brand-bar-ink: #ffffff;
-  --brand-bar-ink-muted: #c7c3ef;
-  --nav-bg: #f3f2f1;
-  --nav-ink: #323130;
+  /* Chrome. The header is a light surface now: Retune's colour lives in the
+     mark, the active nav pill and primary actions, not in a band across the
+     top. The --brand-bar tokens keep their names for the components that
+     read them. */
+  --brand-bar: #ffffff;
+  --brand-bar-top: #ffffff;
+  --brand-bar-ink: #1e1c2a;
+  --brand-bar-ink-muted: #5e5a72;
+  --brand-mark: linear-gradient(145deg, #6d6af0, #4a46c9);
+  --nav-bg: #f6f5fa;
+  --nav-ink: #3d3a4e;
+  --nav-active-bg: #ffffff;
 
-  /* Status carries meaning; never use these for decoration. */
-  --status-active: #107c41;
-  --status-stale: #a4600a;
-  --status-retired: #c4403a;
-  --status-neutral: #6b7481;
+  /* Status carries meaning; never use these for decoration. Each has a
+     strong hue for text, dots and bars and a wash for the chip behind it,
+     so a status reads at a glance without a saturated block. */
+  --status-active: #13794a;
+  --status-active-wash: #e3f4ea;
+  --status-stale: #9a5b07;
+  --status-stale-wash: #fbefd9;
+  --status-retired: #c13b35;
+  --status-retired-wash: #fce6e4;
+  --status-neutral: #5d6275;
+  --status-neutral-wash: #eeedf3;
 
   /* Type scale. A step up from the admin centre's own 12/14: the density is
      worth copying, the eye strain is not. */
@@ -40,11 +57,12 @@
   --text-xl: 1.375rem;
   --text-2xl: 1.625rem;
 
-  /* Plex is bundled with the console, so it renders identically on every
-     machine and at every weight - Segoe leans on whatever the OS happens to
-     have and is thin and wide at this size. */
-  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", monospace;
+  /* Figtree's open, rounded forms make the console friendlier to live in all
+     day without giving up density; identifiers, versions and output stay in
+     JetBrains Mono, where 0/O and 1/l/I never collide. Both are bundled, so
+     they render the same on every machine. */
+  --font-sans: "Figtree", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", monospace;
 
   /* Spacing: a 4px base */
   --space-1: 0.25rem;
@@ -60,46 +78,66 @@
   --pane-padding: 1.25rem;
   --cell-padding: 1rem;
 
-  /* 2px is the admin centre's own corner; 4px on the larger boxes keeps a
-     pane from looking like a cut rectangle without turning it into a bubble. */
-  --radius: 2px;
-  --radius-pane: 4px;
+  /* Soft, not bubbly: controls round to 8px, panes to 12px, chips are pills.
+     Large enough that nothing reads as a cut rectangle, small enough that a
+     dense table still looks like a table. */
+  --radius: 8px;
+  --radius-pane: 12px;
+  --radius-pill: 999px;
   --rail-width: 240px;
-  --rail-width-collapsed: 48px;
-  --topbar-height: 48px;
+  --rail-width-collapsed: 56px;
+  --topbar-height: 56px;
   --row-height: 44px;
-  --shadow-raised: 0 1.6px 3.6px rgba(0, 0, 0, 0.11), 0 0.3px 0.9px rgba(0, 0, 0, 0.07);
-  /* Just enough to lift a pane off the page; a border alone reads flat and
-     two borders meeting read as a seam. */
-  --shadow-card: 0 1px 2px rgba(27, 26, 25, 0.06);
-  --shadow-bar: 0 1px 3px rgba(27, 26, 25, 0.18);
-  --transition: 140ms ease;
+
+  /* Depth is two soft layers tinted with the ink's hue: a tight contact
+     shadow and a wide ambient one. It lifts a pane without a border having
+     to draw its edge. */
+  --shadow-card: 0 1px 3px rgba(38, 30, 90, 0.08), 0 4px 14px rgba(38, 30, 90, 0.07);
+  --shadow-raised: 0 2px 6px rgba(38, 30, 90, 0.08), 0 12px 32px rgba(38, 30, 90, 0.12);
+  --shadow-bar: 0 1px 0 rgba(38, 30, 90, 0.06), 0 4px 16px rgba(38, 30, 90, 0.05);
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--primary) 28%, transparent);
+  --transition: 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #1b1a19;
-    --surface: #252423;
-    --surface-sunken: #323130;
-    --ink: #f3f2f1;
-    --ink-muted: #a19f9d;
-    --rule: #3b3a39;
-    --primary: #8b8bf0;
-    --primary-ink: #14161a;
-    --primary-wash: #2c2a55;
-    --brand-bar: #2a2477;
-    --brand-bar-top: #352d92;
-    --brand-bar-ink: #ffffff;
-    --brand-bar-ink-muted: #a7a2d8;
-    --nav-bg: #252423;
-    --nav-ink: #f3f2f1;
-    --status-active: #3fbfa0;
-    --status-stale: #d99a3f;
-    --status-retired: #e0655e;
-    --status-neutral: #8b95a3;
-    --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.35);
-    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --shadow-bar: 0 1px 3px rgba(0, 0, 0, 0.5);
+    /* Indigo-tinted charcoal, lifted by tone: the page is the deepest layer,
+       panes a step up, wells a step further, so depth reads without light
+       borders glowing at every edge. */
+    --paper: #15141c;
+    --surface: #1e1c28;
+    --surface-sunken: #282634;
+    --surface-hover: #242230;
+    --ink: #eeecf6;
+    --ink-muted: #aca8c0;
+    --ink-faint: #8d89a3;
+    --rule: #302d3d;
+    --rule-strong: #3d3a4c;
+    --pane-border: #2b2938;
+    --primary: #a09df7;
+    --primary-hover: #b4b2fa;
+    --primary-ink: #16151d;
+    --primary-wash: #2a2850;
+    --primary-wash-strong: #34315f;
+    --brand-bar: #1a1923;
+    --brand-bar-top: #1a1923;
+    --brand-bar-ink: #eeecf6;
+    --brand-bar-ink-muted: #aca8c0;
+    --brand-mark: linear-gradient(145deg, #8f8cf5, #5d59dc);
+    --nav-bg: #15141c;
+    --nav-ink: #cfcbe0;
+    --nav-active-bg: #262435;
+    --status-active: #4cc795;
+    --status-active-wash: #173327;
+    --status-stale: #e0a54c;
+    --status-stale-wash: #3a2c14;
+    --status-retired: #f07a72;
+    --status-retired-wash: #3d1d1c;
+    --status-neutral: #9aa0b3;
+    --status-neutral-wash: #2b2a36;
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35), 0 4px 14px rgba(0, 0, 0, 0.22);
+    --shadow-raised: 0 2px 8px rgba(0, 0, 0, 0.45), 0 16px 40px rgba(0, 0, 0, 0.4);
+    --shadow-bar: 0 1px 0 rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.25);
   }
 }
 
