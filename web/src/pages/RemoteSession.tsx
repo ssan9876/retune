@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { StatusDot } from "../components/StatusDot";
 import { Button, ErrorNote, Spinner } from "../components/ui";
+import { useSession } from "../session/SessionContext";
 
 export interface RemoteSessionInfo {
   id: string;
@@ -40,6 +41,7 @@ const STATUS_WORDS: Record<RemoteSessionInfo["status"], string> = {
  * everything typed and written is kept as the session's record. */
 export default function RemoteSession() {
   const { id = "" } = useParams();
+  const { admin } = useSession();
   const [session, setSession] = useState<RemoteSessionInfo | null>(null);
   const [chunks, setChunks] = useState<RemoteChunk[]>([]);
   const [line, setLine] = useState("");
@@ -100,6 +102,9 @@ export default function RemoteSession() {
 
   if (!session && !error) return <Spinner />;
   const ended = session?.status === "ended";
+  // Anyone who can see the device may watch; only whoever started the
+  // session types in it, so everything that runs is on one name.
+  const mine = !!session && admin?.email === session.started_by;
   return (
     <>
       <div className="content__head">
@@ -150,7 +155,10 @@ export default function RemoteSession() {
         ))}
         <div ref={bottom} />
       </pre>
-      {!ended ? (
+      {!ended && !mine && session ? (
+        <p className="hint">You are watching. Only {session.started_by} can type in this session.</p>
+      ) : null}
+      {!ended && mine ? (
         <form
           onSubmit={(e) => {
             e.preventDefault();

@@ -23,6 +23,9 @@ var (
 	ErrEnded           = errors.New("the remote session has ended")
 	ErrDeviceNotActive = errors.New("the device isn't active")
 	ErrBadRequest      = errors.New("bad request")
+	// ErrNotYours is input from anyone but the admin who started the
+	// session: others may watch, but what runs is on one person's name.
+	ErrNotYours = errors.New("only the admin who started this session can type in it")
 )
 
 // JoinTimeout is how long a device has to pick a session up.
@@ -163,7 +166,7 @@ func checkChunk(data string) error {
 }
 
 // Input is something an administrator typed.
-func (s *Service) Input(ctx context.Context, id uuid.UUID, data string) error {
+func (s *Service) Input(ctx context.Context, id uuid.UUID, actor, data string) error {
 	if err := checkChunk(data); err != nil {
 		return err
 	}
@@ -173,6 +176,15 @@ func (s *Service) Input(ctx context.Context, id uuid.UUID, data string) error {
 	}
 	if r.Status == store.RemoteEnded {
 		return ErrEnded
+	}
+	if actor != r.StartedBy {
+		if err := s.Store.Q().InsertAudit(ctx, store.AuditEntry{
+			Actor: actor, Action: "remote_session.input_refused", TargetKind: "device", TargetID: r.DeviceID.String(),
+			Details: map[string]any{"session_id": id.String(), "started_by": r.StartedBy},
+		}); err != nil {
+			return err
+		}
+		return ErrNotYours
 	}
 	return s.Store.Q().AppendRemoteChunk(ctx, id, protocol.RemoteStreamIn, data, s.now())
 }

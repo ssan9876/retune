@@ -31,6 +31,15 @@ func TestHelpdeskRole(t *testing.T) {
 			t.Errorf("read-only %s: %d", typ, status)
 		}
 	}
+	// Helpdesk rotates the built-in Administrator; naming any other account
+	// is an admin's decision, since helpdesk can then reveal the password.
+	named := map[string]any{"device_ids": device, "type": "rotate_local_admin_password", "account": "svc-backup"}
+	if status, _ := help.do(http.MethodPost, "/commands", named); status != http.StatusForbidden {
+		t.Errorf("helpdesk rotating a named account: %d, want 403", status)
+	}
+	if status, body := admin.do(http.MethodPost, "/commands", named); status != http.StatusCreated {
+		t.Errorf("admin rotating a named account: %d %s", status, body)
+	}
 	for name, req := range map[string]map[string]any{
 		"run_powershell": {"device_ids": device, "type": "run_powershell", "script": "Get-Date"},
 		"wipe":           {"device_ids": device, "type": "wipe", "confirm_hostname": "PC-HELP", "reason": "x"},

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -121,6 +122,14 @@ func (h *Handler) queueCommand(w http.ResponseWriter, r *http.Request) {
 	// Helpdesk takes device actions that run no code and destroy nothing.
 	if caller(r).Admin.Role != store.RoleAdmin && !helpdeskCommands[req.Type] {
 		writeError(w, http.StatusForbidden, "forbidden", "a "+req.Type+" command needs the admin role")
+		return
+	}
+	// Helpdesk rotates the built-in Administrator only. Naming an account
+	// would let it set, then reveal, the password of any local user or
+	// service account on the machine.
+	if req.Type == protocol.CommandRotateAdminPassword && strings.TrimSpace(req.Account) != "" &&
+		caller(r).Admin.Role != store.RoleAdmin {
+		writeError(w, http.StatusForbidden, "forbidden", "rotating a named account needs the admin role; helpdesk rotates the built-in Administrator")
 		return
 	}
 	if req.Type == protocol.CommandWipe {

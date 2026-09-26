@@ -45,8 +45,25 @@ func TestSessionLimits(t *testing.T) {
 	if err := svc.Join(ctx, d.ID, s.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.Input(ctx, s.ID, "hostname\n"); err != nil {
+	if err := svc.Input(ctx, s.ID, "ops", "hostname\n"); err != nil {
 		t.Fatal(err)
+	}
+	// Another admin may watch, but not type: what runs is on one name.
+	if err := svc.Input(ctx, s.ID, "someone-else", "whoami\n"); !errors.Is(err, remote.ErrNotYours) {
+		t.Fatalf("input from another admin: %v", err)
+	}
+	entries, err := st.Q().ListAudit(ctx, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refused := 0
+	for _, e := range entries {
+		if e.Action == "remote_session.input_refused" && e.Actor == "someone-else" {
+			refused++
+		}
+	}
+	if refused != 1 {
+		t.Fatalf("refused input audited %d times, want 1", refused)
 	}
 	now = now.Add(protocol.RemoteIdleTimeout - time.Minute)
 	if got, _ := svc.Get(ctx, s.ID); got.Status != store.RemoteActive {
@@ -56,7 +73,7 @@ func TestSessionLimits(t *testing.T) {
 	if got, _ := svc.Get(ctx, s.ID); got.Status != store.RemoteEnded {
 		t.Fatalf("idle = %+v", got)
 	}
-	if err := svc.Input(ctx, s.ID, "more\n"); !errors.Is(err, remote.ErrEnded) {
+	if err := svc.Input(ctx, s.ID, "ops", "more\n"); !errors.Is(err, remote.ErrEnded) {
 		t.Fatalf("input after the end: %v", err)
 	}
 
@@ -65,7 +82,7 @@ func TestSessionLimits(t *testing.T) {
 	_ = svc.Join(ctx, d.ID, s.ID)
 	for range 7 {
 		now = now.Add(10 * time.Minute)
-		_ = svc.Input(ctx, s.ID, "Get-Date\n")
+		_ = svc.Input(ctx, s.ID, "ops", "Get-Date\n")
 	}
 	if got, _ := svc.Get(ctx, s.ID); got.Status != store.RemoteEnded {
 		t.Fatalf("past an hour = %+v", got)
@@ -79,7 +96,7 @@ func TestSessionLimits(t *testing.T) {
 	if err := svc.Output(ctx, d.ID, s.ID, "in", "x"); !errors.Is(err, remote.ErrBadRequest) {
 		t.Fatalf("output as input: %v", err)
 	}
-	if err := svc.Input(ctx, s.ID, string([]byte{0xff, 0xfe})); !errors.Is(err, remote.ErrBadRequest) {
+	if err := svc.Input(ctx, s.ID, "ops", string([]byte{0xff, 0xfe})); !errors.Is(err, remote.ErrBadRequest) {
 		t.Fatalf("not text: %v", err)
 	}
 	retired := d

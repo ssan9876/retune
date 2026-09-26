@@ -44,13 +44,29 @@ func (q *Queries) CreateAPIToken(ctx context.Context, t APIToken) error {
 // that should work: not revoked, not expired, and made by an admin who is
 // not disabled. Anything else is ErrNotFound, so a caller cannot tell an
 // unknown token from a dead one.
+//
+// The token's Role is capped at its maker's role now: an admin demoted to
+// helpdesk holds only helpdesk tokens, whatever they were made as.
 func (q *Queries) GetUsableAPIToken(ctx context.Context, hash []byte, now time.Time) (APIToken, error) {
-	return scanAPIToken(q.db.QueryRow(ctx, `
+	var t APIToken
+	var creatorRole string
+	err := q.db.QueryRow(ctx, `
 		SELECT t.id, t.name, t.token_hash, t.role, t.created_by_id, t.created_by, t.created_at, t.expires_at,
-		       t.last_used_at, t.revoked_at
+		       t.last_used_at, t.revoked_at, a.role
 		FROM api_tokens t JOIN admins a ON a.id = t.created_by_id AND a.tenant_id = t.tenant_id
 		WHERE t.token_hash = $1 AND t.revoked_at IS NULL AND t.expires_at > $2 AND a.disabled_at IS NULL`,
-		hash, now))
+		hash, now).Scan(&t.ID, &t.Name, &t.TokenHash, &t.Role, &t.CreatedByID, &t.CreatedBy,
+		&t.CreatedAt, &t.ExpiresAt, &t.LastUsedAt, &t.RevokedAt, &creatorRole)
+	if err != nil {
+		return APIToken{}, notFound(err)
+	}
+	if RoleRank(creatorRole) < RoleRank(t.Role) {
+		if !ValidRole(creatorRole) {
+			return APIToken{}, ErrNotFound
+		}
+		t.Role = creatorRole
+	}
+	return t, nil
 }
 
 func (q *Queries) GetAPIToken(ctx context.Context, tenantID, id uuid.UUID) (APIToken, error) {
@@ -87,6 +103,18 @@ func (q *Queries) RevokeAPIToken(ctx context.Context, tenantID, id uuid.UUID, at
 		return false, err
 	}
 	return tag.RowsAffected() > 0, nil
+}
+
+// RevokeAPITokensForAdmin revokes every live token an admin made and returns
+// how many there were.
+func (q *Queries) RevokeAPITokensForAdmin(ctx context.Context, tenantID, adminID uuid.UUID, at time.Time) (int64, error) {
+	tag, err := q.db.Exec(ctx,
+		`UPDATE api_tokens SET revoked_at = $3 WHERE tenant_id = $1 AND created_by_id = $2 AND revoked_at IS NULL`,
+		tenantID, adminID, at)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }
 
 // TouchAPIToken records a use.

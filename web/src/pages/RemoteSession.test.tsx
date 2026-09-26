@@ -5,6 +5,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import RemoteSession from "./RemoteSession";
 
+let signedInAs = "ops@example.com";
+vi.mock("../session/SessionContext", () => ({
+  useSession: () => ({ admin: { email: signedInAs, role: "admin" } }),
+}));
+
 const fetchMock = vi.fn();
 
 function json(body: unknown, status = 200) {
@@ -33,6 +38,7 @@ function renderPage() {
 beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
+  signedInAs = "ops@example.com";
 });
 
 describe("RemoteSession", () => {
@@ -70,6 +76,17 @@ describe("RemoteSession", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "End session" }));
     await waitFor(() => expect(posts.some((p) => p.url.includes("/remote-sessions/s1/end"))).toBe(true));
+  });
+
+  it("lets another admin watch but not type", async () => {
+    signedInAs = "someone-else@example.com";
+    fetchMock.mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve(json({ session, chunks: [] })), 50)),
+    );
+    renderPage();
+    expect(await screen.findByText(/Only ops@example.com can type/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Command")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "End session" })).toBeInTheDocument();
   });
 
   it("shows an ended session read-only, with why it ended", async () => {
