@@ -1635,6 +1635,24 @@
         },
         "type": "object"
       },
+      "LatestRelease": {
+        "properties": {
+          "notes": {
+            "type": "string"
+          },
+          "prerelease": {
+            "type": "boolean"
+          },
+          "published_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "ListOfAdmin": {
         "properties": {
           "items": {
@@ -2860,6 +2878,57 @@
         },
         "type": "object"
       },
+      "Server": {
+        "properties": {
+          "approvals_required": {
+            "type": "boolean"
+          },
+          "latest": {
+            "$ref": "#/components/schemas/LatestRelease"
+          },
+          "latest_error": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "mode_note": {
+            "type": "string"
+          },
+          "pending_approval_id": {
+            "type": "string"
+          },
+          "stamped": {
+            "type": "boolean"
+          },
+          "state": {
+            "$ref": "#/components/schemas/State"
+          },
+          "update_available": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ServerUpdateRequest": {
+        "properties": {
+          "version": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ServerUpdateResponse": {
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/State"
+          }
+        },
+        "type": "object"
+      },
       "SessionResponse": {
         "properties": {
           "admin": {
@@ -3148,6 +3217,47 @@
           },
           "enabled": {
             "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "State": {
+        "properties": {
+          "backup": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "from_version": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "requested_by": {
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
           }
         },
         "type": "object"
@@ -8930,6 +9040,81 @@
           "Scripts"
         ],
         "x-retune-access": "scoped"
+      }
+    },
+    "/server": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getServer",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Server"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "The server's version, the newest verified release, and any update in progress",
+        "tags": [
+          "Server"
+        ],
+        "x-retune-access": "scoped"
+      }
+    },
+    "/server/update": {
+      "post": {
+        "description": "Admins at a console only. The version must be the newest verified release and newer than the running one; the server is never downgraded. With approvals on, the request is held for a second administrator (202 with the approval). The updater verifies the release itself, backs up the database, installs the new build and rolls back if it does not report ready. 409 when there is no updater, an update is running, or the version is refused.\n\nThe admin role, signed in to the console, not limited to some devices.",
+        "operationId": "postServerUpdate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServerUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerUpdateResponse"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Update the server to the newest verified release",
+        "tags": [
+          "Server"
+        ],
+        "x-retune-access": "admin+write"
       }
     },
     "/session": {

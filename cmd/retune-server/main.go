@@ -24,6 +24,7 @@ import (
 	"retune/internal/server/enroll"
 	"retune/internal/server/store"
 	"retune/internal/server/sweeper"
+	"retune/internal/version"
 )
 
 const usage = `usage: retune-server <command>
@@ -43,7 +44,9 @@ commands:
   command show <id>      show a command and its result
   bootstrap-admin        create the first console account (--email, --password, --role)
   admin <subcommand>     manage console accounts (list, create, password, totp, disable, enable)
-  rotate-secret-key      re-seal every stored secret under a new server key (--dry-run, --out)`
+  rotate-secret-key      re-seal every stored secret under a new server key (--dry-run, --out)
+  version                print the version this binary was built as
+  update-apply           apply an update the server staged (binary installs; run by systemd)`
 
 func main() {
 	if err := run(context.Background(), os.Args[1:], os.Getenv, os.Stdout); err != nil {
@@ -81,6 +84,10 @@ func run(ctx context.Context, args []string, getenv func(string) string, out io.
 		return adminCmd(ctx, args[1:], getenv, out)
 	case "rotate-secret-key":
 		return rotateKeyCmd(ctx, args[1:], getenv, out)
+	case "version":
+		return versionCmd(out)
+	case "update-apply":
+		return updateApplyCmd(ctx, args[1:], getenv, out)
 	default:
 		return fmt.Errorf("unknown command %q\n%s", args[0], usage)
 	}
@@ -101,6 +108,7 @@ func serve(ctx context.Context, getenv func(string) string) error {
 		return err
 	}
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	log.Info("starting retune-server", "version", version.Version)
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

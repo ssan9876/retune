@@ -90,6 +90,8 @@ func (h *Handler) mountResources(mux *http.ServeMux, base string) {
 	h.handle(mux, "GET "+base+"/agent-versions/{id}", h.read(h.getAgentVersion))
 	h.handle(mux, "DELETE "+base+"/agent-versions/{id}", h.writeFleet(h.deleteAgentVersion))
 	h.handle(mux, "GET "+base+"/releases", h.read(h.listReleases))
+	h.handle(mux, "GET "+base+"/server", h.read(h.getServer))
+	h.handle(mux, "POST "+base+"/server/update", h.writeAdmin(h.requestServerUpdate))
 	// Checking makes the server talk to the outside world on request.
 	h.handle(mux, "POST "+base+"/releases/check", h.writeFleet(h.checkReleases))
 	h.handle(mux, "GET "+base+"/agent-rollout", h.read(h.getAgentRollout))

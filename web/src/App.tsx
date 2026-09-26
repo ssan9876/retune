@@ -22,6 +22,7 @@ import Provisioning from "./pages/Provisioning";
 import RemoteSession from "./pages/RemoteSession";
 import Reports from "./pages/Reports";
 import Scripts from "./pages/Scripts";
+import ServerUpdate from "./pages/ServerUpdate";
 import Tokens from "./pages/Tokens";
 import { useSession } from "./session/SessionContext";
 
@@ -64,6 +65,7 @@ export default function App() {
         <Route path="/audit" element={<Audit />} />
         <Route path="/admins" element={<Admins />} />
         <Route path="/api-tokens" element={<ApiTokens />} />
+        <Route path="/server-update" element={<ServerUpdate />} />
         <Route path="*" element={<Navigate to="/devices" replace />} />
       </Routes>
     </Shell>

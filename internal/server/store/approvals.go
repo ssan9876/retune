@@ -22,6 +22,8 @@ const (
 	// ApprovalGroupRule changes the rule of a dynamic group that has code
 	// assigned to it.
 	ApprovalGroupRule = "group_rule"
+	// ApprovalServerUpdate updates the server itself to a newer release.
+	ApprovalServerUpdate = "server_update"
 )
 
 // Approval states.

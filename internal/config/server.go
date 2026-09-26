@@ -7,6 +7,7 @@ import (
 	"net/mail"
 	"net/netip"
 	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -63,7 +64,36 @@ type Server struct {
 	Approvals ApprovalsConfig
 	// ReleaseFeed is where the server looks for new Retune releases.
 	ReleaseFeed ReleaseFeedConfig
+	// ServerUpdate is how the server updates itself to a newer release.
+	ServerUpdate ServerUpdateConfig
 }
+
+// The ways a server can update itself.
+const (
+	// ServerUpdateAuto uses the Docker updater when its socket is there, and
+	// otherwise offers no update button.
+	ServerUpdateAuto   = "auto"
+	ServerUpdateDocker = "docker"
+	ServerUpdateBinary = "binary"
+	ServerUpdateOff    = "off"
+)
+
+// ServerUpdateConfig says how an administrator's "Update" reaches whatever
+// applies it.
+type ServerUpdateConfig struct {
+	Mode string
+	// UpdaterSocket and UpdaterToken reach the retune-updater service.
+	UpdaterSocket string
+	UpdaterToken  string
+	// Dir is where a binary install stages updates for update-apply.
+	Dir string
+}
+
+// DefaultUpdaterSocket is where the Compose stack's updater listens.
+const DefaultUpdaterSocket = "/run/retune-updater/updater.sock"
+
+// minUpdaterToken is the shortest token the updater accepts.
+const minUpdaterToken = 16
 
 // ReleaseFeedConfig says where and how often the server looks for new
 // releases. A release is only believed once its signed manifest verifies
@@ -290,6 +320,9 @@ func LoadServer(getenv func(string) string) (Server, error) {
 		return Server{}, fmt.Errorf("AGENT_DOWNLOAD_URL must be an http or https URL, got %q", c.AgentDownloadURL)
 	}
 	if c.ReleaseFeed, err = loadReleaseFeed(lookup); err != nil {
+		return Server{}, err
+	}
+	if c.ServerUpdate, err = loadServerUpdate(lookup, c.DataDir); err != nil {
 		return Server{}, err
 	}
 	if c.MetricsToken != "" && len(c.MetricsToken) < minMetricsToken {
@@ -577,6 +610,28 @@ func or(v, def string) string {
 		return def
 	}
 	return v
+}
+
+// loadServerUpdate reads how the server updates itself.
+func loadServerUpdate(lookup func(string) string, dataDir string) (ServerUpdateConfig, error) {
+	cfg := ServerUpdateConfig{
+		Mode:          strings.ToLower(strings.TrimSpace(or(lookup("SERVER_UPDATE_MODE"), ServerUpdateAuto))),
+		UpdaterSocket: or(lookup("UPDATER_SOCKET"), DefaultUpdaterSocket),
+		UpdaterToken:  strings.TrimSpace(lookup("UPDATER_TOKEN")),
+		Dir:           or(lookup("SERVER_UPDATE_DIR"), filepath.Join(dataDir, "updates")),
+	}
+	switch cfg.Mode {
+	case ServerUpdateAuto, ServerUpdateDocker, ServerUpdateBinary, ServerUpdateOff:
+	default:
+		return ServerUpdateConfig{}, fmt.Errorf("SERVER_UPDATE_MODE must be auto, docker, binary or off, got %q", cfg.Mode)
+	}
+	if cfg.UpdaterToken != "" && len(cfg.UpdaterToken) < minUpdaterToken {
+		return ServerUpdateConfig{}, fmt.Errorf("UPDATER_TOKEN must be at least %d characters", minUpdaterToken)
+	}
+	if cfg.Mode == ServerUpdateDocker && cfg.UpdaterToken == "" {
+		return ServerUpdateConfig{}, errors.New("SERVER_UPDATE_MODE=docker needs UPDATER_TOKEN, the same one the updater has")
+	}
+	return cfg, nil
 }
 
 // loadReleaseFeed reads the release feed's settings. It is on by default: a

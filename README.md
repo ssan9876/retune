@@ -137,13 +137,15 @@ server issues its own certificate; agents pin it with the fingerprint from
 ```bash
 cd deploy/docker
 cp .env.example .env        # set POSTGRES_PASSWORD and PUBLIC_URL
-docker compose up --build -d
+docker compose up -d
 docker compose exec server /retune-server bootstrap-admin --email you@example.com
 ```
 
-That builds the image from source. To run a released image instead, put
-`image: ghcr.io/ssan9876/retune-server:<version>` on the `server` service and
-start it with `docker compose up -d --no-build`.
+That runs the latest released image (`RETUNE_IMAGE` in `.env` picks another).
+To build from source instead: `docker compose build server` first. Add the
+updater to update the server from the console later - see
+[Updating the server](#updating-the-server):
+`docker compose --profile updater up -d`.
 
 The stack is the server plus PostgreSQL. Migrations run at startup, so there is
 no separate migrate step. The `ca` volume holds the internal certificate
@@ -524,6 +526,8 @@ a shared `DATA_DIR`, with no sticky sessions. Background jobs, migrations,
 alerts, reports and approvals are already safe to run on several at once.
 [docs/high-availability.md](docs/high-availability.md) covers the layout, the
 load balancer, what must be shared, what is still per server, and upgrades.
+Updating several servers from the console is under
+[Updating the server](#updating-the-server).
 ## Backups
 
 Two things have to be backed up, and they have to be backed up together:
@@ -1692,6 +1696,109 @@ git tag v1.4.0
 git push origin v1.4.0
 ```
 
+## Updating the server
+
+When the release feed finds a newer verified release, every administrator sees
+**Retune X is available — you run Y** above each page, and **Server update**
+(under Tenant administration) shows the release notes and an **Update** button.
+The running version is at the bottom of the navigation, and
+`retune-server version` prints it.
+
+One click does this, in order:
+
+1. **Verify.** Whatever applies the update fetches the release's `release.json`
+   and signature itself and checks them against `AGENT_RELEASE_KEYS`. The server
+   only says which version; it cannot choose what gets installed. Only the
+   newest verified release can be installed, and never one older than, or the
+   same as, what runs now.
+2. **Back up** the database with `pg_dump` (the newest five dumps are kept).
+3. **Fetch** the new server: the image by the digest `release.json` names, not
+   by tag, or the binary checked against its hash in `release.json`.
+4. **Restart** on it and wait for `/readyz`.
+5. **Roll back** if it does not become ready: the previous image or binary is
+   put back and the server restarted on it. The page shows how it went, the
+   error if it failed, and where the backup is.
+
+Migrations run when the new version starts. A rollback puts the old code back
+but cannot un-migrate the database, so after a rollback that followed a
+migration, **restoring the backup** is what brings the data back to match; the
+console says this before you confirm. Only administrators can update, only
+from a signed-in console (not an API token), every request is in the audit log
+(`server.update_started`), and with two-person approval on, the request waits
+for a second administrator like any other change to the whole fleet.
+
+### With Docker Compose
+
+The optional **updater** service does the work. It is the only container with
+the Docker socket, it listens only on a unix socket in a volume it shares with
+the server, and it also needs a token both are given. To turn it on, add to
+`.env`:
+
+```
+UPDATER_TOKEN=<openssl rand -hex 32>
+AGENT_RELEASE_KEYS=<the release public key>
+```
+
+and start it:
+
+```bash
+docker compose --profile updater up -d
+```
+
+An update pins the new image in `.env` as `RETUNE_IMAGE=ghcr.io/...@sha256:...`
+and has Compose recreate the `server` service only, so a later
+`docker compose up -d` keeps the updated server. The previous image is kept as
+`retune-server-rollback:<version>`, and the dumps are in the `backups` volume.
+The updater image is not updated by itself: `docker compose pull updater &&
+docker compose --profile updater up -d updater` after a release.
+
+**An existing deployment** needs the new Compose file's changes: `image:
+${RETUNE_IMAGE:-ghcr.io/ssan9876/retune-server:latest}` on `server` (with
+`build:` kept for source builds), `UPDATER_TOKEN` and the `updater-run` volume
+on `server`, the `updater` service, and the `updater-run`, `updater-state` and
+`backups` volumes. An override file that sets the server's `image:` wins over
+`RETUNE_IMAGE`, so remove that from the override. The server's health check
+must stay: it is how the updater knows the new server is ready.
+
+### A binary install
+
+With `SERVER_UPDATE_MODE=binary`, **Update** has the server download the new
+binary into `SERVER_UPDATE_DIR` (default `DATA_DIR/updates`), check its hash
+against `release.json`, and write `request.json` there. A systemd path unit
+notices and runs `retune-server update-apply` as root, which verifies the
+release again, runs `pg_dump` (install the PostgreSQL client), swaps
+`/usr/local/bin/retune-server`, restarts the `retune-server` unit and puts the
+previous binary back if `/readyz` does not answer. The units are in
+`deploy/systemd/` and in every release:
+
+```bash
+cp retune-server.service retune-server-update.service retune-server-update.path /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now retune-server retune-server-update.path
+```
+
+`retune-server-update.path` watches `/var/lib/retune/updates/request.json`;
+change it if your `data_dir` is elsewhere.
+
+### Several servers
+
+With more than one server against one database, the update lock lets only one
+start an update at a time, and each server's **Update** updates that server
+only - its own updater, or its own systemd units. An older server is not
+guaranteed to work against a newer schema, so follow
+[Upgrading](docs/high-availability.md#upgrading): stop the other servers,
+update one from its console (its first start migrates), then bring each of the
+others up on the same release - set `RETUNE_IMAGE` in its `.env` to the digest
+the first one now has and `docker compose up -d server`, or start it and click
+**Update** on its own console.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `server_update_mode` | `auto` | `auto` offers **Update** when the updater's socket is there; `docker`, `binary`, or `off` |
+| `updater_socket` | `/run/retune-updater/updater.sock` | where the updater listens |
+| `updater_token` | — | shared with the updater; at least 16 characters |
+| `server_update_dir` | `DATA_DIR/updates` | where a binary install stages updates |
+
 ## Command-line reference
 
 ```
@@ -1702,6 +1809,7 @@ retune-server device list | show <id> | retire <id> | unenroll <id>
 retune-server command queue --device <id> --type <type> [flags] | command show <id>
 retune-server bootstrap-admin --email E [--password P] [--role R]
 retune-server admin list | create | password | totp | disable | enable
+retune-server version | update-apply [--binary P] [--unit U] [--backup-dir D]
 
 retune-sign keygen | sign | verify
 retune-sign release-manifest | sign-release | verify-release

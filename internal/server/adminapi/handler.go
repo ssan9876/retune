@@ -78,7 +78,9 @@ type Handler struct {
 	// moves imported agent builds to the fleet.
 	ReleaseFeed       *releasefeed.Service
 	ReleaseFeedConfig config.ReleaseFeedConfig
-	AgentRollout      *releasefeed.Rollout
+	// ServerUpdateConfig says how an update of the server itself is applied.
+	ServerUpdateConfig config.ServerUpdateConfig
+	AgentRollout       *releasefeed.Rollout
 
 	routes map[string]guarded
 	Log     *slog.Logger

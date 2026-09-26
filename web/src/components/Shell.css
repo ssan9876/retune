@@ -461,3 +461,21 @@
     height: auto;
   }
 }
+
+/* A newer Retune is out: shown to administrators above every page. */
+.update-banner {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin: 0 0 1rem;
+  padding: 0.6rem 1rem;
+  border-radius: var(--radius);
+  background: var(--primary-wash);
+  border: 1px solid var(--rule);
+}
+
+.rail__version {
+  padding: 0.75rem 1rem;
+  font-size: 0.75rem;
+  color: var(--ink-muted);
+}

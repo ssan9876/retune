@@ -26,6 +26,7 @@ services:
       retries: 10
 
   server:
+    image: ${RETUNE_IMAGE:-ghcr.io/ssan9876/retune-server:latest}
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
@@ -39,8 +40,19 @@ services:
       # the server directly and carrying that header is refused outright.
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-172.30.0.0/16}
       AGENT_API_LISTEN: :8080
+      AGENT_RELEASE_KEYS: ${AGENT_RELEASE_KEYS:-}
+      UPDATER_TOKEN: ${UPDATER_TOKEN:-}
+      RELEASE_FEED_URL: ${RELEASE_FEED_URL:-}
     volumes:
       - ca:/var/lib/retune
+      - updater-run:/run/retune-updater
+    # The updater waits for this before calling an update done.
+    healthcheck:
+      test: ["CMD", "/retune-server", "healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     depends_on:
       db:
         condition: service_healthy
@@ -57,6 +69,35 @@ services:
       - server
     restart: unless-stopped
 
+  # Optional: updates the server when an administrator clicks Update in the
+  # console. It is the only container with the Docker socket. Start it with
+  # `docker compose --profile updater up -d`; it needs UPDATER_TOKEN and
+  # AGENT_RELEASE_KEYS in .env. See "Updating the server" in the README.
+  updater:
+    image: ${RETUNE_UPDATER_IMAGE:-ghcr.io/ssan9876/retune-updater:latest}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.updater
+    profiles: ["updater"]
+    environment:
+      UPDATER_TOKEN: ${UPDATER_TOKEN:-}
+      AGENT_RELEASE_KEYS: ${AGENT_RELEASE_KEYS:-}
+      RELEASE_FEED_URL: ${RELEASE_FEED_URL:-}
+      POSTGRES_USER: retune
+      POSTGRES_DB: retune
+      UPDATER_PROJECT_DIR: /project
+      UPDATER_BACKUPS_KEEP: ${UPDATER_BACKUPS_KEEP:-5}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # This directory: the Compose file and the .env the updater pins the
+      # new image in.
+      - ./:/project
+      - updater-run:/run/retune-updater
+      - updater-state:/var/lib/retune-updater
+      # Database dumps taken before every update.
+      - backups:/backups
+    restart: unless-stopped
+
 networks:
   default:
     ipam:
@@ -67,3 +108,6 @@ networks:
 volumes:
   db:
   ca:
+  updater-run:
+  updater-state:
+  backups:

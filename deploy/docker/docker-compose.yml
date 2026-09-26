@@ -16,6 +16,9 @@ services:
       retries: 10
 
   server:
+    # A release's image, pinned by digest in .env by the updater. Building
+    # from source instead: docker compose build server
+    image: ${RETUNE_IMAGE:-ghcr.io/ssan9876/retune-server:latest}
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
@@ -58,11 +61,16 @@ services:
       AUDIT_SYSLOG_ADDRESS: ${AUDIT_SYSLOG_ADDRESS:-}
       AUDIT_WEBHOOK_URL: ${AUDIT_WEBHOOK_URL:-}
       AUDIT_WEBHOOK_HEADER: ${AUDIT_WEBHOOK_HEADER:-}
+      # Shared with the updater service; unset, the console offers no Update.
+      UPDATER_TOKEN: ${UPDATER_TOKEN:-}
+      RELEASE_FEED_URL: ${RELEASE_FEED_URL:-}
     ports:
       - "8443:8443"
     volumes:
       # Holds the internal CA. Losing it orphans every enrolled device.
       - ca:/var/lib/retune
+      # Where the updater's socket appears, when it runs.
+      - updater-run:/run/retune-updater
     # The image is distroless, so the probe is the server binary asking its
     # own /readyz - there is no shell or curl in here to call.
     healthcheck:
@@ -78,6 +86,38 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Optional: updates the server when an administrator clicks Update in the
+  # console. It is the only container with the Docker socket. Start it with
+  # `docker compose --profile updater up -d`; it needs UPDATER_TOKEN and
+  # AGENT_RELEASE_KEYS in .env. See "Updating the server" in the README.
+  updater:
+    image: ${RETUNE_UPDATER_IMAGE:-ghcr.io/ssan9876/retune-updater:latest}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.updater
+    profiles: ["updater"]
+    environment:
+      UPDATER_TOKEN: ${UPDATER_TOKEN:-}
+      AGENT_RELEASE_KEYS: ${AGENT_RELEASE_KEYS:-}
+      RELEASE_FEED_URL: ${RELEASE_FEED_URL:-}
+      POSTGRES_USER: retune
+      POSTGRES_DB: retune
+      UPDATER_PROJECT_DIR: /project
+      UPDATER_BACKUPS_KEEP: ${UPDATER_BACKUPS_KEEP:-5}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # This directory: the Compose file and the .env the updater pins the
+      # new image in.
+      - ./:/project
+      - updater-run:/run/retune-updater
+      - updater-state:/var/lib/retune-updater
+      # Database dumps taken before every update.
+      - backups:/backups
+    restart: unless-stopped
+
 volumes:
   db:
   ca:
+  updater-run:
+  updater-state:
+  backups:
