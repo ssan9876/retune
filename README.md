@@ -245,7 +245,7 @@ the option is the way back in.
 | Role | Can |
 |---|---|
 | **admin** | everything |
-| **helpdesk** | read everything an admin can; lock, restart and refresh a device, collect its logs, rotate its local admin password; reveal a BitLocker recovery key or a local admin password (signed in, with a reason) |
+| **helpdesk** | read everything an admin can; lock, restart and refresh a device, collect its logs, rotate its built-in Administrator's password; reveal a BitLocker recovery key or a local admin password (signed in, with a reason) |
 | **read-only** | read |
 
 Helpdesk runs no code and changes no policy: no scripts or ad-hoc PowerShell,
@@ -1418,7 +1418,9 @@ resets. It won't report again, and will need enrolling anew.
 found by its well-known ID, so renaming it doesn't matter — a new random
 password of 20–64 characters (24 by default) that avoids look-alike
 characters and meets any complexity policy. Name another local account with
-`account` on the API or `--account` on the CLI.
+`account` on the API or `--account` on the CLI; that takes the admin role,
+since whoever rotates a password can reveal it, and helpdesk should not be able
+to take over any user or service account on a machine.
 
 The agent **escrows the password with the server before it sets it**: if
 the server can't take it, the old password stays and the command fails. A
