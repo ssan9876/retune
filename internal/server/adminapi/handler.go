@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"retune/internal/config"
 	"retune/internal/server/agentversions"
 	"retune/internal/server/alerts"
 	"retune/internal/server/apps"
@@ -26,6 +27,7 @@ import (
 	"retune/internal/server/groups"
 	"retune/internal/server/laps"
 	"retune/internal/server/profiles"
+	"retune/internal/server/releasefeed"
 	"retune/internal/server/remote"
 	"retune/internal/server/reports"
 	"retune/internal/server/scripts"
@@ -72,6 +74,11 @@ type Handler struct {
 	Now               func() time.Time
 	// TrustedProxies may say, in X-Forwarded-For, where a request came from.
 	TrustedProxies []netip.Prefix
+	// ReleaseFeed finds new releases, as ReleaseFeedConfig says; AgentRollout
+	// moves imported agent builds to the fleet.
+	ReleaseFeed       *releasefeed.Service
+	ReleaseFeedConfig config.ReleaseFeedConfig
+	AgentRollout      *releasefeed.Rollout
 
 	routes map[string]guarded
 	Log     *slog.Logger

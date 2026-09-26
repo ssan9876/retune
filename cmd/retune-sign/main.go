@@ -27,6 +27,9 @@ const usage = `usage:
   retune-sign pubkey --key FILE|env:NAME
   retune-sign sign --key FILE|env:NAME --version V BINARY
   retune-sign verify --trust KEY[,KEY...] BINARY SIGFILE
+  retune-sign release-manifest --version V [--prerelease] [--notes FILE] [--image REF --image-digest sha256:...] --out FILE ASSET...
+  retune-sign sign-release --key FILE|env:NAME MANIFEST
+  retune-sign verify-release --trust KEY[,KEY...] MANIFEST SIGFILE
   retune-sign sign-script --key FILE|env:NAME [--detection FILE] SCRIPT
   retune-sign sign-app --key FILE|env:NAME [--file INSTALLER] APP.json
   retune-sign sign-profile --key FILE|env:NAME PROFILE.json
@@ -104,6 +107,49 @@ func run(args []string, getenv func(string) string, out io.Writer) error {
 			return err
 		}
 		return verify(keys, fs.Arg(0), fs.Arg(1), out)
+	case "release-manifest":
+		fs := flag.NewFlagSet("release-manifest", flag.ContinueOnError)
+		version := fs.String("version", "", "the release's version")
+		prerelease := fs.Bool("prerelease", false, "the release is a prerelease")
+		notes := fs.String("notes", "", "a file holding the release notes")
+		image := fs.String("image", "", "the server image the release published, without a tag")
+		imageDigest := fs.String("image-digest", "", "that image's digest, sha256:...")
+		outFile := fs.String("out", "", "where to write release.json")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if *version == "" || *outFile == "" || (*image == "") != (*imageDigest == "") {
+			return errors.New(usage)
+		}
+		return releaseManifest(*version, *prerelease, *notes, *image, *imageDigest, *outFile, fs.Args(), time.Now(), out)
+	case "sign-release":
+		fs := flag.NewFlagSet("sign-release", flag.ContinueOnError)
+		key := fs.String("key", "", "path to release.key, or env:NAME")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if *key == "" || fs.NArg() != 1 {
+			return errors.New(usage)
+		}
+		priv, err := loadKey(*key, getenv)
+		if err != nil {
+			return err
+		}
+		return signRelease(priv, fs.Arg(0), out)
+	case "verify-release":
+		fs := flag.NewFlagSet("verify-release", flag.ContinueOnError)
+		trust := fs.String("trust", "", "comma-separated public keys to trust")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if fs.NArg() != 2 {
+			return errors.New(usage)
+		}
+		keys, err := release.ParseTrustList(*trust)
+		if err != nil {
+			return err
+		}
+		return verifyRelease(keys, fs.Arg(0), fs.Arg(1), out)
 	case "sign-script":
 		fs := flag.NewFlagSet("sign-script", flag.ContinueOnError)
 		key := fs.String("key", "", "path to operations.key, or env:NAME")

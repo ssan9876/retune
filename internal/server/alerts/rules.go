@@ -44,6 +44,8 @@ func allowedFields(kind string) (fields map[string]bool, ok bool) {
 		return map[string]bool{"hours": true}, true
 	case store.AlertDeploymentFailed:
 		return map[string]bool{"item_kind": true}, true
+	case store.AlertAgentRolloutHalted:
+		return map[string]bool{}, true
 	}
 	return nil, false
 }
@@ -130,6 +132,8 @@ func Describe(kind string, p Params) string {
 			return "a " + p.ItemKind + " deployment failed on a device"
 		}
 		return "a deployment failed on a device"
+	case store.AlertAgentRolloutHalted:
+		return "an automatic agent rollout halted"
 	}
 	return kind
 }
@@ -145,6 +149,8 @@ func firing(ctx context.Context, q *store.Queries, kind string, p Params, now ti
 		return q.FiringStaleDevices(ctx, now.Add(-time.Duration(p.Hours)*time.Hour))
 	case store.AlertDeploymentFailed:
 		return q.FiringFailedDeployments(ctx, p.ItemKind)
+	case store.AlertAgentRolloutHalted:
+		return q.FiringHaltedRollouts(ctx)
 	}
 	return nil, fmt.Errorf("%w: unsupported kind %q", ErrBadRule, kind)
 }

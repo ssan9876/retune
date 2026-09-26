@@ -119,6 +119,72 @@
         },
         "type": "object"
       },
+      "AgentRollout": {
+        "properties": {
+          "agent_version_id": {
+            "type": "string"
+          },
+          "approval_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "delay_hours": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "pilot_group_id": {
+            "type": "string"
+          },
+          "pilot_group_name": {
+            "type": "string"
+          },
+          "pilot_started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "promote_after": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "promoted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "AgentRolloutResponse": {
+        "properties": {
+          "policy": {
+            "$ref": "#/components/schemas/RolloutPolicy"
+          },
+          "rollouts": {
+            "items": {
+              "$ref": "#/components/schemas/AgentRollout"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
       "AgentVersion": {
         "properties": {
           "builds": {
@@ -151,6 +217,9 @@
           },
           "size_bytes": {
             "type": "integer"
+          },
+          "source": {
+            "type": "string"
           },
           "version": {
             "type": "string"
@@ -2244,6 +2313,75 @@
         },
         "type": "object"
       },
+      "Release": {
+        "properties": {
+          "agent_version_id": {
+            "type": "string"
+          },
+          "import_error": {
+            "type": "string"
+          },
+          "key_id": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "prerelease": {
+            "type": "boolean"
+          },
+          "published_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "verified_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ReleaseFeed": {
+        "properties": {
+          "checked_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          },
+          "interval_hours": {
+            "type": "integer"
+          },
+          "prereleases": {
+            "type": "boolean"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ReleasesResponse": {
+        "properties": {
+          "feed": {
+            "$ref": "#/components/schemas/ReleaseFeed"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Release"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
       "RemoteChunk": {
         "properties": {
           "at": {
@@ -2522,6 +2660,44 @@
           },
           "step_percent": {
             "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "RolloutPolicy": {
+        "properties": {
+          "delay_hours": {
+            "type": "integer"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "pilot_group_id": {
+            "type": "string"
+          },
+          "pilot_group_name": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updated_by": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "RolloutPolicyRequest": {
+        "properties": {
+          "delay_hours": {
+            "type": "integer"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "pilot_group_id": {
+            "type": "string"
           }
         },
         "type": "object"
@@ -3477,6 +3653,128 @@
           "Administration"
         ],
         "x-retune-access": "admin+write"
+      }
+    },
+    "/agent-rollout": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getAgentRollout",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRolloutResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "The automatic rollout policy and recent rollouts",
+        "tags": [
+          "Agent versions"
+        ],
+        "x-retune-access": "scoped"
+      }
+    },
+    "/agent-rollout/policy": {
+      "post": {
+        "description": "Imported agent builds go to the pilot group first and, after delay_hours without a rollback, to All devices. Enabling needs a pilot group.\n\nThe admin role, not limited to some devices.",
+        "operationId": "postAgentRolloutPolicy",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RolloutPolicyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRolloutResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Set the automatic rollout policy",
+        "tags": [
+          "Agent versions"
+        ],
+        "x-retune-access": "fleet+write"
+      }
+    },
+    "/agent-rollouts/{id}/resume": {
+      "post": {
+        "description": "A refused or lapsed approval is asked for again; a pilot device that failed still halts it until it reports the build running.\n\nThe admin role, not limited to some devices.",
+        "operationId": "postAgentRolloutsIdResume",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRolloutResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Resume a halted rollout",
+        "tags": [
+          "Agent versions"
+        ],
+        "x-retune-access": "fleet+write"
       }
     },
     "/agent-versions": {
@@ -7831,6 +8129,74 @@
           "Profiles"
         ],
         "x-retune-access": "scoped"
+      }
+    },
+    "/releases": {
+      "get": {
+        "description": "Any signed-in admin or API token; a scoped admin sees only their devices.",
+        "operationId": "getReleases",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleasesResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Releases the release feed has verified, and the feed's last check",
+        "tags": [
+          "Agent versions"
+        ],
+        "x-retune-access": "scoped"
+      }
+    },
+    "/releases/check": {
+      "post": {
+        "description": "A check that fails is recorded in feed.error rather than failing the request. 409 while another check runs, or when the feed is off.\n\nThe admin role, not limited to some devices.",
+        "operationId": "postReleasesCheck",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleasesResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "summary": "Look for a new release now",
+        "tags": [
+          "Agent versions"
+        ],
+        "x-retune-access": "fleet+write"
       }
     },
     "/remote-sessions/{id}": {

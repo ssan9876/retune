@@ -15,6 +15,7 @@ const RULE_KINDS = [
   { value: "device_non_compliant", label: "A device is non-compliant" },
   { value: "device_stale", label: "A device stops checking in" },
   { value: "deployment_failed", label: "A deployment fails" },
+  { value: "agent_rollout_halted", label: "An automatic agent rollout halts" },
 ] as const;
 
 const ITEM_KINDS = [

@@ -32,6 +32,7 @@ import (
 	"retune/internal/server/inventory"
 	"retune/internal/server/laps"
 	"retune/internal/server/profiles"
+	"retune/internal/server/releasefeed"
 	"retune/internal/server/remote"
 	"retune/internal/server/reports"
 	"retune/internal/server/scripts"
@@ -73,6 +74,12 @@ type App struct {
 
 	// Wake wakes devices and remote sessions waiting on this server.
 	Wake *wake.Hub
+
+	// ReleaseFeed finds and imports new releases; the caller that runs the
+	// sweeper gives it its job when the feed is enabled. AgentRollout moves
+	// imported agent builds to the fleet, and always has a job.
+	ReleaseFeed  *releasefeed.Service
+	AgentRollout *releasefeed.Rollout
 
 	// releaseRunning lets go of the lock that says this server is running.
 	releaseRunning func()
@@ -173,6 +180,14 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		},
 	}
 	dev := &devices.Service{Store: st}
+	rollout := &releasefeed.Rollout{
+		Store: st, Now: time.Now, Log: log,
+		ApprovalsRequired: cfg.Approvals.Required, ApprovalThreshold: cfg.Approvals.DeviceThreshold,
+	}
+	feed := &releasefeed.Service{
+		Store: st, Source: releasefeed.GitHub{URL: cfg.ReleaseFeed.URL}, Keys: cfg.AgentReleaseKeys,
+		Agents: agentVers, Rollout: rollout, AllowPrerelease: cfg.ReleaseFeed.Prereleases, Now: time.Now, Log: log,
+	}
 	reporter := &reports.Service{Store: st, Mailer: alerter.AttachmentMailer(), Now: time.Now, Log: log}
 	hub := wake.NewHub()
 	remoteSvc := &remote.Service{Store: st, Wake: hub, Now: time.Now}
@@ -212,6 +227,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		ApprovalsRequired: cfg.Approvals.Required, ApprovalThreshold: cfg.Approvals.DeviceThreshold,
 		Now: time.Now, Log: log, Reports: reporter, Attest: attester, Remote: remoteSvc,
 		TrustedProxies: cfg.TrustedProxies,
+		ReleaseFeed:    feed, ReleaseFeedConfig: cfg.ReleaseFeed, AgentRollout: rollout,
 	}
 	root := http.NewServeMux()
 	mountHealth(root, st, log)
@@ -245,6 +261,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		SSO:           sso,
 	}
 	a.releaseRunning = releaseRunning
+	a.ReleaseFeed, a.AgentRollout = feed, rollout
 	a.Wake = hub
 	// The listener lives as long as the server, not the request that built
 	// it: ctx is the server's lifetime, and Close ends it too.

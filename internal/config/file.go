@@ -41,6 +41,10 @@ type fileConfig struct {
 	SMTPStartTLS           *bool  `yaml:"smtp_starttls"`
 	MetricsToken           string `yaml:"metrics_token"`
 	AgentDownloadURL       string `yaml:"agent_download_url"`
+	ReleaseFeedEnabled     *bool  `yaml:"release_feed_enabled"`
+	ReleaseFeedURL         string `yaml:"release_feed_url"`
+	ReleaseFeedInterval    int    `yaml:"release_feed_interval_hours"`
+	ReleaseFeedPrereleases *bool  `yaml:"release_feed_prereleases"`
 	OIDCIssuer             string `yaml:"oidc_issuer"`
 	OIDCClientID           string `yaml:"oidc_client_id"`
 	OIDCClientSecret       string `yaml:"oidc_client_secret"`
@@ -174,6 +178,16 @@ func loadConfigFile(getenv func(string) string) (map[string]string, error) {
 	}
 	set("METRICS_TOKEN", f.MetricsToken)
 	set("AGENT_DOWNLOAD_URL", f.AgentDownloadURL)
+	if f.ReleaseFeedEnabled != nil {
+		set("RELEASE_FEED_ENABLED", strconv.FormatBool(*f.ReleaseFeedEnabled))
+	}
+	set("RELEASE_FEED_URL", f.ReleaseFeedURL)
+	if f.ReleaseFeedInterval != 0 {
+		set("RELEASE_FEED_INTERVAL_HOURS", strconv.Itoa(f.ReleaseFeedInterval))
+	}
+	if f.ReleaseFeedPrereleases != nil {
+		set("RELEASE_FEED_PRERELEASES", strconv.FormatBool(*f.ReleaseFeedPrereleases))
+	}
 	set("AUDIT_SYSLOG_ADDRESS", f.AuditSyslogAddress)
 	set("AUDIT_WEBHOOK_URL", f.AuditWebhookURL)
 	set("AUDIT_WEBHOOK_HEADER", f.AuditWebhookHeader)

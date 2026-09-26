@@ -248,10 +248,15 @@ var routeDocs = map[string]routeDoc{
 	"GET /api/admin/v1/apps/{id}/installs": {Tag: "Apps", Summary: "An app's install history", Query: with(byDevice), Response: listResponse[appInstallJSON]{}},
 
 	// Agent versions
-	"GET /api/admin/v1/agent-versions":         {Tag: "Agent versions", Summary: "List agent builds", Query: paging, Response: listResponse[agentVersionJSON]{}},
-	"POST /api/admin/v1/agent-versions":        {Tag: "Agent versions", Summary: "Upload a signed agent build", RequestContent: "application/octet-stream", Query: []param{{Name: "version", In: "query", Description: "The build's version. Required."}, {Name: "platform", In: "query", Description: "windows-amd64 (the default), darwin-arm64, darwin-amd64, darwin-universal, linux-amd64 or linux-arm64. A build for a platform the version lacks joins it."}, {Name: "notes", In: "query"}}, Status: 201, Response: agentVersionJSON{}, Description: "The release signature travels in the X-Retune-Signature header."},
-	"GET /api/admin/v1/agent-versions/{id}":    {Tag: "Agent versions", Summary: "An agent build", Response: agentVersionJSON{}},
-	"DELETE /api/admin/v1/agent-versions/{id}": {Tag: "Agent versions", Summary: "Delete an agent build and its assignments", Status: 204},
+	"GET /api/admin/v1/agent-versions":              {Tag: "Agent versions", Summary: "List agent builds", Query: paging, Response: listResponse[agentVersionJSON]{}},
+	"POST /api/admin/v1/agent-versions":             {Tag: "Agent versions", Summary: "Upload a signed agent build", RequestContent: "application/octet-stream", Query: []param{{Name: "version", In: "query", Description: "The build's version. Required."}, {Name: "platform", In: "query", Description: "windows-amd64 (the default), darwin-arm64, darwin-amd64, darwin-universal, linux-amd64 or linux-arm64. A build for a platform the version lacks joins it."}, {Name: "notes", In: "query"}}, Status: 201, Response: agentVersionJSON{}, Description: "The release signature travels in the X-Retune-Signature header."},
+	"GET /api/admin/v1/agent-versions/{id}":         {Tag: "Agent versions", Summary: "An agent build", Response: agentVersionJSON{}},
+	"DELETE /api/admin/v1/agent-versions/{id}":      {Tag: "Agent versions", Summary: "Delete an agent build and its assignments", Status: 204},
+	"GET /api/admin/v1/releases":                    {Tag: "Agent versions", Summary: "Releases the release feed has verified, and the feed's last check", Response: releasesResponse{}},
+	"POST /api/admin/v1/releases/check":             {Tag: "Agent versions", Summary: "Look for a new release now", Response: releasesResponse{}, Description: "A check that fails is recorded in feed.error rather than failing the request. 409 while another check runs, or when the feed is off."},
+	"GET /api/admin/v1/agent-rollout":               {Tag: "Agent versions", Summary: "The automatic rollout policy and recent rollouts", Response: agentRolloutResponse{}},
+	"POST /api/admin/v1/agent-rollout/policy":       {Tag: "Agent versions", Summary: "Set the automatic rollout policy", Request: rolloutPolicyRequest{}, Response: agentRolloutResponse{}, Description: "Imported agent builds go to the pilot group first and, after delay_hours without a rollback, to All devices. Enabling needs a pilot group."},
+	"POST /api/admin/v1/agent-rollouts/{id}/resume": {Tag: "Agent versions", Summary: "Resume a halted rollout", Response: agentRolloutResponse{}, Description: "A refused or lapsed approval is asked for again; a pilot device that failed still halts it until it reports the build running."},
 
 	// Compliance
 	"GET /api/admin/v1/compliance-policies":                         {Tag: "Compliance", Summary: "List compliance policies", Query: paging, Response: listResponse[compliancePolicyJSON]{}},

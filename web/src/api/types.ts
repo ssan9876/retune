@@ -275,6 +275,67 @@ export interface AgentVersion {
   created_by: string;
   /** Every platform this version was built for; each device gets its own. */
   builds?: AgentBuild[];
+  /** "upload", or "release_feed" for a version imported from a release. */
+  source?: string;
+}
+
+/** Where the server looks for new releases, and how its last look went. */
+export interface ReleaseFeed {
+  enabled: boolean;
+  url: string;
+  interval_hours: number;
+  prereleases: boolean;
+  checked_at?: string;
+  error?: string;
+}
+
+/** A release the server found and verified against the release key. */
+export interface Release {
+  version: string;
+  prerelease: boolean;
+  published_at: string;
+  notes: string;
+  key_id: string;
+  verified_at: string;
+  agent_version_id?: string;
+  import_error?: string;
+}
+
+export interface ReleasesResponse {
+  feed: ReleaseFeed;
+  items: Release[];
+}
+
+export interface RolloutPolicy {
+  enabled: boolean;
+  pilot_group_id?: string;
+  pilot_group_name?: string;
+  delay_hours: number;
+  updated_at?: string;
+  updated_by?: string;
+}
+
+/** One automatic rollout of one agent version: pilot, then everyone. */
+export interface AgentRollout {
+  id: string;
+  agent_version_id: string;
+  version: string;
+  state: "pilot" | "promoting" | "promoted" | "halted" | "superseded";
+  pilot_group_id?: string;
+  pilot_group_name?: string;
+  delay_hours: number;
+  pilot_started_at?: string;
+  promote_after?: string;
+  promoted_at?: string;
+  approval_id?: string;
+  detail: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentRolloutResponse {
+  policy: RolloutPolicy;
+  rollouts: AgentRollout[];
 }
 
 export interface Setting {
