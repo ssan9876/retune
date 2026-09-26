@@ -154,7 +154,7 @@ var upgradeSeeds = map[uint][]string{
 // then reads them back through today's store.
 func TestMigrateOverEarlierData(t *testing.T) {
 	ctx := context.Background()
-	url := storetest.DatabaseURL(t)
+	url := storetest.EmptyDatabaseURL(t)
 	latest, err := store.LatestMigration()
 	if err != nil {
 		t.Fatal(err)
@@ -271,7 +271,7 @@ func TestMigrateOverEarlierData(t *testing.T) {
 // TestMigrateDownAndUp reverts every migration and applies them again, so
 // each down file is at least valid and leaves nothing the up file trips on.
 func TestMigrateDownAndUp(t *testing.T) {
-	url := storetest.DatabaseURL(t)
+	url := storetest.EmptyDatabaseURL(t)
 	if err := store.Migrate(url); err != nil {
 		t.Fatal(err)
 	}

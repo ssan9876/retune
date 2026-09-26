@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"retune/internal/opsign"
 )
 
 // ItemKindProfile is the assignment kind for configuration profiles.
@@ -493,6 +495,9 @@ type ProfileVersionResponse struct {
 	Version  int       `json:"version"`
 	Settings []Setting `json:"settings"`
 	Hash     string    `json:"hash"`
+	// Signature, by an operations key, over ProfileManifest(Settings). An
+	// agent built to require one applies nothing without it.
+	Signature *opsign.Signature `json:"signature,omitempty"`
 }
 
 // SettingResult is what the agent found for one setting.

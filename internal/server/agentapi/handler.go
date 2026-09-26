@@ -654,7 +654,7 @@ func (h *Handler) profileVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, protocol.ProfileVersionResponse{
-		Version: v.Version, Settings: settings, Hash: v.Hash,
+		Version: v.Version, Settings: settings, Hash: v.Hash, Signature: profiles.DecodeSignature(v.Signature),
 	})
 }
 
@@ -766,6 +766,12 @@ func (h *Handler) appVersion(w http.ResponseWriter, r *http.Request) {
 	out := protocol.AppVersionResponse{
 		Version: v.Version, PackageID: v.PackageID, PinnedVersion: v.PinnedVersion,
 		Scope: v.Scope, InstallArgs: v.InstallArgs, Hash: v.Hash, Source: v.Source,
+	}
+	if len(v.Signature) > 0 {
+		var sig opsign.Signature
+		if json.Unmarshal(v.Signature, &sig) == nil {
+			out.Signature = &sig
+		}
 	}
 	if v.Source == protocol.AppSourcePackage {
 		out.InstallerType, out.FileName, out.FileSHA256, out.FileSize = v.InstallerType, v.FileName, v.FileSHA256, v.FileSize

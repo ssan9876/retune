@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"retune/internal/opsign"
 )
 
 // ItemKindApp is the assignment kind for application deployments.
@@ -111,6 +113,9 @@ type AppVersionResponse struct {
 	// version's own uninstall, before installing: for installers that don't
 	// upgrade in place.
 	UninstallPrevious bool `json:"uninstall_previous,omitempty"`
+	// Signature, by an operations key, over Definition. An agent built to
+	// require one installs and removes nothing without it.
+	Signature *opsign.Signature `json:"signature,omitempty"`
 }
 
 // IsPackage reports whether this version is an uploaded installer.

@@ -5,9 +5,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import Apps, { cleanRule, installerTypeOf, parseExitCodes } from "./Apps";
 
 const fetchMock = vi.fn();
+const session = vi.hoisted(() => ({ signingRequired: false }));
 
 vi.mock("../session/SessionContext", () => ({
-  useSession: () => ({ admin: { role: "admin" }, canWrite: true }),
+  useSession: () => ({ admin: { role: "admin" }, canWrite: true, signingRequired: session.signingRequired }),
 }));
 
 vi.mock("react-router-dom", () => ({
@@ -49,6 +50,7 @@ function listOnly() {
 beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
+  session.signingRequired = false;
 });
 
 describe("Apps", () => {
@@ -120,6 +122,61 @@ describe("Apps", () => {
 
     expect(posted).toHaveLength(1);
     expect(posted[0]).toMatchObject({ name: "Firefox", package_id: "Mozilla.Firefox" });
+  });
+
+  it("asks for an operations signature over what the app installs, when one is required", async () => {
+    session.signingRequired = true;
+    const posted: Record<string, unknown>[] = [];
+    fetchMock.mockImplementation((_url: string, init?: { method?: string; body?: string }) => {
+      if (init?.method === "POST") {
+        posted.push(JSON.parse(init.body ?? "{}"));
+        return Promise.resolve(json({ ...app, id: "a2" }, 201));
+      }
+      return Promise.resolve(json({ items: [], total: 0, limit: 50, offset: 0 }));
+    });
+    render(<Apps />);
+    await screen.findByText("No apps yet.");
+
+    await userEvent.click(screen.getByRole("button", { name: "New app" }));
+    await userEvent.type(screen.getByLabelText("Name"), "Firefox");
+    await userEvent.type(screen.getByLabelText("Package ID"), "Mozilla.Firefox");
+    // What gets signed is the definition, not the name.
+    const subject = JSON.parse((screen.getByLabelText("What to sign (app.json)") as HTMLTextAreaElement).value);
+    expect(subject).toEqual({ package_id: "Mozilla.Firefox", pinned_version: "", install_args: "" });
+    expect(screen.getByText(/retune-sign sign-app --key operations.key app.json/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create app" })).toBeDisabled();
+
+    await userEvent.click(screen.getByLabelText("Operations signature"));
+    await userEvent.paste('{"key_id":"k1","signature":"c2ln"}');
+    await userEvent.click(screen.getByRole("button", { name: "Create app" }));
+    expect(posted[0]).toMatchObject({
+      name: "Firefox",
+      package_id: "Mozilla.Firefox",
+      signature: { key_id: "k1", signature: "c2ln" },
+    });
+  });
+
+  it("renames a signed app without asking for a new signature", async () => {
+    session.signingRequired = true;
+    const signedApp = { ...app, install_args: "", signed: true };
+    fetchMock.mockImplementation((url: string) => {
+      if (String(url).includes("/apps?")) {
+        return Promise.resolve(json({ items: [signedApp], total: 1, limit: 50, offset: 0 }));
+      }
+      if (String(url).endsWith("/apps/a1")) {
+        return Promise.resolve(json(signedApp));
+      }
+      return Promise.resolve(json({ items: [], total: 0, limit: 50, offset: 0 }));
+    });
+    render(<Apps />);
+    await screen.findByText("7-Zip");
+
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await userEvent.type(await screen.findByLabelText("Name"), " (x64)");
+    expect(screen.queryByLabelText("Operations signature")).not.toBeInTheDocument();
+    // Changing what it installs does need one.
+    await userEvent.type(screen.getByLabelText("Package ID"), "x");
+    expect(screen.getByLabelText("Operations signature")).toBeInTheDocument();
   });
 
   it("explains that a blank pinned version tracks whatever is current", async () => {

@@ -293,6 +293,9 @@
           "scope": {
             "type": "string"
           },
+          "signed": {
+            "type": "boolean"
+          },
           "source": {
             "type": "string"
           },
@@ -402,6 +405,9 @@
           "scope": {
             "type": "string"
           },
+          "signature": {
+            "$ref": "#/components/schemas/Signature"
+          },
           "source": {
             "type": "string"
           },
@@ -458,6 +464,9 @@
           },
           "scope": {
             "type": "string"
+          },
+          "signed": {
+            "type": "boolean"
           },
           "source": {
             "type": "string"
@@ -1995,6 +2004,9 @@
             },
             "type": "array"
           },
+          "signed": {
+            "type": "boolean"
+          },
           "updated_at": {
             "format": "date-time",
             "type": "string"
@@ -2015,6 +2027,9 @@
               "$ref": "#/components/schemas/Setting"
             },
             "type": "array"
+          },
+          "signature": {
+            "$ref": "#/components/schemas/Signature"
           }
         },
         "type": "object"
@@ -2036,6 +2051,9 @@
               "$ref": "#/components/schemas/Setting"
             },
             "type": "array"
+          },
+          "signed": {
+            "type": "boolean"
           },
           "version": {
             "type": "integer"

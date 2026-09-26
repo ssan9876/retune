@@ -5,9 +5,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import Profiles, { pauseEnds, pemProblem, today, wifiProblem } from "./Profiles";
 
 const fetchMock = vi.fn();
+const session = vi.hoisted(() => ({ signingRequired: false }));
 
 vi.mock("../session/SessionContext", () => ({
-  useSession: () => ({ admin: { role: "admin" }, canWrite: true }),
+  useSession: () => ({ admin: { role: "admin" }, canWrite: true, signingRequired: session.signingRequired }),
 }));
 
 function json(body: unknown, status = 200) {
@@ -39,6 +40,7 @@ function listOnly() {
 beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
+  session.signingRequired = false;
 });
 
 describe("Profiles", () => {
@@ -77,6 +79,35 @@ describe("Profiles", () => {
     expect(posted).toHaveLength(1);
     expect(posted[0]).toMatchObject({ name: "Workstation baseline" });
     expect(posted[0].settings).toMatchObject([{ kind: "service", name: "Spooler", state: "stopped" }]);
+  });
+
+  it("asks for an operations signature over the settings, when one is required", async () => {
+    session.signingRequired = true;
+    const posted: Record<string, unknown>[] = [];
+    fetchMock.mockImplementation((_url: string, init?: { method?: string; body?: string }) => {
+      if (init?.method === "POST") {
+        posted.push(JSON.parse(init.body ?? "{}"));
+        return Promise.resolve(json({ ...profile, id: "p2" }, 201));
+      }
+      return Promise.resolve(json({ items: [], total: 0, limit: 50, offset: 0 }));
+    });
+    render(<Profiles />);
+    await screen.findByText("No profiles yet.");
+
+    await userEvent.click(screen.getByRole("button", { name: "New profile" }));
+    await userEvent.type(screen.getByLabelText("Name"), "Workstation baseline");
+    await userEvent.click(screen.getByRole("button", { name: "Add a setting" }));
+    await userEvent.selectOptions(screen.getByLabelText("Setting 1 kind"), "service");
+    await userEvent.type(screen.getByLabelText("Service name"), "Spooler");
+
+    const subject = JSON.parse((screen.getByLabelText("What to sign (profile.json)") as HTMLTextAreaElement).value);
+    expect(subject.settings).toMatchObject([{ kind: "service", name: "Spooler" }]);
+    expect(screen.getByRole("button", { name: "Create profile" })).toBeDisabled();
+
+    await userEvent.click(screen.getByLabelText("Operations signature"));
+    await userEvent.paste('{"key_id":"k1","signature":"c2ln"}');
+    await userEvent.click(screen.getByRole("button", { name: "Create profile" }));
+    expect(posted[0]).toMatchObject({ signature: { key_id: "k1", signature: "c2ln" } });
   });
 
   it("shows only the fields the chosen kind needs", async () => {

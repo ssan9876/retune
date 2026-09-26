@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"retune/internal/agent/state"
+	"retune/internal/opsign"
 	"retune/internal/protocol"
 )
 
@@ -39,6 +40,11 @@ type Syncer struct {
 	// can still run an MSI.
 	Packages            Installer
 	PackagesUnavailable error
+
+	// Operations is what this agent was built to require. Enforced, it
+	// installs, removes and detects nothing whose definition isn't signed
+	// by a trusted operations key.
+	Operations opsign.Policy
 
 	// mu keeps one winget invocation running at a time: two of them fighting
 	// over the same package source is rarely what an administrator meant.
@@ -81,6 +87,18 @@ func (s *Syncer) Sync(ctx context.Context, items []protocol.Item) error {
 			// One bad deployment must not stop the rest.
 			s.log().Warn("app deployment failed", "app_id", item.ID, "error", err)
 		}
+	}
+	return nil
+}
+
+// refusal is why this agent won't act on v at all, or nil. It is checked on
+// every fetch, so a version cached or fetched before is held to it too.
+func (s *Syncer) refusal(v protocol.AppVersionResponse) error {
+	if !s.Operations.Enforced {
+		return nil
+	}
+	if err := opsign.Verify(s.Operations.Keys, v.Definition().Manifest(), v.Signature); err != nil {
+		return fmt.Errorf("refused: %w", err)
 	}
 	return nil
 }
@@ -189,6 +207,9 @@ func (s *Syncer) detect(ctx context.Context, item protocol.Item, opts protocol.A
 	if err != nil {
 		return fmt.Errorf("fetch app: %w", err)
 	}
+	if why := s.refusal(v); why != nil {
+		return s.reportUnavailable(ctx, item, opts, st, why)
+	}
 
 	inst, why := s.installerFor(v)
 	if why != nil {
@@ -253,6 +274,9 @@ func (s *Syncer) install(ctx context.Context, item protocol.Item, opts protocol.
 	if err != nil {
 		return fmt.Errorf("fetch app: %w", err)
 	}
+	if why := s.refusal(v); why != nil {
+		return s.reportUnavailable(ctx, item, opts, st, why)
+	}
 	inst, why := s.installerFor(v)
 	if why != nil {
 		return s.reportUnavailable(ctx, item, opts, st, why)
@@ -265,6 +289,11 @@ func (s *Syncer) install(ctx context.Context, item protocol.Item, opts protocol.
 		prev, err := s.Client.FetchApp(ctx, item.ID, st.InstalledByAgent)
 		if err != nil {
 			return fmt.Errorf("fetch version %d to remove it: %w", st.InstalledByAgent, err)
+		}
+		// Its uninstall command is code too.
+		if why := s.refusal(prev); why != nil {
+			return s.reportUnavailable(ctx, item, opts, st,
+				fmt.Errorf("removing version %d first: %w", st.InstalledByAgent, why))
 		}
 		pinst, why := s.installerFor(prev)
 		if why != nil {
@@ -310,6 +339,9 @@ func (s *Syncer) uninstall(ctx context.Context, item protocol.Item, opts protoco
 	v, err := s.Client.FetchApp(ctx, item.ID, item.Version)
 	if err != nil {
 		return fmt.Errorf("fetch app: %w", err)
+	}
+	if why := s.refusal(v); why != nil {
+		return s.reportUnavailable(ctx, item, opts, st, why)
 	}
 	inst, why := s.installerFor(v)
 	if why != nil {

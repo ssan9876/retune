@@ -16,7 +16,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"retune/internal/opsign"
 	"retune/internal/protocol"
+	"retune/internal/release"
 	"retune/internal/server/secrets"
 	"retune/internal/server/store"
 )
@@ -39,6 +41,9 @@ type Service struct {
 	Now   func() time.Time
 	// Key seals the secrets some settings carry, such as Wi-Fi passphrases.
 	Key *secrets.Key
+	// OperationsKeys, when set, are what every profile version must be
+	// signed by.
+	OperationsKeys []release.PublicKey
 }
 
 func (s *Service) now() time.Time {
@@ -54,6 +59,9 @@ type NewProfile struct {
 	Description string
 	Settings    []protocol.Setting
 	Actor       string
+	// Signature is an operations signature over the settings, from
+	// retune-sign sign-profile.
+	Signature *opsign.Signature
 }
 
 // Hash identifies a version's settings.
@@ -241,6 +249,9 @@ func (s *Service) Create(ctx context.Context, in NewProfile) (store.Profile, err
 	if err != nil {
 		return store.Profile{}, err
 	}
+	if err := s.checkSignature(p.ID, settings, in.Signature); err != nil {
+		return store.Profile{}, err
+	}
 	err = s.Store.InTx(ctx, func(q *store.Queries) error {
 		if _, err := q.GetProfileByName(ctx, p.Name); err == nil {
 			return ErrNameTaken
@@ -252,7 +263,7 @@ func (s *Service) Create(ctx context.Context, in NewProfile) (store.Profile, err
 		}
 		if err := q.CreateProfileVersion(ctx, store.ProfileVersion{
 			ProfileID: p.ID, Version: 1, Settings: settings, Hash: hash,
-			CreatedAt: now, CreatedBy: in.Actor,
+			CreatedAt: now, CreatedBy: in.Actor, Signature: encodeSignature(in.Signature),
 		}); err != nil {
 			return err
 		}
@@ -315,12 +326,25 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewProfile) (stor
 		if err != nil {
 			return err
 		}
-		newVersion := currentHash != hash
+		// Renaming or re-describing a signed profile keeps its signature:
+		// the settings it covers haven't changed, and the editor doesn't
+		// resend it.
+		sig := in.Signature
+		if sig == nil && currentHash == hash {
+			sig = DecodeSignature(current.Signature)
+		}
+		if err := s.checkSignature(id, settings, sig); err != nil {
+			return err
+		}
+		stored := encodeSignature(sig)
+		// Signing an existing version makes a new one, so devices fetch the
+		// signature with it.
+		newVersion := currentHash != hash || !sameSignature(current.Signature, stored)
 		if newVersion {
 			p.CurrentVersion++
 			if err := q.CreateProfileVersion(ctx, store.ProfileVersion{
 				ProfileID: id, Version: p.CurrentVersion, Settings: settings, Hash: hash,
-				CreatedAt: now, CreatedBy: in.Actor,
+				CreatedAt: now, CreatedBy: in.Actor, Signature: stored,
 			}); err != nil {
 				return err
 			}

@@ -91,7 +91,7 @@ session_ttl_hours: 12
 | `session_max_hours` | `24` | how long any session lasts, however busy, from sign-in (1–720; never shorter than `session_ttl_hours`) |
 | `sweep_interval_seconds` | `300` | how often expired commands and sessions are cleared (minimum 10) |
 | `agent_release_keys` | — | comma-separated public keys that sign agent builds; uploads are refused until set |
-| `operations_keys` | — | comma-separated operations keys; when set, scripts and wipes without a valid signature are refused at once (see [Signed scripts and wipes](#signed-scripts-and-wipes)) |
+| `operations_keys` | — | comma-separated operations keys; when set, scripts, apps, profiles and wipes without a valid signature are refused at once (see [Signed scripts, apps, profiles and wipes](#signed-scripts-apps-profiles-and-wipes)) |
 | `approvals_required` | `false` | hold wipes, and code sent to many devices, for a second administrator (see [Two-person approval](#two-person-approval)) |
 | `approval_device_threshold` | `50` | how many devices a script, app or ad-hoc PowerShell may reach without approval |
 | `smtp_host`, `smtp_port` | — / `587` | the relay alert email is sent through |
@@ -952,13 +952,15 @@ assigned can be changed at any time, and excluding a window from a group lifts
 it for those devices. If a device can't read a window assigned to it, it holds
 everything back rather than guessing.
 
-## Signed scripts and wipes
+## Signed scripts, apps, profiles and wipes
 
 Release signing means the server can't push an agent build nobody signed. It
-can still run code on every machine, though, through a script or an ad-hoc
-PowerShell command, and it can order a wipe. An organisation that wants those
-to need a second, offline approval can build agents that **require an
-operations signature**:
+can still run code on every machine, though: through a script or an ad-hoc
+PowerShell command, through an app (an uploaded installer runs as SYSTEM, with
+whatever arguments and uninstall command it is given), and through a profile
+(which can add local administrators, write the registry and drop files). And
+it can order a wipe. An organisation that wants all of those to need a second,
+offline approval can build agents that **require an operations signature**:
 
 1. Make an operations key, on a machine the server can't reach:
    `retune-sign keygen --out ops --name operations`.
@@ -968,8 +970,9 @@ operations signature**:
    the server sends can turn it off. A key list that doesn't parse makes the
    agent refuse everything, not nothing.
 3. Set `OPERATIONS_KEYS` on the server to the same public key. The server
-   then refuses unsigned scripts and wipes at once, rather than letting every
-   device refuse them later, and the console asks for signatures.
+   then refuses unsigned scripts, apps, profiles and wipes at once, rather
+   than letting every device refuse them later, and the console asks for
+   signatures.
 
 Then:
 
@@ -985,8 +988,31 @@ Then:
   for another device, one whose protected setting was changed, and one that
   has expired, by its own clock.
 
-Everything else — profiles, apps, lock, logs, password rotation — works as
-before: those run through fixed, bounded handlers rather than arbitrary code.
+- **An app** is installed, detected or removed only if
+  `retune-sign sign-app --key operations.key [--file setup.msi] app.json`
+  signed exactly its definition: the winget package, pinned version and
+  arguments, or for an uploaded package the file's SHA-256, its arguments,
+  uninstall command, success exit codes and detection rule. `app.json` is the
+  body the console sends; the app editor shows it, ready to save. With
+  `--file`, the hash is read from the installer itself. A version installed
+  with "remove the previous version first" also checks the previous version's
+  signature before running its uninstall.
+- **A profile** is applied only if
+  `retune-sign sign-profile --key operations.key profile.json` signed exactly
+  its settings, as devices receive them — so a Wi-Fi or VPN secret must be in
+  `profile.json` in the clear, including one the editor keeps from the last
+  version without showing it. A device that receives an unsigned profile
+  version leaves the machine as it is: it neither applies it nor undoes the
+  version before it, and reports each setting as refused.
+
+For apps and profiles, as for scripts, renaming keeps the signature and
+changing what it covers needs a new one. Signing an existing version makes a
+new version, so devices fetch the signature with it. Versions created before
+the keys were set are unsigned: agents that require signatures refuse them
+until they are signed.
+
+Everything else — lock, logs, password rotation — works as before: those run
+through fixed, bounded handlers rather than arbitrary code.
 
 ## Two-person approval
 

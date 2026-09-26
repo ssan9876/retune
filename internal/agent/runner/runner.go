@@ -93,7 +93,7 @@ func Run(ctx context.Context, opts Options) error {
 	// part of the agent still works, so this must not stop it from starting.
 	// The syncer is still built, though: an assigned app must be reported
 	// failed, plainly, rather than the device just going silent about it.
-	appSyncer := &apps.Syncer{State: st, Log: opts.Log, Now: time.Now}
+	appSyncer := &apps.Syncer{State: st, Log: opts.Log, Now: time.Now, Operations: facts.Operations()}
 	if wg, err := apps.New(); err != nil {
 		opts.Log.Info("app deployments are unavailable on this machine", "error", err)
 		appSyncer.Unavailable = err
@@ -160,6 +160,7 @@ func Run(ctx context.Context, opts Options) error {
 			// the BitLocker handler escrows through.
 			Reconciler: &policy.Reconciler{State: st, Log: opts.Log},
 			Cache:      st, Log: opts.Log,
+			Operations: facts.Operations(),
 		},
 		Apps:       appSyncer,
 		SelfUpdate: updater,

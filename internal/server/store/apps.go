@@ -49,18 +49,20 @@ type AppVersion struct {
 	SuccessExitCodes  []int32
 	Detection         json.RawMessage
 	UninstallPrevious bool
+	// Signature is the operations signature, as JSON, or nil.
+	Signature json.RawMessage
 }
 
 const appVersionCols = `app_id, version, package_id, pinned_version, scope, install_args, hash, created_at, created_by,
 	source, installer_type, file_name, file_sha256, file_size, uninstall_command, success_exit_codes, detection,
-	uninstall_previous`
+	uninstall_previous, signature`
 
 func scanAppVersion(row pgx.Row) (AppVersion, error) {
 	var v AppVersion
 	var detection []byte
 	err := row.Scan(&v.AppID, &v.Version, &v.PackageID, &v.PinnedVersion, &v.Scope, &v.InstallArgs, &v.Hash,
 		&v.CreatedAt, &v.CreatedBy, &v.Source, &v.InstallerType, &v.FileName, &v.FileSHA256, &v.FileSize,
-		&v.UninstallCommand, &v.SuccessExitCodes, &detection, &v.UninstallPrevious)
+		&v.UninstallCommand, &v.SuccessExitCodes, &detection, &v.UninstallPrevious, &v.Signature)
 	if len(detection) > 0 {
 		v.Detection = json.RawMessage(detection)
 	}
@@ -172,11 +174,11 @@ func (q *Queries) CreateAppVersion(ctx context.Context, v AppVersion) error {
 	_, err := q.db.Exec(ctx, `
 		INSERT INTO app_versions (app_id, version, tenant_id, package_id, pinned_version, scope, install_args, hash,
 			created_at, created_by, source, installer_type, file_name, file_sha256, file_size, uninstall_command,
-			success_exit_codes, detection, uninstall_previous)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+			success_exit_codes, detection, uninstall_previous, signature)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
 		v.AppID, v.Version, DefaultTenantID, v.PackageID, v.PinnedVersion, v.Scope, v.InstallArgs, v.Hash,
 		v.CreatedAt, v.CreatedBy, v.Source, v.InstallerType, v.FileName, v.FileSHA256, v.FileSize,
-		v.UninstallCommand, v.SuccessExitCodes, detection, v.UninstallPrevious)
+		v.UninstallCommand, v.SuccessExitCodes, detection, v.UninstallPrevious, nullJSON(v.Signature))
 	return err
 }
 
