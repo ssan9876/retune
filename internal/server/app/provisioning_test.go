@@ -103,6 +103,24 @@ func TestZeroTouchProvisioning(t *testing.T) {
 		t.Fatalf("the registration doesn't say which device it became: %s", body)
 	}
 
+	// A registration is spent while its device is active: quoting the same
+	// serial doesn't enroll a second machine into its groups. Once the first
+	// is retired - after a reimage - the registration works again.
+	if status, _ := enrollAs(t, a, srv, token, "ROGUE", "SN-001"); status != http.StatusForbidden {
+		t.Fatalf("a spent registration with a registered-only token: %d, want 403", status)
+	}
+	if status, body := admin.do(http.MethodPost, "/devices/"+enrolled.DeviceID+"/retire", nil); status != http.StatusNoContent {
+		t.Fatalf("retire: %d %s", status, body)
+	}
+	status, reimaged := enrollAs(t, a, srv, token, "DESKTOP-AB12CD", "sn-001")
+	if status != http.StatusOK {
+		t.Fatalf("the registration after its device was retired: %d", status)
+	}
+	_, body = admin.do(http.MethodGet, "/groups/"+groupID+"/members", nil)
+	if !strings.Contains(string(body), reimaged.DeviceID) {
+		t.Fatalf("the reimaged device isn't in its group: %s", body)
+	}
+
 	// A device registered with no name keeps its own, and an ordinary token
 	// still enrolls anything.
 	status, second := enrollAs(t, a, srv, token, "DESKTOP-XY98", "SN-002")

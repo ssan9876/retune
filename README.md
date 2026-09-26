@@ -750,6 +750,12 @@ shows into your imaging, a provisioning package or your supplier's
 pre-install. Such a token enrolls only registered serial numbers, so one that
 leaks doesn't enroll strangers' machines. The serial is the device's own
 claim, though, so it isn't a secret: treat the token as the credential it is.
+
+A registration is used once: while the device it became is active, the same
+serial doesn't match it again, so nobody quoting a known serial can enroll
+more machines into its groups. To reimage a registered machine, retire its old
+record first; the registration then applies to the machine enrolling anew.
+
 This is Retune's equivalent of Windows Autopilot, which itself needs
 Microsoft's service.
 
