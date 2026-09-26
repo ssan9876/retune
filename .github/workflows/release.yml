@@ -325,6 +325,11 @@ jobs:
     permissions:
       contents: read
       packages: write
+    # The image's digest goes into release.json, so a server that updates
+    # itself pulls exactly what was signed, not whatever a tag points at now.
+    outputs:
+      image: ${{ steps.build.outputs.image }}
+      digest: ${{ steps.build.outputs.digest }}
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
       RELEASE: ${{ needs.prepare.outputs.release }}
@@ -335,6 +340,7 @@ jobs:
       # Both platforms cross-compile in the build stages and the final stage
       # runs nothing, so no emulation is needed.
       - name: Build (and on a release, push) the image
+        id: build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -342,14 +348,29 @@ jobs:
           tags="-t $image:$VERSION"
           [ "$PRERELEASE" = false ] && tags="$tags -t $image:latest"
           docker buildx create --use --name release
+          meta="$RUNNER_TEMP/image-metadata.json"
           if [ "$RELEASE" = true ]; then
             printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-            docker buildx build --platform linux/amd64,linux/arm64 -f deploy/docker/Dockerfile $tags --push .
+            docker buildx build --platform linux/amd64,linux/arm64 -f deploy/docker/Dockerfile $tags --metadata-file "$meta" --push .
             echo "Pushed $image:$VERSION" >> "$GITHUB_STEP_SUMMARY"
           else
-            docker buildx build --platform linux/amd64,linux/arm64 -f deploy/docker/Dockerfile $tags .
+            docker buildx build --platform linux/amd64,linux/arm64 -f deploy/docker/Dockerfile $tags --metadata-file "$meta" .
             echo "Built $image:$VERSION for amd64 and arm64 (dry run: not pushed)" >> "$GITHUB_STEP_SUMMARY"
           fi
+          digest=$(jq -r '."containerimage.digest" // empty' "$meta")
+          if [ -z "$digest" ] && [ "$RELEASE" = true ]; then
+            echo "::error::buildx reported no digest for the pushed image"
+            exit 1
+          fi
+          # An image built but not pushed may have no registry digest; the dry
+          # run only needs something well-formed to put in release.json.
+          if [ -z "$digest" ]; then
+            digest=$(jq -r '."containerimage.config.digest" // empty' "$meta")
+          fi
+          [ -z "$digest" ] && digest="sha256:$(printf '0%.0s' $(seq 64))"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "Image digest: \`$digest\`" >> "$GITHUB_STEP_SUMMARY"
 
   publish:
     name: Publish
@@ -435,6 +456,22 @@ jobs:
             echo "Agent builds are signed with the release key \`$RELEASE_PUB\`: set it in \`AGENT_RELEASE_KEYS\` to upload them for self-update. Check downloads against \`SHA256SUMS\`."
           } > "$RUNNER_TEMP/notes.md"
           cat "$RUNNER_TEMP/notes.md" >> "$GITHUB_STEP_SUMMARY"
+
+      # release.json lists every file with its hash, and the server image by
+      # digest, signed with the release key. It is what a server's release
+      # feed reads: nothing in a release is trusted except through it.
+      - name: Signed release manifest
+        env:
+          IMAGE: ${{ needs.image.outputs.image }}
+          IMAGE_DIGEST: ${{ needs.image.outputs.digest }}
+        run: |
+          flags=""
+          [ "$PRERELEASE" = true ] && flags="--prerelease"
+          go run ./cmd/retune-sign release-manifest --version "$VERSION" $flags \
+            --notes "$RUNNER_TEMP/notes.md" --image "$IMAGE" --image-digest "$IMAGE_DIGEST" \
+            --out dist/release.json dist/*
+          go run ./cmd/retune-sign sign-release --key env:RELEASE_KEY dist/release.json
+          go run ./cmd/retune-sign verify-release --trust "$RELEASE_PUB" dist/release.json dist/release.json.sig
 
       - name: Publish the release
         if: env.RELEASE == 'true'

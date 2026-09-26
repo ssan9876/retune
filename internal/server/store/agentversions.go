@@ -21,13 +21,21 @@ type AgentVersion struct {
 	CreatedBy string
 	KeyID     string
 	Signature string
+	// Source says where the build came from: SourceUpload or SourceReleaseFeed.
+	Source string
 }
 
-const agentVersionCols = `id, version, sha256, size_bytes, notes, created_at, created_by, key_id, signature`
+// Where an agent build came from.
+const (
+	SourceUpload      = "upload"
+	SourceReleaseFeed = "release_feed"
+)
+
+const agentVersionCols = `id, version, sha256, size_bytes, notes, created_at, created_by, key_id, signature, source`
 
 func scanAgentVersion(row pgx.Row) (AgentVersion, error) {
 	var v AgentVersion
-	err := row.Scan(&v.ID, &v.Version, &v.SHA256, &v.SizeBytes, &v.Notes, &v.CreatedAt, &v.CreatedBy, &v.KeyID, &v.Signature)
+	err := row.Scan(&v.ID, &v.Version, &v.SHA256, &v.SizeBytes, &v.Notes, &v.CreatedAt, &v.CreatedBy, &v.KeyID, &v.Signature, &v.Source)
 	return v, notFound(err)
 }
 
@@ -37,9 +45,9 @@ func scanAgentVersion(row pgx.Row) (AgentVersion, error) {
 // translated to ErrDuplicate rather than left as a raw pgx error.
 func (q *Queries) CreateAgentVersion(ctx context.Context, v AgentVersion) error {
 	_, err := q.db.Exec(ctx, `
-		INSERT INTO agent_versions (id, tenant_id, version, sha256, size_bytes, notes, created_at, created_by, key_id, signature)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-		v.ID, DefaultTenantID, v.Version, v.SHA256, v.SizeBytes, v.Notes, v.CreatedAt, v.CreatedBy, v.KeyID, v.Signature)
+		INSERT INTO agent_versions (id, tenant_id, version, sha256, size_bytes, notes, created_at, created_by, key_id, signature, source)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		v.ID, DefaultTenantID, v.Version, v.SHA256, v.SizeBytes, v.Notes, v.CreatedAt, v.CreatedBy, v.KeyID, v.Signature, v.source())
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return ErrDuplicate
@@ -79,7 +87,7 @@ func (q *Queries) ListAgentVersions(ctx context.Context, page Page) ([]AgentVers
 	for rows.Next() {
 		var v AgentVersion
 		if err := rows.Scan(&v.ID, &v.Version, &v.SHA256, &v.SizeBytes, &v.Notes,
-			&v.CreatedAt, &v.CreatedBy, &v.KeyID, &v.Signature, &total); err != nil {
+			&v.CreatedAt, &v.CreatedBy, &v.KeyID, &v.Signature, &v.Source, &total); err != nil {
 			return nil, 0, err
 		}
 		out = append(out, v)
@@ -91,4 +99,11 @@ func (q *Queries) ListAgentVersions(ctx context.Context, page Page) ([]AgentVers
 func (q *Queries) DeleteAgentVersion(ctx context.Context, tenantID, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, `DELETE FROM agent_versions WHERE tenant_id = $1 AND id = $2`, tenantID, id)
 	return err
+}
+
+func (v AgentVersion) source() string {
+	if v.Source == "" {
+		return SourceUpload
+	}
+	return v.Source
 }

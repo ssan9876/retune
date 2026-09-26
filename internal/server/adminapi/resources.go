@@ -89,6 +89,12 @@ func (h *Handler) mountResources(mux *http.ServeMux, base string) {
 	h.handle(mux, "POST "+base+"/agent-versions", h.writeFleet(h.uploadAgentVersion))
 	h.handle(mux, "GET "+base+"/agent-versions/{id}", h.read(h.getAgentVersion))
 	h.handle(mux, "DELETE "+base+"/agent-versions/{id}", h.writeFleet(h.deleteAgentVersion))
+	h.handle(mux, "GET "+base+"/releases", h.read(h.listReleases))
+	// Checking makes the server talk to the outside world on request.
+	h.handle(mux, "POST "+base+"/releases/check", h.writeFleet(h.checkReleases))
+	h.handle(mux, "GET "+base+"/agent-rollout", h.read(h.getAgentRollout))
+	h.handle(mux, "POST "+base+"/agent-rollout/policy", h.writeFleet(h.setAgentRolloutPolicy))
+	h.handle(mux, "POST "+base+"/agent-rollouts/{id}/resume", h.writeFleet(h.resumeAgentRollout))
 
 	h.handle(mux, "GET "+base+"/notification-channels", h.readFleet(h.listNotificationChannels))
 	h.handle(mux, "POST "+base+"/notification-channels", h.writeFleet(h.createNotificationChannel))

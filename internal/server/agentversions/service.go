@@ -5,6 +5,7 @@ package agentversions
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -81,6 +82,8 @@ type NewVersion struct {
 	Notes           string
 	Actor           string
 	SignatureHeader string
+	// Source is where the build came from; empty is an upload.
+	Source string
 }
 
 // Upload stores one platform's build of a version and records what was
@@ -201,6 +204,10 @@ func (s *Service) Upload(ctx context.Context, in NewVersion, body io.Reader) (st
 			ID: uuid.Must(uuid.NewV7()), Version: version, SHA256: sum, SizeBytes: size,
 			Notes: in.Notes, CreatedAt: s.now(), CreatedBy: in.Actor,
 			KeyID: sig.KeyID, Signature: base64.StdEncoding.EncodeToString(sig.Signature),
+			Source: in.Source,
+		}
+		if v.Source == "" {
+			v.Source = store.SourceUpload
 		}
 	}
 	build := store.AgentVersionBuild{
@@ -221,7 +228,7 @@ func (s *Service) Upload(ctx context.Context, in NewVersion, body io.Reader) (st
 			Actor: in.Actor, Action: "agent_version.uploaded", TargetKind: "agent_version",
 			TargetID: v.ID.String(),
 			Details: map[string]any{"version": version, "platform": platform, "sha256": sum,
-				"size_bytes": size, "key_id": sig.KeyID},
+				"size_bytes": size, "key_id": sig.KeyID, "source": in.Source},
 		})
 	})
 	if err != nil {
@@ -241,6 +248,47 @@ func (s *Service) Upload(ctx context.Context, in NewVersion, body io.Reader) (st
 		return store.AgentVersion{}, mapped
 	}
 	return v, nil
+}
+
+// Import adds one platform's build that the release feed downloaded, through
+// exactly the checks an upload goes through. It is idempotent per version and
+// platform: a build already present with the same bytes is returned as it is,
+// with imported false, whichever way it arrived. The same version and platform
+// with different bytes is refused.
+func (s *Service) Import(ctx context.Context, platform string, sig release.Signature, notes, actor string, body io.Reader) (v store.AgentVersion, imported bool, err error) {
+	q := s.Store.Q()
+	existing, err := q.GetAgentVersionByVersion(ctx, sig.Version)
+	switch {
+	case err == nil:
+		b, err := q.GetAgentVersionBuild(ctx, existing.ID, platform)
+		if err == nil {
+			if !strings.EqualFold(b.SHA256, sig.SHA256) {
+				return store.AgentVersion{}, false, fmt.Errorf("%w: the %s build of %s is already here with different bytes (%s, not %s)",
+					ErrVersionTaken, platform, sig.Version, b.SHA256, sig.SHA256)
+			}
+			return existing, false, nil
+		}
+		if !errors.Is(err, store.ErrNotFound) {
+			return store.AgentVersion{}, false, err
+		}
+	case !errors.Is(err, store.ErrNotFound):
+		return store.AgentVersion{}, false, err
+	}
+	raw, err := json.Marshal(sig)
+	if err != nil {
+		return store.AgentVersion{}, false, err
+	}
+	if utf8.RuneCountInString(notes) > MaxNotesLength {
+		notes = string([]rune(notes)[:MaxNotesLength-3]) + "..."
+	}
+	v, err = s.Upload(ctx, NewVersion{
+		Version: sig.Version, Platform: platform, Notes: notes, Actor: actor,
+		SignatureHeader: base64.StdEncoding.EncodeToString(raw), Source: store.SourceReleaseFeed,
+	}, body)
+	if err != nil {
+		return store.AgentVersion{}, false, err
+	}
+	return v, true, nil
 }
 
 // reject records why an upload was refused and returns sentinel, wrapped with

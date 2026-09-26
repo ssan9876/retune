@@ -61,7 +61,30 @@ type Server struct {
 	AuditStream AuditStreamConfig
 	// Approvals is two-person approval. Its zero value is off.
 	Approvals ApprovalsConfig
+	// ReleaseFeed is where the server looks for new Retune releases.
+	ReleaseFeed ReleaseFeedConfig
 }
+
+// ReleaseFeedConfig says where and how often the server looks for new
+// releases. A release is only believed once its signed manifest verifies
+// against AgentReleaseKeys, so without those the feed finds nothing.
+type ReleaseFeedConfig struct {
+	// Enabled is false for an offline or air-gapped server.
+	Enabled bool
+	// URL answers the GitHub releases API's JSON: this project's releases, or
+	// a mirror of them.
+	URL      string
+	Interval time.Duration
+	// Prereleases also takes release candidates.
+	Prereleases bool
+}
+
+// DefaultReleaseFeedURL is this project's releases on GitHub. Any server that
+// answers the same JSON - a mirror inside an air-gapped network - works too.
+const DefaultReleaseFeedURL = "https://api.github.com/repos/ssan9876/retune/releases?per_page=20"
+
+// defaultReleaseFeedInterval is how often the feed looks when nobody says.
+const defaultReleaseFeedInterval = 6 * time.Hour
 
 // ApprovalsConfig says which requests wait for a second administrator.
 type ApprovalsConfig struct {
@@ -265,6 +288,9 @@ func LoadServer(getenv func(string) string) (Server, error) {
 	}
 	if u, err := url.Parse(c.AgentDownloadURL); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
 		return Server{}, fmt.Errorf("AGENT_DOWNLOAD_URL must be an http or https URL, got %q", c.AgentDownloadURL)
+	}
+	if c.ReleaseFeed, err = loadReleaseFeed(lookup); err != nil {
+		return Server{}, err
 	}
 	if c.MetricsToken != "" && len(c.MetricsToken) < minMetricsToken {
 		return Server{}, fmt.Errorf("METRICS_TOKEN must be at least %d characters", minMetricsToken)
@@ -551,4 +577,40 @@ func or(v, def string) string {
 		return def
 	}
 	return v
+}
+
+// loadReleaseFeed reads the release feed's settings. It is on by default: a
+// server that can reach the internet learns about releases without being told.
+func loadReleaseFeed(lookup func(string) string) (ReleaseFeedConfig, error) {
+	cfg := ReleaseFeedConfig{
+		Enabled: true, URL: strings.TrimSpace(lookup("RELEASE_FEED_URL")), Interval: defaultReleaseFeedInterval,
+	}
+	if v := lookup("RELEASE_FEED_ENABLED"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return ReleaseFeedConfig{}, errors.New("RELEASE_FEED_ENABLED must be true or false")
+		}
+		cfg.Enabled = b
+	}
+	if cfg.URL == "" {
+		cfg.URL = DefaultReleaseFeedURL
+	}
+	if u, err := url.Parse(cfg.URL); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+		return ReleaseFeedConfig{}, fmt.Errorf("RELEASE_FEED_URL must be an http or https URL, got %q", cfg.URL)
+	}
+	if v := lookup("RELEASE_FEED_INTERVAL_HOURS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 168 {
+			return ReleaseFeedConfig{}, errors.New("RELEASE_FEED_INTERVAL_HOURS must be an integer between 1 and 168")
+		}
+		cfg.Interval = time.Duration(n) * time.Hour
+	}
+	if v := lookup("RELEASE_FEED_PRERELEASES"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return ReleaseFeedConfig{}, errors.New("RELEASE_FEED_PRERELEASES must be true or false")
+		}
+		cfg.Prereleases = b
+	}
+	return cfg, nil
 }

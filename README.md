@@ -100,6 +100,10 @@ session_ttl_hours: 12
 | `smtp_starttls` | `true` | upgrade before authenticating; off only for a relay that does not offer it |
 | `metrics_token` | — | turns on `GET /metrics` and is the bearer token a scraper sends; at least 32 characters |
 | `agent_download_url` | this project's latest release | where the Enrollment page links for the agent installers: a GitHub `…/releases/latest` page, or a folder of your own holding the release files under their released names |
+| `release_feed_enabled` | `true` | look for new releases (see [Updating the agent](#updating-the-agent)); `false` for an offline or air-gapped server |
+| `release_feed_url` | this project's GitHub releases API | where to look: anything that answers the GitHub releases API's JSON, such as a mirror inside your network |
+| `release_feed_interval_hours` | `6` | how often to look (1–168) |
+| `release_feed_prereleases` | `false` | take release candidates too |
 | `audit_retention_days` | `365` | how long audit entries are kept; `0` keeps them forever |
 | `command_retention_days` | `90` | how long finished commands and their output are kept; `0` keeps them forever |
 | `script_run_retention_days` | `90` | how long script run history is kept; `0` keeps it forever |
@@ -1084,6 +1088,69 @@ the build says so. Before the swap the agent also checks that the file it
 downloaded really is an executable for its machine, since the signature covers
 the version and its bytes, not what they run on.
 
+Builds arrive two ways: the server imports them from new releases by itself,
+or an administrator uploads them.
+
+### New releases, automatically
+
+Every six hours (`release_feed_interval_hours`) the server looks at this
+project's releases. When it finds one newer than any it has seen, it
+downloads the release's `release.json` and `release.json.sig` and verifies
+them against `AGENT_RELEASE_KEYS`; a release that doesn't verify is refused
+and the reason shown under **Agent versions → Releases**. `release.json`
+lists every file in the release with its hash, so from then on nothing
+downloaded is trusted except through it: every agent build in the release -
+Windows, macOS and Linux - is checked against its hash in the manifest and
+its own signature against the release key, then goes through exactly the
+checks an upload goes through, and the version appears under **Agent
+versions** with *Release* as its source. **Check now** looks at once.
+
+The feed only moves forward - an older release is never imported - and
+ignores prereleases unless `release_feed_prereleases` is on. It needs
+`AGENT_RELEASE_KEYS`; without them there is nothing to verify a release
+against, and it says so rather than trusting one.
+
+An offline server sets `release_feed_enabled: false` and uploads builds by
+hand, or points `release_feed_url` at a mirror inside the network that
+answers the same JSON as `https://api.github.com/repos/ssan9876/retune/releases`
+and serves the release files beside it.
+
+### Staged rollout
+
+Importing a version changes nothing on any device. To have new releases reach
+the fleet by themselves, turn on **Automatic rollout** under **Agent
+versions**, choose a pilot group - a few machines you would rather hear from
+first - and how long to wait (24 hours unless you say otherwise). Then, for
+each release the feed imports:
+
+1. The version is assigned to the pilot group. While it pilots, the pilot
+   group is excluded from the version the rest of the fleet runs, so every
+   device is offered exactly one version at every step.
+2. If any pilot device fails to run it - it doesn't check in within its
+   deadline and rolls back - the rollout **halts** and says which machines and
+   why. An alert rule of the kind *An automatic agent rollout halts* tells you;
+   the rollout waits for you. **Resume** carries on once the pilot devices
+   report the version running.
+3. Once the delay has passed, with at least one pilot device running it and
+   none failing, it is assigned to **All devices** and the previous version's
+   fleet-wide assignment is removed.
+
+With two-person approval on, each assignment waits for a second administrator
+exactly where an administrator's own would: All devices always, and the pilot
+group when it is larger than `APPROVAL_DEVICE_THRESHOLD`. The requests appear
+under **Approvals** from *system:agent-rollout*; one refused or left to lapse
+halts the rollout, and **Resume** asks again. A newer release overtakes one
+still in progress, and withdraws anything it was waiting on. Every automatic
+change is in the audit log as *system:agent-rollout* or *system:release-feed*.
+
+Maintenance windows still hold agent updates back on the devices they are
+assigned to. Automatic rollout manages only the assignments it makes: a
+version you assign by hand to a group that overlaps them is offered alongside,
+so pick one way per group. Put a machine of each platform you run in the pilot
+group, so every build is tried before everyone gets it.
+
+### Uploading a build
+
 A build is stamped with its version at compile time and **signed with the release key**. `retune-sign keygen` makes the key once; keep `release.key` off the server — the server never needs it. `make agent VERSION=1.4.0 RELEASE_KEY=path/to/release.key RELEASE_PUBKEYS=<public key>` (or `deploy/msi/build.ps1 -ReleaseKey … -TrustedKeys …`) produces `retune-agent.exe` and `retune-agent.exe.sig`. Upload both. The server checks the signature against `AGENT_RELEASE_KEYS` before it accepts a build, and every agent checks it again after downloading, against the keys it was built to trust. An admin account cannot push code the key never signed; neither can the server.
 
 An agent built without a version stamp or without a trust list refuses to self-update and says so.
@@ -1578,6 +1645,12 @@ publishes all of it as a GitHub release with the commits since the previous
 tag as its notes. It also pushes `ghcr.io/ssan9876/retune-server:<version>`
 (and `:latest`, except for a prerelease) for amd64 and arm64.
 
+Beside the files, the release publishes `release.json` - the version, notes,
+every file with its hash, and the server image by digest - and
+`release.json.sig`, signed with the release key. That pair is what servers'
+release feeds read; verify it yourself with
+`retune-sign verify-release --trust <release.pub> release.json release.json.sig`.
+
 A pull request that changes the workflow, `deploy/` or `retune-sign` runs the
 same builds as a dry run, signed with a key made for that run, and publishes
 nothing; its files are kept as the run's `dry-run-release` artifact.
@@ -1631,6 +1704,7 @@ retune-server bootstrap-admin --email E [--password P] [--role R]
 retune-server admin list | create | password | totp | disable | enable
 
 retune-sign keygen | sign | verify
+retune-sign release-manifest | sign-release | verify-release
 
 retune-agent enroll --server URL --token T [--pin sha256:...] [--data-dir D]
 retune-agent run [--data-dir D] [--once]

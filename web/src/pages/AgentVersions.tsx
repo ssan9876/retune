@@ -9,6 +9,7 @@ import { StatusDot } from "../components/StatusDot";
 import { Button, Dialog, EmptyState, ErrorNote, Field, HeldNote, Spinner } from "../components/ui";
 import { useList } from "../hooks/useList";
 import { useSession } from "../session/SessionContext";
+import { AutoRolloutPanel, ReleasesPanel } from "./AgentUpdates";
 import { relative } from "./Devices";
 import "./AgentVersions.css";
 
@@ -354,6 +355,11 @@ export default function AgentVersions() {
         {canWrite ? <Button onClick={() => setUploadOpen(true)}>Upload build</Button> : null}
       </div>
 
+      <div className="agent-updates__panels">
+        <ReleasesPanel canWrite={canWrite} onImported={reload} />
+        <AutoRolloutPanel canWrite={canWrite} />
+      </div>
+
       <ErrorNote error={error} />
       <ErrorNote error={actionError} />
       {loading ? <Spinner /> : null}
@@ -361,8 +367,9 @@ export default function AgentVersions() {
       {!loading && items.length === 0 ? (
         <EmptyState title="No builds yet.">
           <p>
-            Upload a build here, then assign it to a group. Assigning replaces the agent on every device in that
-            group; a device that cannot check in afterwards goes back to its previous build by itself.
+            New releases appear here by themselves when this server watches for them. Or upload a build, then
+            assign it to a group. Assigning replaces the agent on every device in that group; a device that cannot
+            check in afterwards goes back to its previous build by itself.
           </p>
         </EmptyState>
       ) : null}
@@ -375,6 +382,7 @@ export default function AgentVersions() {
                 <th>Version</th>
                 <th>Platforms</th>
                 <th>Key</th>
+                <th>Source</th>
                 <th>Uploaded by</th>
                 <th>Uploaded</th>
                 <th />
@@ -401,6 +409,7 @@ export default function AgentVersions() {
                   <td>
                     <span className="mono">{build.key_id}</span>
                   </td>
+                  <td>{build.source === "release_feed" ? "Release" : "Upload"}</td>
                   <td>{build.created_by}</td>
                   <td>{relative(build.created_at)}</td>
                   <td className="agent-versions__actions">

@@ -23,6 +23,9 @@ const (
 	AlertDeviceNonCompliant = "device_non_compliant"
 	AlertDeviceStale        = "device_stale"
 	AlertDeploymentFailed   = "deployment_failed"
+	// AlertAgentRolloutHalted fires while an automatic agent rollout is
+	// halted: a pilot device rolled back, or an approval was refused.
+	AlertAgentRolloutHalted = "agent_rollout_halted"
 )
 
 // NotificationChannel is where an alert is delivered. The secret is a

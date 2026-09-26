@@ -34,6 +34,8 @@ type agentVersionJSON struct {
 	CreatedAt time.Time        `json:"created_at"`
 	CreatedBy string           `json:"created_by"`
 	Builds    []agentBuildJSON `json:"builds"`
+	// Source is upload, or release_feed for a version imported from a release.
+	Source string `json:"source"`
 }
 
 // agentBuildJSON is one platform's build of a version.
@@ -51,6 +53,7 @@ func newAgentVersionJSON(v store.AgentVersion, builds []store.AgentVersionBuild)
 		ID: v.ID.String(), Version: v.Version, SHA256: v.SHA256, SizeBytes: v.SizeBytes,
 		KeyID: v.KeyID, Signature: v.Signature, Notes: v.Notes, CreatedAt: v.CreatedAt, CreatedBy: v.CreatedBy,
 		Builds: make([]agentBuildJSON, 0, len(builds)),
+		Source: v.Source,
 	}
 	for _, b := range builds {
 		out.Builds = append(out.Builds, agentBuildJSON{

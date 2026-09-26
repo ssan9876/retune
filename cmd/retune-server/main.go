@@ -126,6 +126,11 @@ func serve(ctx context.Context, getenv func(string) string) error {
 		Now:   time.Now,
 		Stats: a.Sweeps,
 	}
+	sweep.Jobs = append(sweep.Jobs, a.AgentRollout.Job())
+	if cfg.ReleaseFeed.Enabled {
+		sweep.Jobs = append(sweep.Jobs, a.ReleaseFeed.Job(cfg.ReleaseFeed.Interval))
+		log.Info("watching for new releases", "url", cfg.ReleaseFeed.URL, "every", cfg.ReleaseFeed.Interval.String())
+	}
 	if sinks := auditstream.FromConfig(cfg.AuditStream); len(sinks) > 0 {
 		sweep.Jobs = append(sweep.Jobs, sweeper.AuditStreamJob(sinks...))
 		for _, sink := range sinks {
