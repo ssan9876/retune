@@ -45,8 +45,15 @@ func signatureHeader(t *testing.T, priv release.PrivateKey, version, body string
 // uploadAgentVersion posts a build body signed with the test release key.
 func uploadAgentVersion(t *testing.T, admin *adminClient, version, body string) (int, []byte) {
 	t.Helper()
+	return uploadAgentBuild(t, admin, version, "", body)
+}
+
+// uploadAgentBuild uploads one platform's build; "" is the default,
+// windows-amd64.
+func uploadAgentBuild(t *testing.T, admin *adminClient, version, platform, body string) (int, []byte) {
+	t.Helper()
 	return admin.doRawWithHeaders(http.MethodPost,
-		"/agent-versions?version="+version+"&notes=test", "application/octet-stream",
+		"/agent-versions?version="+version+"&platform="+platform+"&notes=test", "application/octet-stream",
 		map[string]string{adminapi.SignatureHeader: signatureHeader(t, testReleaseKey, version, body)},
 		bytes.NewReader([]byte(body)))
 }
@@ -213,6 +220,10 @@ func TestAgentDownloadsOnlyAssignedBuilds(t *testing.T) {
 		t.Fatalf("assign: %d %s", status, body)
 	}
 
+	// The device says what it runs on when it checks in.
+	send(t, agent, http.MethodPost, srv.URL+"/api/agent/v1/checkin",
+		protocol.CheckinRequest{AgentVersion: "1.0.0", Platform: protocol.PlatformWindowsAMD64})
+
 	// The definition says what to expect before a byte is downloaded.
 	status, body = send(t, agent, http.MethodGet,
 		srv.URL+"/api/agent/v1/agent-versions/"+v.ID, nil)
@@ -286,7 +297,7 @@ func TestAgentBuildReachesTheAgent(t *testing.T) {
 	})
 
 	status, body := send(t, agent, http.MethodPost, srv.URL+"/api/agent/v1/checkin",
-		protocol.CheckinRequest{AgentVersion: "1.0.0"})
+		protocol.CheckinRequest{AgentVersion: "1.0.0", Platform: protocol.PlatformWindowsAMD64})
 	if status != http.StatusOK {
 		t.Fatalf("checkin: %d %s", status, body)
 	}
@@ -353,4 +364,83 @@ func agentItemStatus(t *testing.T, a *app.App, id uuid.UUID) store.ItemStatus {
 		t.Fatalf("want one status row, got %+v", rows)
 	}
 	return rows[0]
+}
+
+// A Mac is offered an assigned version only once it has a build a Mac can
+// run; until then the build's status page says why it is waiting. Once a
+// universal build is uploaded, the Mac is handed that build's hash and bytes,
+// while a Windows device of the same version keeps getting its own.
+func TestAgentVersionIsServedPerPlatform(t *testing.T) {
+	a, srv := newTestApp(t)
+	admin := signedIn(t, a, srv, store.RoleAdmin)
+	_, mac := enrollDevice(t, a, srv, "MAC-STUDIO")
+	_, win := enrollDevice(t, a, srv, "DESKTOP-WIN")
+
+	status, body := uploadAgentBuild(t, admin, "2.0.0", "", "windows bytes 2.0.0")
+	if status != http.StatusCreated {
+		t.Fatalf("upload: %d %s", status, body)
+	}
+	v := decodeJSON[agentVersionResp](t, body)
+	admin.do(http.MethodPost, "/assignments", map[string]any{
+		"item_kind": "agent", "item_id": v.ID,
+		"group_id": store.BuiltinGroupID.String(), "mode": "include",
+	})
+
+	checkin := func(client *http.Client, platform string) []protocol.Item {
+		t.Helper()
+		status, body := send(t, client, http.MethodPost, srv.URL+"/api/agent/v1/checkin",
+			protocol.CheckinRequest{AgentVersion: "1.0.0", Platform: platform})
+		if status != http.StatusOK {
+			t.Fatalf("checkin: %d %s", status, body)
+		}
+		return decodeJSON[protocol.CheckinResponse](t, body).Items
+	}
+
+	if items := checkin(mac, protocol.PlatformDarwinARM64); len(items) != 0 {
+		t.Fatalf("a Mac must not be offered a Windows-only version, got %+v", items)
+	}
+	status, body = admin.do(http.MethodGet, "/items/agent/"+v.ID+"/status", nil)
+	if status != http.StatusOK {
+		t.Fatalf("status: %d %s", status, body)
+	}
+	st := decodeJSON[itemStatusResp](t, body)
+	if st.Rollup[store.ItemFailed] != 1 || len(st.Items) != 1 || !strings.Contains(st.Items[0].Detail, "no build for darwin-arm64") {
+		t.Fatalf("the missing build should be on the status page, got %+v", st)
+	}
+
+	status, body = uploadAgentBuild(t, admin, "2.0.0", protocol.PlatformDarwinUniversal, "mac bytes 2.0.0")
+	if status != http.StatusCreated {
+		t.Fatalf("upload mac build: %d %s", status, body)
+	}
+	joined := decodeJSON[struct {
+		ID     string `json:"id"`
+		Builds []struct {
+			Platform string `json:"platform"`
+			SHA256   string `json:"sha256"`
+		} `json:"builds"`
+	}](t, body)
+	if joined.ID != v.ID || len(joined.Builds) != 2 {
+		t.Fatalf("the mac build should join version 2.0.0, got %+v", joined)
+	}
+
+	if items := checkin(mac, protocol.PlatformDarwinARM64); len(items) != 1 {
+		t.Fatalf("the Mac should now be offered 2.0.0, got %+v", items)
+	}
+	checkin(win, protocol.PlatformWindowsAMD64)
+
+	for client, want := range map[*http.Client]string{mac: "mac bytes 2.0.0", win: "windows bytes 2.0.0"} {
+		status, body := send(t, client, http.MethodGet, srv.URL+"/api/agent/v1/agent-versions/"+v.ID, nil)
+		if status != http.StatusOK {
+			t.Fatalf("definition: %d %s", status, body)
+		}
+		def := decodeJSON[protocol.AgentVersionResponse](t, body)
+		sum := sha256.Sum256([]byte(want))
+		if def.SHA256 != hex.EncodeToString(sum[:]) {
+			t.Errorf("definition hash is for the wrong build: %+v", def)
+		}
+		status, body = send(t, client, http.MethodGet, srv.URL+"/api/agent/v1/agent-versions/"+v.ID+"/binary", nil)
+		if status != http.StatusOK || string(body) != want {
+			t.Errorf("binary = %d %q, want %q", status, body, want)
+		}
+	}
 }

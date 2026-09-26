@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -81,6 +82,7 @@ func Checkin() protocol.CheckinRequest {
 		UptimeSeconds: uptimeSeconds(),
 		LoggedInUser:  inventory.LoggedInUser(),
 		IPAddresses:   ipAddresses(),
+		Platform:      runtime.GOOS + "-" + runtime.GOARCH,
 	}
 }
 

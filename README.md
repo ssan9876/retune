@@ -595,7 +595,7 @@ the agent for each platform, signed with the project's release key:
 | `retune-agent.msi` | Windows (x64), installs the service |
 | `retune-agent.exe` and `.sig` | Windows, the bare agent; upload both under **Agent versions** to update a fleet |
 | `retune-agent.pkg` | macOS 13 or later, Apple silicon and Intel |
-| `retune-agent-darwin-*` and `.sig` | macOS, the bare agent |
+| `retune-agent-darwin-*` and `.sig` | macOS, the bare agent; upload under **Agent versions** too |
 | `retune-agent-linux-amd64`, `-arm64` and `.sig` | Linux (preview: check-in only), with `retune-agent.service` |
 | `retune-server-*`, `retune-sign-*` | the server and the signing tool, for running without Docker |
 | `SHA256SUMS` | checksums of all of the above |
@@ -703,11 +703,13 @@ so the firewall compliance rule works unchanged. Scripts run with PowerShell 7
 first, or scripts fail saying it is missing. Restart works (`shutdown` counts
 in whole minutes), and the remote shell is `zsh` as root.
 
+A Mac updates its own agent the same way Windows does: assign a version that
+has a macOS build under **Agent versions** (see
+[Updating the agent](#updating-the-agent)).
+
 Not on a Mac yet: configuration profiles, lock, wipe, local administrator
-passwords, log collection, Windows Update reporting, app deployment, and
-self-update — update the binary with your own tooling, then
-`sudo launchctl kickstart -k system/com.retune.agent`. Each of those fails on
-a Mac with a reason rather than silently. The device key is a file in the
+passwords, log collection, Windows Update reporting and app deployment. Each
+of those fails on a Mac with a reason rather than silently. The device key is a file in the
 root-only state directory, not in the Keychain.
 
 ### On Linux (preview)
@@ -722,6 +724,9 @@ sudo retune-agent enroll --server https://mdm.example.com --token <TOKEN> --pin 
 sudo install -m 0644 retune-agent.service /etc/systemd/system/
 sudo systemctl daemon-reload && sudo systemctl enable --now retune-agent
 ```
+
+Installed as that unit, the preview agent updates itself like the others; run
+by hand, it refuses assigned builds and says why.
 
 ### Zero-touch provisioning
 
@@ -1065,7 +1070,19 @@ optional `{"reason": "…"}`.
 ## Updating the agent
 
 Agent builds live under **Agent versions**. Upload a build, assign it to a
-group, and the agents in that group replace themselves with it.
+group, and the agents in that group replace themselves with it. Nobody
+reinstalls anything: Windows, macOS and Linux agents all update in place.
+
+A version holds one build per platform: `windows-amd64`, `darwin-universal`
+(or `darwin-arm64` and `darwin-amd64`), `linux-amd64` and `linux-arm64`.
+Upload each under the same version — the console guesses the platform from a
+release's file names — and assign the version once. Every device is handed the
+build for its own operating system and processor, a Mac of either kind taking
+a universal build when there is no build for its processor alone. A device
+with no build for its platform is not offered the version, and its status on
+the build says so. Before the swap the agent also checks that the file it
+downloaded really is an executable for its machine, since the signature covers
+the version and its bytes, not what they run on.
 
 A build is stamped with its version at compile time and **signed with the release key**. `retune-sign keygen` makes the key once; keep `release.key` off the server — the server never needs it. `make agent VERSION=1.4.0 RELEASE_KEY=path/to/release.key RELEASE_PUBKEYS=<public key>` (or `deploy/msi/build.ps1 -ReleaseKey … -TrustedKeys …`) produces `retune-agent.exe` and `retune-agent.exe.sig`. Upload both. The server checks the signature against `AGENT_RELEASE_KEYS` before it accepts a build, and every agent checks it again after downloading, against the keys it was built to trust. An admin account cannot push code the key never signed; neither can the server.
 
@@ -1079,10 +1096,24 @@ minutes by default). If it does not, the previous build is put back and the
 device reports which version failed — so a pilot group tells you something
 before a wider one is assigned.
 
-The managed binary lives in `C:\ProgramData\Retune\bin\<version>\`, and the
-service points at it. The copy the MSI installed in `Program Files` is a
-bootstrap and is never modified, so a repair or an upgrade cannot disturb a
-running agent. Only the current and previous versions are kept.
+The managed binary lives in the agent's data directory, under
+`bin/<version>/`, and the service points at it:
+
+| | managed builds | what is repointed |
+|---|---|---|
+| Windows | `C:\ProgramData\Retune\bin\<version>\` | the service's image path |
+| macOS | `/Library/Application Support/Retune/bin/<version>/` | `ProgramArguments` in `/Library/LaunchDaemons/com.retune.agent.plist` |
+| Linux | `/var/lib/retune/bin/<version>/` | a drop-in, `/etc/systemd/system/retune-agent.service.d/50-retune-self-update.conf` |
+
+The swap is carried out by a copy of the outgoing build running on its own —
+detached on Windows, in a session of its own on macOS, and as a transient
+systemd unit on Linux — so stopping the agent does not stop it. The copy the
+installer put in place (`Program Files`, `/usr/local/bin`) is a bootstrap and
+is never modified, so a repair or a package upgrade cannot disturb a running
+agent: once a device has updated itself, its assignment decides what it runs.
+Delete the Linux drop-in, or reinstall the Mac daemon with
+`retune-agent uninstall && retune-agent install`, to go back to the bootstrap.
+Only the current and previous versions are kept.
 
 Assigning an older build is a deliberate downgrade and works — it is how a
 fleet is recovered from a bad build without touching every machine.

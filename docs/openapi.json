@@ -95,8 +95,38 @@
         },
         "type": "object"
       },
+      "AgentBuild": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "key_id": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
       "AgentVersion": {
         "properties": {
+          "builds": {
+            "items": {
+              "$ref": "#/components/schemas/AgentBuild"
+            },
+            "type": "array"
+          },
           "created_at": {
             "format": "date-time",
             "type": "string"
@@ -3508,6 +3538,14 @@
             "description": "The build's version. Required.",
             "in": "query",
             "name": "version",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "windows-amd64 (the default), darwin-arm64, darwin-amd64, darwin-universal, linux-amd64 or linux-arm64. A build for a platform the version lacks joins it.",
+            "in": "query",
+            "name": "platform",
             "schema": {
               "type": "string"
             }

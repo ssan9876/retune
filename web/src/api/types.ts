@@ -253,6 +253,16 @@ export interface AppInstall {
   finished_at: string;
 }
 
+/** AgentBuild is one platform's build of an agent version. */
+export interface AgentBuild {
+  platform: string;
+  sha256: string;
+  size_bytes: number;
+  key_id: string;
+  created_at: string;
+  created_by: string;
+}
+
 export interface AgentVersion {
   id: string;
   version: string;
@@ -263,6 +273,8 @@ export interface AgentVersion {
   signature: string;
   created_at: string;
   created_by: string;
+  /** Every platform this version was built for; each device gets its own. */
+  builds?: AgentBuild[];
 }
 
 export interface Setting {

@@ -34,7 +34,9 @@ commands:
   install [--data-dir D]                                              (Windows)
   uninstall                                                           (Windows)
   cleanup [--data-dir D]                                              (Windows)
-  supervise-update [--data-dir D]                                     (Windows)`
+  install [--data-dir D]                                              (macOS)
+  uninstall                                                           (macOS)
+  supervise-update [--data-dir D]                                     (Windows, macOS, Linux)`
 
 func main() {
 	if err := run(context.Background(), os.Args[1:], os.Stdout); err != nil {

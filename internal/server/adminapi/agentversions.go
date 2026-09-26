@@ -1,9 +1,12 @@
 package adminapi
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"time"
+
+	"github.com/google/uuid"
 
 	"retune/internal/server/agentversions"
 	"retune/internal/server/store"
@@ -19,22 +22,60 @@ import (
 const SignatureHeader = agentversions.SignatureHeader
 
 type agentVersionJSON struct {
-	ID        string    `json:"id"`
-	Version   string    `json:"version"`
+	ID      string `json:"id"`
+	Version string `json:"version"`
+	// SHA256, SizeBytes, KeyID and Signature describe the version's first
+	// build, as they did when a version had only one. Builds lists them all.
+	SHA256    string           `json:"sha256"`
+	SizeBytes int64            `json:"size_bytes"`
+	KeyID     string           `json:"key_id"`
+	Signature string           `json:"signature"`
+	Notes     string           `json:"notes"`
+	CreatedAt time.Time        `json:"created_at"`
+	CreatedBy string           `json:"created_by"`
+	Builds    []agentBuildJSON `json:"builds"`
+}
+
+// agentBuildJSON is one platform's build of a version.
+type agentBuildJSON struct {
+	Platform  string    `json:"platform"`
 	SHA256    string    `json:"sha256"`
 	SizeBytes int64     `json:"size_bytes"`
 	KeyID     string    `json:"key_id"`
-	Signature string    `json:"signature"`
-	Notes     string    `json:"notes"`
 	CreatedAt time.Time `json:"created_at"`
 	CreatedBy string    `json:"created_by"`
 }
 
-func newAgentVersionJSON(v store.AgentVersion) agentVersionJSON {
-	return agentVersionJSON{
+func newAgentVersionJSON(v store.AgentVersion, builds []store.AgentVersionBuild) agentVersionJSON {
+	out := agentVersionJSON{
 		ID: v.ID.String(), Version: v.Version, SHA256: v.SHA256, SizeBytes: v.SizeBytes,
 		KeyID: v.KeyID, Signature: v.Signature, Notes: v.Notes, CreatedAt: v.CreatedAt, CreatedBy: v.CreatedBy,
+		Builds: make([]agentBuildJSON, 0, len(builds)),
 	}
+	for _, b := range builds {
+		out.Builds = append(out.Builds, agentBuildJSON{
+			Platform: b.Platform, SHA256: b.SHA256, SizeBytes: b.SizeBytes, KeyID: b.KeyID,
+			CreatedAt: b.CreatedAt, CreatedBy: b.CreatedBy,
+		})
+	}
+	return out
+}
+
+// agentVersionsJSON renders versions with their builds, fetched in one query.
+func (h *Handler) agentVersionsJSON(ctx context.Context, rows []store.AgentVersion) ([]agentVersionJSON, error) {
+	ids := make([]uuid.UUID, 0, len(rows))
+	for _, v := range rows {
+		ids = append(ids, v.ID)
+	}
+	builds, err := h.AgentVersions.Builds(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]agentVersionJSON, 0, len(rows))
+	for _, v := range rows {
+		out = append(out, newAgentVersionJSON(v, builds[v.ID]))
+	}
+	return out, nil
 }
 
 func (h *Handler) writeAgentVersionError(w http.ResponseWriter, what string, err error) {
@@ -61,9 +102,10 @@ func (h *Handler) listAgentVersions(w http.ResponseWriter, r *http.Request) {
 		h.internal(w, "list agent versions", err)
 		return
 	}
-	items := make([]agentVersionJSON, 0, len(rows))
-	for _, v := range rows {
-		items = append(items, newAgentVersionJSON(v))
+	items, err := h.agentVersionsJSON(r.Context(), rows)
+	if err != nil {
+		h.internal(w, "list agent builds", err)
+		return
 	}
 	writeJSON(w, http.StatusOK, newListResponse(items, total, page))
 }
@@ -78,16 +120,28 @@ func (h *Handler) getAgentVersion(w http.ResponseWriter, r *http.Request) {
 		h.writeAgentVersionError(w, "get agent version", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, newAgentVersionJSON(v))
+	h.writeAgentVersion(w, r, http.StatusOK, v)
+}
+
+// writeAgentVersion answers with one version and all of its builds.
+func (h *Handler) writeAgentVersion(w http.ResponseWriter, r *http.Request, status int, v store.AgentVersion) {
+	items, err := h.agentVersionsJSON(r.Context(), []store.AgentVersion{v})
+	if err != nil {
+		h.internal(w, "read agent builds", err)
+		return
+	}
+	writeJSON(w, status, items[0])
 }
 
 // uploadAgentVersion takes the build as a raw body rather than JSON. Base64 in
 // a JSON object would inflate a multi-megabyte binary by a third and force the
-// whole thing into memory; the version and notes travel as query parameters
-// instead.
+// whole thing into memory; the version, platform and notes travel as query
+// parameters instead. A build for a platform the version does not have yet
+// joins it.
 func (h *Handler) uploadAgentVersion(w http.ResponseWriter, r *http.Request) {
 	v, err := h.AgentVersions.Upload(r.Context(), agentversions.NewVersion{
 		Version:         r.URL.Query().Get("version"),
+		Platform:        r.URL.Query().Get("platform"),
 		Notes:           r.URL.Query().Get("notes"),
 		Actor:           caller(r).Admin.Email,
 		SignatureHeader: r.Header.Get(SignatureHeader),
@@ -96,7 +150,7 @@ func (h *Handler) uploadAgentVersion(w http.ResponseWriter, r *http.Request) {
 		h.writeAgentVersionError(w, "upload agent version", err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, newAgentVersionJSON(v))
+	h.writeAgentVersion(w, r, http.StatusCreated, v)
 }
 
 func (h *Handler) deleteAgentVersion(w http.ResponseWriter, r *http.Request) {

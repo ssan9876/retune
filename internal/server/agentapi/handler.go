@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 	"retune/internal/protocol"
 	"retune/internal/server/agentversions"
 	"retune/internal/server/apps"
+	"retune/internal/server/artifacts"
 	"retune/internal/server/attest"
 	"retune/internal/server/bitlocker"
 	"retune/internal/server/ca"
@@ -302,7 +304,7 @@ func (h *Handler) checkin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	if err := h.Store.Q().RecordCheckin(ctx, store.DefaultTenantID, a.Device.ID, req.AgentVersion, h.Now()); err != nil {
+	if err := h.Store.Q().RecordCheckinPlatform(ctx, store.DefaultTenantID, a.Device.ID, req.AgentVersion, req.Platform, h.Now()); err != nil {
 		h.Log.Error("record checkin", "device_id", a.Device.ID, "error", err)
 		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
 		return
@@ -345,6 +347,22 @@ func (h *Handler) checkin(w http.ResponseWriter, r *http.Request) {
 		if !exists {
 			continue
 		}
+		// An agent version is offered only when it has a build this device
+		// can run. One that has none is not an error the device can do
+		// anything about, so it is not sent; the build's status page says why.
+		if it.Kind == protocol.ItemKindAgent {
+			platform := protocol.DevicePlatform(req.Platform, a.Device.OSVersion)
+			if _, _, err := h.AgentVersions.BuildFor(ctx, it.ID, platform); err != nil {
+				// A device already running the version got there somehow --
+				// an installer that carried it -- and has nothing to fetch.
+				if agentVersion == req.AgentVersion {
+					h.markAgentCurrent(ctx, a.Device.ID, it.ID)
+				} else {
+					h.noBuildFor(ctx, a.Device.ID, it.ID, agentVersion, platform, err)
+				}
+				continue
+			}
+		}
 		items = append(items, protocol.Item{
 			Kind: it.Kind, ID: it.ID.String(), Version: version, Options: it.Options,
 		})
@@ -355,12 +373,7 @@ func (h *Handler) checkin(w http.ResponseWriter, r *http.Request) {
 		// and recording it here is what lets a build's status page show the
 		// devices it reached beside the ones it failed on.
 		if it.Kind == protocol.ItemKindAgent && agentVersion == req.AgentVersion {
-			if err := h.Store.Q().MarkItemSucceededOnce(ctx, store.ItemStatus{
-				DeviceID: a.Device.ID, ItemKind: protocol.ItemKindAgent, ItemID: it.ID,
-				Detail: "running this version", Version: 1, UpdatedAt: h.Now(),
-			}); err != nil {
-				h.Log.Warn("record agent build success", "agent_version_id", it.ID, "error", err)
-			}
+			h.markAgentCurrent(ctx, a.Device.ID, it.ID)
 		}
 
 		// A deployment that needs a signed-in user cannot run on a machine
@@ -434,6 +447,45 @@ func (h *Handler) itemVersion(ctx context.Context, it store.Item) (version int, 
 		return 1, v.Version, true
 	}
 	return 0, "", false
+}
+
+// markAgentCurrent records that a device is running an assigned agent version.
+func (h *Handler) markAgentCurrent(ctx context.Context, deviceID, versionID uuid.UUID) {
+	if err := h.Store.Q().MarkItemSucceededOnce(ctx, store.ItemStatus{
+		DeviceID: deviceID, ItemKind: protocol.ItemKindAgent, ItemID: versionID,
+		Detail: "running this version", Version: 1, UpdatedAt: h.Now(),
+	}); err != nil {
+		h.Log.Warn("record agent build success", "agent_version_id", versionID, "error", err)
+	}
+}
+
+// noBuildFor records, on the build's status page, that an assigned version
+// has nothing this device can run.
+func (h *Handler) noBuildFor(ctx context.Context, deviceID, versionID uuid.UUID, version, platform string, err error) {
+	if !errors.Is(err, agentversions.ErrNoBuild) {
+		h.Log.Warn("resolve agent build", "agent_version_id", versionID, "error", err)
+		return
+	}
+	if platform == "" {
+		platform = "this device's platform, which its agent is too old to report"
+	}
+	if err := h.AgentVersions.RecordResult(ctx, deviceID, versionID, protocol.AgentUpdateResult{
+		Version: version, Status: protocol.ResultFailed,
+		Detail: fmt.Sprintf("version %s has no build for %s", version, platform),
+	}); err != nil {
+		h.Log.Warn("record missing agent build", "agent_version_id", versionID, "error", err)
+	}
+}
+
+// devicePlatform is the platform a device's builds are chosen for, outside a
+// check-in: what its agent last reported, or windows-amd64 for a Windows
+// device whose agent is too old to say.
+func (h *Handler) devicePlatform(ctx context.Context, d store.Device) (string, error) {
+	reported, err := h.Store.Q().GetDevicePlatform(ctx, d.ID)
+	if err != nil {
+		return "", err
+	}
+	return protocol.DevicePlatform(reported, d.OSVersion), nil
 }
 
 func (h *Handler) renew(w http.ResponseWriter, r *http.Request) {
@@ -895,8 +947,16 @@ func (h *Handler) agentVersion(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "agent_version_not_found", "unknown agent build")
 		return
 	}
-	v, err := h.AgentVersions.Get(ctx, id)
-	if errors.Is(err, agentversions.ErrNotFound) {
+	platform, err := h.devicePlatform(ctx, a.Device)
+	if err != nil {
+		h.Log.Error("read device platform", "device_id", a.Device.ID, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+		return
+	}
+	// The definition is the device's own platform's build: its hash and the
+	// signature over it, which is what the agent verifies before it runs it.
+	v, b, err := h.AgentVersions.BuildFor(ctx, id, platform)
+	if errors.Is(err, agentversions.ErrNotFound) || errors.Is(err, agentversions.ErrNoBuild) {
 		writeError(w, http.StatusNotFound, "agent_version_not_found", "unknown agent build")
 		return
 	}
@@ -906,8 +966,8 @@ func (h *Handler) agentVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, protocol.AgentVersionResponse{
-		Version: v.Version, SHA256: v.SHA256, SizeBytes: v.SizeBytes,
-		KeyID: v.KeyID, Signature: v.Signature,
+		Version: v.Version, SHA256: b.SHA256, SizeBytes: b.SizeBytes,
+		KeyID: b.KeyID, Signature: b.Signature,
 	})
 }
 
@@ -932,8 +992,14 @@ func (h *Handler) agentVersionBinary(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "agent_version_not_found", "unknown agent build")
 		return
 	}
-	body, size, err := h.AgentVersions.Open(ctx, id)
-	if errors.Is(err, agentversions.ErrNotFound) {
+	platform, err := h.devicePlatform(ctx, a.Device)
+	if err != nil {
+		h.Log.Error("read device platform", "device_id", a.Device.ID, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
+		return
+	}
+	body, size, err := h.AgentVersions.OpenBuild(ctx, id, platform)
+	if errors.Is(err, agentversions.ErrNotFound) || errors.Is(err, agentversions.ErrNoBuild) || errors.Is(err, artifacts.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "agent_version_not_found", "unknown agent build")
 		return
 	}

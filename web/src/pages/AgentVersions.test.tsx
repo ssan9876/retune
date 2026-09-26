@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import AgentVersions from "./AgentVersions";
+import AgentVersions, { platformFromFilename } from "./AgentVersions";
 
 const fetchMock = vi.fn();
 
@@ -181,5 +181,52 @@ describe("AgentVersions", () => {
     render(<AgentVersions />);
     expect(await screen.findByText("1.2.3")).toBeInTheDocument();
     expect(screen.getByText("0123456789abcdef")).toBeInTheDocument();
+  });
+
+  it("lists the platforms each version was built for", async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (String(url).includes("/agent-versions?")) {
+        const builds = [
+          { platform: "windows-amd64", sha256: "a", size_bytes: 1, key_id: "k", created_at: "", created_by: "" },
+          { platform: "darwin-universal", sha256: "b", size_bytes: 1, key_id: "k", created_at: "", created_by: "" },
+        ];
+        return Promise.resolve(json({ items: [{ ...build, builds }], total: 1, limit: 50, offset: 0 }));
+      }
+      return Promise.resolve(json({ items: [], total: 0, limit: 50, offset: 0 }));
+    });
+    render(<AgentVersions />);
+    expect(await screen.findByText("Windows (x64)")).toBeInTheDocument();
+    expect(screen.getByText("macOS (Apple silicon and Intel)")).toBeInTheDocument();
+  });
+
+  it("uploads a build for the platform its file name names", async () => {
+    fetchMock.mockImplementation((url: string, init?: { method?: string; body?: unknown }) => {
+      if (init?.method === "POST" && String(url).includes("/agent-versions?")) {
+        return Promise.resolve(json({ ...build, id: "v2" }, 201));
+      }
+      return Promise.resolve(json({ items: [], total: 0, limit: 50, offset: 0 }));
+    });
+    render(<AgentVersions />);
+    await screen.findByText("No builds yet.");
+    await userEvent.click(screen.getByRole("button", { name: "Upload build" }));
+    const file = new File(["mac"], "retune-agent-darwin-universal", { type: "application/octet-stream" });
+    await userEvent.upload(screen.getByLabelText("Build file"), file);
+    await userEvent.upload(screen.getByLabelText("Signature file"), new File(["{}"], "x.sig"));
+    await userEvent.type(screen.getByLabelText(/^Version/), "2.0.0");
+    await userEvent.click(screen.getByRole("button", { name: "Upload" }));
+
+    const call = fetchMock.mock.calls.find(
+      (args: unknown[]) =>
+        String(args[0]).includes("/agent-versions?") &&
+        (args[1] as { method?: string } | undefined)?.method === "POST",
+    );
+    expect(String((call as unknown[])[0])).toContain("platform=darwin-universal");
+  });
+
+  it("guesses a platform from a release file name", () => {
+    expect(platformFromFilename("retune-agent.exe")).toBe("windows-amd64");
+    expect(platformFromFilename("retune-agent-linux-arm64")).toBe("linux-arm64");
+    expect(platformFromFilename("retune-agent-darwin-amd64")).toBe("darwin-amd64");
+    expect(platformFromFilename("something")).toBe("");
   });
 });
