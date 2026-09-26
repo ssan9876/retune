@@ -16,9 +16,10 @@ const DOT: Record<Approval["status"], string> = {
   failed: "failed",
 };
 
-/** Approvals lists requests held for a second administrator: every wipe, and
- * code sent to more devices than the threshold. Whoever asked can withdraw a
- * request but not approve it. */
+/** Approvals lists requests held for a second administrator: every wipe,
+ * code sent to more devices than the threshold, a new version of code already
+ * sent that far, and a group with code assigned growing past it. Whoever asked
+ * can withdraw a request but not approve it. */
 export default function Approvals() {
   const { admin, canWrite } = useSession();
   const [status, setStatus] = useState("pending");
@@ -57,8 +58,11 @@ export default function Approvals() {
       </div>
 
       <p className="hint" style={{ marginTop: 0 }}>
-        With two-person approval on, every wipe, and a script or app sent to more devices than the threshold, waits
-        here until an administrator other than the one who asked approves it. Requests lapse after a day.
+        With two-person approval on, these wait here until an administrator other than the one who asked approves
+        them: every wipe; a script, app or profile sent to more devices than the threshold, and any new version of
+        one already sent that far; PowerShell once someone has sent it to more devices than that within an hour; and
+        a group with something assigned growing past the threshold, or a dynamic group&apos;s rule changing. Requests
+        lapse after a day.
       </p>
 
       <ErrorNote error={error ?? actionError} />

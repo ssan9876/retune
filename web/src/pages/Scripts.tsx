@@ -44,9 +44,13 @@ function ScriptEditor({
   const needsSignature = signingRequired && (codeChanged || !script?.signed);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  // An edit to something already sent to many devices can be held for a
+  // second administrator; the dialog stays open to say so.
+  const [held, setHeld] = useState(false);
 
   useEffect(() => {
     if (!open) return;
+    setHeld(false);
     setName(script?.name ?? "");
     setDescription(script?.description ?? "");
     setBody(script?.body ?? "");
@@ -61,7 +65,12 @@ function ScriptEditor({
     try {
       const payload = { name, description, body, detection_body: detection, ...(signature ? { signature } : {}) };
       if (script) {
-        await api.post(`/scripts/${script.id}`, payload);
+        const res = await api.post(`/scripts/${script.id}`, payload);
+        if (heldForApproval(res)) {
+          onSaved();
+          setHeld(true);
+          return;
+        }
       } else {
         await api.post("/scripts", payload);
       }
@@ -110,6 +119,7 @@ function ScriptEditor({
         />
       ) : null}
       <ErrorNote error={error} />
+      {held ? <HeldNote /> : null}
       <div className="actions">
         <Button
           onClick={() => void save()}

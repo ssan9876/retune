@@ -26,6 +26,8 @@ var (
 	ErrNameTaken = errors.New("an app with that name already exists")
 	// ErrBadRequest is returned for input the caller can fix.
 	ErrBadRequest = errors.New("bad request")
+	// ErrSuperseded is approving a held version when a newer one is current.
+	ErrSuperseded = errors.New("a newer version of this app is already current")
 )
 
 // Service owns the app library.
@@ -188,17 +190,69 @@ func (s *Service) Create(ctx context.Context, in NewApp) (store.App, error) {
 // package, pin, scope or arguments actually changed, so renaming does not
 // make every device install it again.
 func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewApp) (store.App, error) {
-	if err := in.validate(); err != nil {
+	out, _, err := s.update(ctx, id, in, false)
+	return out, err
+}
+
+// UpdateHeld is Update for an app already sent to more devices than one
+// administrator may reach alone. The name and description change at once, but
+// a new version is only stored: devices keep the current one until Promote
+// makes it current. held is the new version's number, or 0 when the
+// definition did not change and there is nothing to approve.
+func (s *Service) UpdateHeld(ctx context.Context, id uuid.UUID, in NewApp) (out store.App, held int, err error) {
+	return s.update(ctx, id, in, true)
+}
+
+// Promote makes a held version the one devices receive. A version older than
+// the current one is ErrSuperseded: approving it would roll devices back.
+func (s *Service) Promote(ctx context.Context, id uuid.UUID, version int, actor string) (store.App, error) {
+	var out store.App
+	err := s.Store.InTx(ctx, func(q *store.Queries) error {
+		a, err := q.GetApp(ctx, store.DefaultTenantID, id)
+		if errors.Is(err, store.ErrNotFound) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if _, err := q.GetAppVersion(ctx, store.DefaultTenantID, id, version); errors.Is(err, store.ErrNotFound) {
+			return ErrNotFound
+		} else if err != nil {
+			return err
+		}
+		if version <= a.CurrentVersion {
+			return ErrSuperseded
+		}
+		previous := a.CurrentVersion
+		a.CurrentVersion, a.UpdatedAt = version, s.now()
+		if err := q.UpdateApp(ctx, store.DefaultTenantID, a); err != nil {
+			return err
+		}
+		out = a
+		return q.InsertAudit(ctx, store.AuditEntry{
+			Actor: actor, Action: "app.version_promoted", TargetKind: "app", TargetID: id.String(),
+			Details: map[string]any{"name": a.Name, "version": version, "previous_version": previous},
+		})
+	})
+	if err != nil {
 		return store.App{}, err
+	}
+	return out, nil
+}
+
+func (s *Service) update(ctx context.Context, id uuid.UUID, in NewApp, hold bool) (store.App, int, error) {
+	if err := in.validate(); err != nil {
+		return store.App{}, 0, err
 	}
 	now := s.now()
 	// Built before the transaction, since checking an upload touches the
 	// disk; the version number is filled in below.
 	candidate, err := s.version(&in, id, 0, now)
 	if err != nil {
-		return store.App{}, err
+		return store.App{}, 0, err
 	}
 	var out store.App
+	held := 0
 	err = s.Store.InTx(ctx, func(q *store.Queries) error {
 		a, err := q.GetApp(ctx, store.DefaultTenantID, id)
 		if errors.Is(err, store.ErrNotFound) {
@@ -232,10 +286,20 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewApp) (store.Ap
 		// signature with it.
 		newVersion := current.Hash != candidate.Hash || !sameSignature(current.Signature, candidate.Signature)
 		if newVersion {
-			a.CurrentVersion++
-			candidate.Version = a.CurrentVersion
+			// Numbered after any version still waiting for approval, which
+			// may be past the current one.
+			latest, err := q.LatestAppVersion(ctx, id)
+			if err != nil {
+				return err
+			}
+			candidate.Version = latest + 1
 			if err := q.CreateAppVersion(ctx, candidate); err != nil {
 				return err
+			}
+			if hold {
+				held = latest + 1
+			} else {
+				a.CurrentVersion = latest + 1
 			}
 		}
 		a.Name, a.Description, a.UpdatedAt = name, in.Description, now
@@ -243,15 +307,19 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewApp) (store.Ap
 			return err
 		}
 		out = a
+		details := map[string]any{"name": a.Name, "new_version": newVersion, "version": a.CurrentVersion}
+		if held > 0 {
+			details["held_version"] = held
+		}
 		return q.InsertAudit(ctx, store.AuditEntry{
 			Actor: in.Actor, Action: "app.updated", TargetKind: "app", TargetID: id.String(),
-			Details: map[string]any{"name": a.Name, "new_version": newVersion, "version": a.CurrentVersion},
+			Details: details,
 		})
 	})
 	if err != nil {
-		return store.App{}, err
+		return store.App{}, 0, err
 	}
-	return out, nil
+	return out, held, nil
 }
 
 // Delete removes an app, its versions and its assignments. Installs are kept.

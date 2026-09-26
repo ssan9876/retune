@@ -117,12 +117,29 @@ func (h *Handler) updateScript(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	s, err := h.Scripts.Update(r.Context(), id, scripts.NewScript{
+	ctx := r.Context()
+	in := scripts.NewScript{
 		Name: req.Name, Description: req.Description, Body: req.Body,
 		DetectionBody: req.DetectionBody, Actor: caller(r).Admin.Email, Signature: req.Signature,
-	})
+	}
+	hold, err := h.itemNeedsApproval(ctx, protocol.ItemKindScript, id)
+	if err != nil {
+		h.internal(w, "check script reach", err)
+		return
+	}
+	var s store.Script
+	held := 0
+	if hold {
+		s, held, err = h.Scripts.UpdateHeld(ctx, id, in)
+	} else {
+		s, err = h.Scripts.Update(ctx, id, in)
+	}
 	if err != nil {
 		h.writeScriptError(w, "update script", err)
+		return
+	}
+	if held > 0 {
+		h.holdVersion(w, r, protocol.ItemKindScript, id, s.Name, held)
 		return
 	}
 	out := newScriptJSON(s)

@@ -1,7 +1,7 @@
 /** Approval is a request held until a second administrator decides it. */
 export interface Approval {
   id: string;
-  kind: "command" | "assignment";
+  kind: "command" | "assignment" | "version" | "group_member" | "group_rule";
   request: Record<string, unknown>;
   summary: string;
   requested_by: string;

@@ -4406,7 +4406,7 @@
         "x-retune-access": "scoped"
       },
       "post": {
-        "description": "The admin role, not limited to some devices.",
+        "description": "With approvals on, a new version of an app assigned beyond the threshold is stored but waits for approval before devices receive it.\n\nThe admin role, not limited to some devices.",
         "operationId": "postAppsId",
         "parameters": [
           {
@@ -4438,6 +4438,16 @@
               }
             },
             "description": "OK"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalEnvelope"
+                }
+              }
+            },
+            "description": "Held for a second administrator's approval."
           },
           "default": {
             "$ref": "#/components/responses/Error"
@@ -6542,7 +6552,7 @@
         "x-retune-access": "scoped"
       },
       "post": {
-        "description": "A group's kind can't change.\n\nThe admin role, not limited to some devices.",
+        "description": "A group's kind can't change. With approvals on, changing the rule of a dynamic group with code assigned to it waits.\n\nThe admin role, not limited to some devices.",
         "operationId": "postGroupsId",
         "parameters": [
           {
@@ -6574,6 +6584,16 @@
               }
             },
             "description": "OK"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalEnvelope"
+                }
+              }
+            },
+            "description": "Held for a second administrator's approval."
           },
           "default": {
             "$ref": "#/components/responses/Error"
@@ -6698,7 +6718,7 @@
         "x-retune-access": "scoped"
       },
       "post": {
-        "description": "The admin role, not limited to some devices.",
+        "description": "With approvals on, adding a device to a group with code assigned waits once the group would hold more devices than the threshold.\n\nThe admin role, not limited to some devices.",
         "operationId": "postGroupsIdMembers",
         "parameters": [
           {
@@ -6721,6 +6741,16 @@
           "required": true
         },
         "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalEnvelope"
+                }
+              }
+            },
+            "description": "Held for a second administrator's approval."
+          },
           "204": {
             "description": "No Content"
           },
@@ -7592,7 +7622,7 @@
         "x-retune-access": "scoped"
       },
       "post": {
-        "description": "The admin role, not limited to some devices.",
+        "description": "With approvals on, a new version of a profile assigned beyond the threshold is stored but waits for approval before devices receive it.\n\nThe admin role, not limited to some devices.",
         "operationId": "postProfilesId",
         "parameters": [
           {
@@ -7624,6 +7654,16 @@
               }
             },
             "description": "OK"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalEnvelope"
+                }
+              }
+            },
+            "description": "Held for a second administrator's approval."
           },
           "default": {
             "$ref": "#/components/responses/Error"
@@ -8314,7 +8354,7 @@
         "x-retune-access": "scoped"
       },
       "post": {
-        "description": "The admin role, not limited to some devices.",
+        "description": "With approvals on, a new version of a script assigned beyond the threshold is stored but waits for approval before devices receive it.\n\nThe admin role, not limited to some devices.",
         "operationId": "postScriptsId",
         "parameters": [
           {
@@ -8346,6 +8386,16 @@
               }
             },
             "description": "OK"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalEnvelope"
+                }
+              }
+            },
+            "description": "Held for a second administrator's approval."
           },
           "default": {
             "$ref": "#/components/responses/Error"

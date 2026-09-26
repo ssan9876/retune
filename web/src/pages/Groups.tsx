@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ApiError, api } from "../api/client";
 import type { Device, Group, ListResponse } from "../api/types";
-import { Button, Dialog, EmptyState, ErrorNote, Field, Spinner } from "../components/ui";
+import { heldForApproval } from "../api/approvals";
+import { Button, Dialog, EmptyState, ErrorNote, Field, HeldNote, Spinner } from "../components/ui";
 import { useSession } from "../session/SessionContext";
 import "./Groups.css";
 
@@ -88,6 +89,9 @@ export default function Groups() {
   const [rule, setRule] = useState("");
   const [formError, setFormError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  // A rule change under code assigned to the group waits for a second
+  // administrator; the dialog stays open to say so.
+  const [held, setHeld] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -110,6 +114,7 @@ export default function Groups() {
     setKind("dynamic");
     setRule("");
     setFormError(null);
+    setHeld(false);
     setOpen(true);
   }
 
@@ -120,6 +125,7 @@ export default function Groups() {
     setKind(group.kind);
     setRule(group.rule);
     setFormError(null);
+    setHeld(false);
     setOpen(true);
   }
 
@@ -129,7 +135,11 @@ export default function Groups() {
     try {
       const body = { name, description, kind, rule: kind === "dynamic" ? rule : "" };
       if (editing) {
-        await api.post(`/groups/${editing.id}`, body);
+        const res = await api.post(`/groups/${editing.id}`, body);
+        if (heldForApproval(res)) {
+          setHeld(true);
+          return;
+        }
       } else {
         await api.post("/groups", body);
       }
@@ -248,6 +258,7 @@ export default function Groups() {
         {kind === "dynamic" ? <RulePreview rule={rule} /> : null}
 
         <ErrorNote error={formError} />
+        {held ? <HeldNote /> : null}
         <div className="actions">
           <Button onClick={save} disabled={busy || name.trim() === ""}>
             {editing ? "Save changes" : "Create group"}

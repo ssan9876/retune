@@ -189,9 +189,24 @@ func (h *Handler) updateApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	a, err := h.Apps.Update(ctx, id, req.newApp(caller(r).Admin.Email))
+	hold, err := h.itemNeedsApproval(ctx, protocol.ItemKindApp, id)
+	if err != nil {
+		h.internal(w, "check app reach", err)
+		return
+	}
+	var a store.App
+	held := 0
+	if hold {
+		a, held, err = h.Apps.UpdateHeld(ctx, id, req.newApp(caller(r).Admin.Email))
+	} else {
+		a, err = h.Apps.Update(ctx, id, req.newApp(caller(r).Admin.Email))
+	}
 	if err != nil {
 		h.writeAppError(w, "update app", err)
+		return
+	}
+	if held > 0 {
+		h.holdVersion(w, r, protocol.ItemKindApp, id, a.Name, held)
 		return
 	}
 	out := newAppJSON(a)

@@ -545,7 +545,7 @@ func (h *Handler) scriptVersion(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
 		return
 	}
-	if !allowed {
+	if !allowed || h.notYetCurrent(ctx, protocol.ItemKindScript, id, version) {
 		writeError(w, http.StatusNotFound, "script_not_found", "unknown script")
 		return
 	}
@@ -633,7 +633,7 @@ func (h *Handler) profileVersion(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
 		return
 	}
-	if !allowed {
+	if !allowed || h.notYetCurrent(ctx, protocol.ItemKindProfile, id, version) {
 		writeError(w, http.StatusNotFound, "profile_not_found", "unknown profile")
 		return
 	}
@@ -740,11 +740,20 @@ func (h *Handler) assignedAppVersion(w http.ResponseWriter, r *http.Request) (uu
 		writeError(w, http.StatusInternalServerError, "internal", "internal server error")
 		return uuid.Nil, 0, false
 	}
-	if !allowed {
+	if !allowed || h.notYetCurrent(r.Context(), protocol.ItemKindApp, id, version) {
 		writeError(w, http.StatusNotFound, "app_not_found", "unknown app")
 		return uuid.Nil, 0, false
 	}
 	return id, version, true
+}
+
+// notYetCurrent reports whether a version is past the current one: stored,
+// but waiting for a second administrator to approve it. No device gets it
+// before then, whatever it asks for. A lookup that fails counts as not yet
+// current, so an error never hands one out.
+func (h *Handler) notYetCurrent(ctx context.Context, kind string, id uuid.UUID, version int) bool {
+	current, _, exists := h.itemVersion(ctx, store.Item{Kind: kind, ID: id})
+	return !exists || version > current
 }
 
 // appVersion hands a device the definition of an assigned app.
