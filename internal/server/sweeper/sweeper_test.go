@@ -126,3 +126,24 @@ func TestAdvisoryLockSkipsConcurrentRun(t *testing.T) {
 		t.Fatalf("after release: ran=%v err=%v", ran, err)
 	}
 }
+
+// A job does its work through the pool while it holds its lock. The lock's
+// connection must not come from that pool: with a pool of one, a job holding
+// a pooled connection for its lock waits forever for a second one.
+func TestAdvisoryLockDoesNotHoldAPooledConnection(t *testing.T) {
+	url := storetest.DatabaseURL(t) + "&pool_max_conns=1"
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	st, err := store.Open(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	ran, err := st.WithAdvisoryLock(ctx, 424242, func(*store.Queries) error {
+		return st.Ping(ctx)
+	})
+	if err != nil || !ran {
+		t.Fatalf("a job using the pool while holding its lock: ran=%v err=%v", ran, err)
+	}
+}
