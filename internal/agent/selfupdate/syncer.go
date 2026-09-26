@@ -19,16 +19,6 @@ import (
 	"retune/internal/release"
 )
 
-// binName is the executable staged under each version's directory. It is
-// what the supervisor repoints the service at, and what a restored service
-// runs again after a rollback.
-const binName = "retune-agent.exe"
-
-// supervisorName is the copy of the running agent that carries out the
-// update. It has to be a copy: the service's own image is locked and is
-// about to be stopped, so nothing can run straight out of it.
-const supervisorName = "supervisor.exe"
-
 // Client is the part of the agent's server connection the syncer needs.
 type Client interface {
 	FetchAgentVersion(ctx context.Context, id string) (protocol.AgentVersionResponse, error)
@@ -57,6 +47,15 @@ type Syncer struct {
 	// Spawn starts the supervisor. It is a field so a test can observe the
 	// hand-off without launching a process.
 	Spawn func(supervisorPath string) error
+
+	// Unavailable is why Control is nil, when it is: the reason an assigned
+	// build is refused on this machine. Left empty, ErrWindowsOnly is given.
+	Unavailable error
+
+	// CheckExecutable, when set, is asked about every staged build before the
+	// service is repointed at it (CheckExecutable in production). A build that
+	// is not an executable for this machine is refused and not fetched again.
+	CheckExecutable func(path string) error
 
 	// mu serialises whole Sync cycles against each other: the session starts
 	// one per check-in without waiting for the last, and two of them staging
@@ -290,7 +289,11 @@ func (s *Syncer) stage(ctx context.Context, item protocol.Item, opts protocol.Ag
 		// directory and never check in -- and a rollback would then feed an
 		// empty path into SetBinPath, bricking the service one way or the
 		// other. Pretending to act here is worse than refusing.
-		if repErr := s.report(ctx, item.ID, def.Version, protocol.ResultFailed, "", ErrWindowsOnly.Error()); repErr != nil {
+		reason := ErrWindowsOnly
+		if s.Unavailable != nil {
+			reason = s.Unavailable
+		}
+		if repErr := s.report(ctx, item.ID, def.Version, protocol.ResultFailed, "", reason.Error()); repErr != nil {
 			return fmt.Errorf("report refusal: %w", repErr)
 		}
 		return nil
@@ -336,7 +339,7 @@ func (s *Syncer) stage(ctx context.Context, item protocol.Item, opts protocol.Ag
 	if err := os.MkdirAll(versionDir, 0o755); err != nil {
 		return fmt.Errorf("create version dir: %w", err)
 	}
-	binPath := filepath.Join(versionDir, binName)
+	binPath := filepath.Join(versionDir, BinName)
 	partPath := binPath + ".part"
 
 	if err := s.download(ctx, item.ID, def.SHA256, partPath); err != nil {
@@ -361,6 +364,32 @@ func (s *Syncer) stage(ctx context.Context, item protocol.Item, opts protocol.Ag
 			s.log().Error("failed to report stage failure", "error", repErr)
 		}
 		return fmt.Errorf("stage binary: %w", err)
+	}
+	// Downloaded bytes are not executable on macOS and Linux until they are
+	// marked so; launchd and systemd would fail to start the new build.
+	if err := os.Chmod(binPath, 0o755); err != nil {
+		if rmErr := os.RemoveAll(versionDir); rmErr != nil {
+			s.log().Error("failed to remove staged build", "error", rmErr)
+		}
+		if repErr := s.report(ctx, item.ID, def.Version, protocol.ResultFailed, "", err.Error()); repErr != nil {
+			s.log().Error("failed to report stage failure", "error", repErr)
+		}
+		return fmt.Errorf("mark the build executable: %w", err)
+	}
+	if s.CheckExecutable != nil {
+		if err := s.CheckExecutable(binPath); err != nil {
+			// The right version for the wrong machine will stay wrong on every
+			// retry, so it is remembered like a bad signature.
+			if rmErr := os.RemoveAll(versionDir); rmErr != nil {
+				s.log().Error("failed to remove staged build", "error", rmErr)
+			}
+			detail := fmt.Sprintf("the build cannot run here: %v", err)
+			if repErr := s.report(ctx, item.ID, def.Version, protocol.ResultFailed, "", detail); repErr != nil {
+				s.log().Error("failed to report a wrong-platform build", "error", repErr)
+			}
+			s.rememberRefusal(item.ID, def.Version, detail)
+			return errors.New(detail)
+		}
 	}
 
 	// Only the live service knows whether this device was installed by the

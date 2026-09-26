@@ -1,9 +1,8 @@
-//go:build !windows
+//go:build !windows && !darwin && !linux
 
 package selfupdate
 
-// newController fails away from Windows: there is no service control
-// manager to speak to, so rollback code built for it cannot run here either.
-func newController(serviceName string) (ServiceController, error) {
+// newController fails where there is no service manager self-update knows.
+func newController(string) (ServiceController, error) {
 	return nil, ErrWindowsOnly
 }

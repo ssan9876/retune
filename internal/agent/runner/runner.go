@@ -112,13 +112,17 @@ func Run(ctx context.Context, opts Options) error {
 		Dir: opts.DataDir, Running: facts.AgentVersion, Injected: facts.VersionInjected(),
 		Trusted: facts.TrustedKeys(),
 		Log:     opts.Log, Now: time.Now, Rollback: rollback,
-		Spawn: selfupdate.SpawnSupervisor,
+		Spawn: func(path string) error { return selfupdate.SpawnSupervisor(path, opts.DataDir) },
+		// The right version built for another machine is refused before the
+		// service is touched.
+		CheckExecutable: selfupdate.CheckExecutable,
 	}
-	// A platform with no service control manager cannot self-update. Every
-	// assigned build is then refused with that reason rather than the device
-	// going quiet about it.
+	// An agent not installed as a Windows service, launchd daemon or systemd
+	// unit cannot self-update. Every assigned build is then refused with that
+	// reason rather than the device going quiet about it.
 	if control, err := selfupdate.NewController(selfupdate.ServiceName); err != nil {
 		opts.Log.Info("self-update is unavailable on this machine", "error", err)
+		updater.Unavailable = err
 	} else {
 		updater.Control = control
 		// Run holds the controller for exactly as long as the syncer lives;

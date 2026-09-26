@@ -197,7 +197,7 @@ func TestUploadAuditsAConcurrentUploadRace(t *testing.T) {
 	// Pre-seed the version directory the way a racing upload would, for a
 	// version the DB has not seen yet -- so Upload's pre-check passes and
 	// Put is what discovers the collision.
-	if _, _, err := svc.Artifacts.Put("9.0.0", strings.NewReader("already there"), 1<<20); err != nil {
+	if _, _, err := svc.Artifacts.PutBuild("9.0.0", protocol.PlatformWindowsAMD64, strings.NewReader("already there"), 1<<20); err != nil {
 		t.Fatal(err)
 	}
 

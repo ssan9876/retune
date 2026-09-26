@@ -249,7 +249,7 @@ var routeDocs = map[string]routeDoc{
 
 	// Agent versions
 	"GET /api/admin/v1/agent-versions":         {Tag: "Agent versions", Summary: "List agent builds", Query: paging, Response: listResponse[agentVersionJSON]{}},
-	"POST /api/admin/v1/agent-versions":        {Tag: "Agent versions", Summary: "Upload a signed agent build", RequestContent: "application/octet-stream", Query: []param{{Name: "version", In: "query", Description: "The build's version. Required."}, {Name: "notes", In: "query"}}, Status: 201, Response: agentVersionJSON{}, Description: "The release signature travels in the X-Retune-Signature header."},
+	"POST /api/admin/v1/agent-versions":        {Tag: "Agent versions", Summary: "Upload a signed agent build", RequestContent: "application/octet-stream", Query: []param{{Name: "version", In: "query", Description: "The build's version. Required."}, {Name: "platform", In: "query", Description: "windows-amd64 (the default), darwin-arm64, darwin-amd64, darwin-universal, linux-amd64 or linux-arm64. A build for a platform the version lacks joins it."}, {Name: "notes", In: "query"}}, Status: 201, Response: agentVersionJSON{}, Description: "The release signature travels in the X-Retune-Signature header."},
 	"GET /api/admin/v1/agent-versions/{id}":    {Tag: "Agent versions", Summary: "An agent build", Response: agentVersionJSON{}},
 	"DELETE /api/admin/v1/agent-versions/{id}": {Tag: "Agent versions", Summary: "Delete an agent build and its assignments", Status: 204},
 

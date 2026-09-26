@@ -3,6 +3,7 @@
 package selfupdate
 
 import (
+	"os/exec"
 	"syscall"
 
 	"golang.org/x/sys/windows"
@@ -15,3 +16,5 @@ import (
 func detachedAttr() *syscall.SysProcAttr {
 	return &syscall.SysProcAttr{CreationFlags: windows.DETACHED_PROCESS | windows.CREATE_NO_WINDOW}
 }
+
+func supervisorCommand(path, dataDir string) *exec.Cmd { return plainSupervisorCommand(path, dataDir) }

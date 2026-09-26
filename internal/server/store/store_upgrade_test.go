@@ -251,6 +251,13 @@ func TestMigrateOverEarlierData(t *testing.T) {
 	if builds, total, err := q.ListAgentVersions(ctx, store.Page{}); err != nil || total != 1 || builds[0].KeyID != "k1" {
 		t.Errorf("agent versions = %+v, %v", builds, err)
 	}
+	// Every build from before platforms was a Windows one, and stays served.
+	if b, err := q.GetAgentVersionBuild(ctx, upAgentBuild, "windows-amd64"); err != nil || b.SHA256 != "abc" || b.KeyID != "k1" {
+		t.Errorf("the pre-platform build should be windows-amd64: %+v, %v", b, err)
+	}
+	if p, err := q.GetDevicePlatform(ctx, upDevice); err != nil || p != "" {
+		t.Errorf("an old device's platform = %q, %v; want unknown", p, err)
+	}
 	if dc, err := q.ListDeviceCompliance(ctx, upDevice); err != nil || len(dc) != 1 || dc[0].State != store.ComplianceNonCompliant {
 		t.Errorf("device compliance = %+v, %v", dc, err)
 	}

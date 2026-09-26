@@ -122,7 +122,7 @@ func TestSyncStagesAndHandsOff(t *testing.T) {
 	if spawned == "" {
 		t.Fatal("the supervisor should have been handed off to")
 	}
-	if _, err := os.Stat(filepath.Join(dir, "bin", "2.0.0", "retune-agent.exe")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "bin", "2.0.0", selfupdate.BinName)); err != nil {
 		t.Errorf("the new build should be staged: %v", err)
 	}
 	rec, found, _ := selfupdate.ReadRecord(dir)

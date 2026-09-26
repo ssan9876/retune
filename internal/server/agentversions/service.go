@@ -23,8 +23,11 @@ import (
 var (
 	// ErrNotFound is returned when a build does not exist.
 	ErrNotFound = errors.New("agent version not found")
-	// ErrVersionTaken is returned when a version string is already in use.
+	// ErrVersionTaken is returned when a version already has a build for the
+	// platform being uploaded.
 	ErrVersionTaken = errors.New("that version has already been uploaded")
+	// ErrNoBuild is returned when a version has no build a device can run.
+	ErrNoBuild = errors.New("no build of this version for this platform")
 	// ErrBadRequest is returned for input the caller can fix.
 	ErrBadRequest = errors.New("bad request")
 	// ErrNoReleaseKeys means the service has no release keys configured, so no
@@ -71,27 +74,51 @@ func (s *Service) now() time.Time {
 // every way that decoding can fail is itself a rejection that must be
 // audited, and the handler has no access to the audit log.
 type NewVersion struct {
-	Version         string
+	Version string
+	// Platform is the build's GOOS-GOARCH (protocol.Platforms). Empty means
+	// windows-amd64, which is what every upload was before platforms existed.
+	Platform        string
 	Notes           string
 	Actor           string
 	SignatureHeader string
 }
 
-// Upload stores a build and records what was received. The bytes land first:
-// a metadata row describing a file that does not exist is a state an agent
-// cannot recover from, whereas an orphaned file is merely wasted disk.
+// Upload stores one platform's build of a version and records what was
+// received. The first build of a version creates it; a build for another
+// platform joins it, so one assignment reaches every kind of machine. The
+// bytes land first: a metadata row describing a file that does not exist is a
+// state an agent cannot recover from, whereas an orphaned file is merely
+// wasted disk.
 func (s *Service) Upload(ctx context.Context, in NewVersion, body io.Reader) (store.AgentVersion, error) {
 	version := strings.TrimSpace(in.Version)
 	if version == "" {
 		return store.AgentVersion{}, s.reject(ctx, in, ErrBadRequest, "a build needs a version")
 	}
+	platform := strings.TrimSpace(in.Platform)
+	if platform == "" {
+		platform = protocol.PlatformWindowsAMD64
+	}
+	in.Platform = platform
+	if !protocol.ValidPlatform(platform) {
+		return store.AgentVersion{}, s.reject(ctx, in, ErrBadRequest, fmt.Sprintf(
+			"%q is not a platform; use one of %s", platform, strings.Join(protocol.Platforms, ", ")))
+	}
 	if utf8.RuneCountInString(in.Notes) > MaxNotesLength {
 		return store.AgentVersion{}, s.reject(ctx, in, ErrBadRequest,
 			fmt.Sprintf("notes may be at most %d characters", MaxNotesLength))
 	}
-	if _, err := s.Store.Q().GetAgentVersionByVersion(ctx, version); err == nil {
-		return store.AgentVersion{}, s.reject(ctx, in, ErrVersionTaken, "a build for this version already exists")
-	} else if !errors.Is(err, store.ErrNotFound) {
+	existing, err := s.Store.Q().GetAgentVersionByVersion(ctx, version)
+	switch {
+	case err == nil:
+		if _, err := s.Store.Q().GetAgentVersionBuild(ctx, existing.ID, platform); err == nil {
+			return store.AgentVersion{}, s.reject(ctx, in, ErrVersionTaken,
+				fmt.Sprintf("a %s build of this version already exists", platform))
+		} else if !errors.Is(err, store.ErrNotFound) {
+			return store.AgentVersion{}, err
+		}
+	case errors.Is(err, store.ErrNotFound):
+		existing = store.AgentVersion{}
+	default:
 		return store.AgentVersion{}, err
 	}
 
@@ -128,7 +155,7 @@ func (s *Service) Upload(ctx context.Context, in NewVersion, body io.Reader) (st
 			"the signature names key %s, which is not a configured release key", sig.KeyID))
 	}
 
-	sum, size, err := s.Artifacts.Put(version, body, MaxUploadBytes)
+	sum, size, err := s.Artifacts.PutBuild(version, platform, body, MaxUploadBytes)
 	switch {
 	case errors.Is(err, artifacts.ErrExists):
 		// The pre-check above is racy against a concurrent upload of the
@@ -151,40 +178,57 @@ func (s *Service) Upload(ctx context.Context, in NewVersion, body io.Reader) (st
 	// run in the order that gives the most useful message: a wrong file, a
 	// wrong version, then a signature that is simply forged.
 	if !strings.EqualFold(sum, sig.SHA256) {
-		_ = s.Artifacts.Remove(version)
+		_ = s.Artifacts.RemoveBuild(version, platform)
 		return store.AgentVersion{}, s.rejectSig(ctx, in, sig, ErrBadRequest, fmt.Sprintf(
 			"the uploaded bytes hash to %s but the signature is over %s", sum, sig.SHA256))
 	}
 	if version != sig.Version {
-		_ = s.Artifacts.Remove(version)
+		_ = s.Artifacts.RemoveBuild(version, platform)
 		return store.AgentVersion{}, s.rejectSig(ctx, in, sig, ErrBadRequest, fmt.Sprintf(
 			"declared version %q does not match the signed version %q", version, sig.Version))
 	}
 	if err := release.Verify(s.ReleaseKeys, release.Manifest{Version: version, SHA256: sum}, sig); err != nil {
-		_ = s.Artifacts.Remove(version)
+		_ = s.Artifacts.RemoveBuild(version, platform)
 		return store.AgentVersion{}, s.rejectSig(ctx, in, sig, ErrBadRequest, "the signature did not verify")
 	}
 
-	v := store.AgentVersion{
-		ID: uuid.Must(uuid.NewV7()), Version: version, SHA256: sum, SizeBytes: size,
-		Notes: in.Notes, CreatedAt: s.now(), CreatedBy: in.Actor,
+	// A new version's own row describes its first build, as it always has:
+	// anything that reads a version without asking for a platform still sees
+	// a real build.
+	v := existing
+	if v.ID == uuid.Nil {
+		v = store.AgentVersion{
+			ID: uuid.Must(uuid.NewV7()), Version: version, SHA256: sum, SizeBytes: size,
+			Notes: in.Notes, CreatedAt: s.now(), CreatedBy: in.Actor,
+			KeyID: sig.KeyID, Signature: base64.StdEncoding.EncodeToString(sig.Signature),
+		}
+	}
+	build := store.AgentVersionBuild{
+		AgentVersionID: v.ID, Platform: platform, SHA256: sum, SizeBytes: size,
 		KeyID: sig.KeyID, Signature: base64.StdEncoding.EncodeToString(sig.Signature),
+		CreatedAt: s.now(), CreatedBy: in.Actor,
 	}
 	err = s.Store.InTx(ctx, func(q *store.Queries) error {
-		if err := q.CreateAgentVersion(ctx, v); err != nil {
+		if existing.ID == uuid.Nil {
+			if err := q.CreateAgentVersion(ctx, v); err != nil {
+				return err
+			}
+		}
+		if err := q.CreateAgentVersionBuild(ctx, build); err != nil {
 			return err
 		}
 		return q.InsertAudit(ctx, store.AuditEntry{
 			Actor: in.Actor, Action: "agent_version.uploaded", TargetKind: "agent_version",
 			TargetID: v.ID.String(),
-			Details:  map[string]any{"version": version, "sha256": sum, "size_bytes": size, "key_id": sig.KeyID},
+			Details: map[string]any{"version": version, "platform": platform, "sha256": sum,
+				"size_bytes": size, "key_id": sig.KeyID},
 		})
 	})
 	if err != nil {
 		// The row failed after the bytes landed; leaving them behind would be
 		// an artifact with no metadata pointing at it, indistinguishable from
 		// a completed upload once someone looks at the disk.
-		_ = s.Artifacts.Remove(version)
+		_ = s.Artifacts.RemoveBuild(version, platform)
 		mapped := uploadError(err)
 		if errors.Is(mapped, ErrVersionTaken) {
 			// Same race as the Artifacts.Put case above, caught here instead
@@ -219,7 +263,7 @@ func (s *Service) rejectSig(ctx context.Context, in NewVersion, sig release.Sign
 func (s *Service) rejectKey(ctx context.Context, in NewVersion, keyID string, sentinel error, reason string) error {
 	if err := s.Store.Q().InsertAudit(ctx, store.AuditEntry{
 		Actor: in.Actor, Action: "agent_version.rejected", TargetKind: "agent_version", TargetID: "",
-		Details: map[string]any{"version": in.Version, "reason": reason, "key_id": keyID},
+		Details: map[string]any{"version": in.Version, "platform": in.Platform, "reason": reason, "key_id": keyID},
 	}); err != nil {
 		// The refusal stands either way; losing the audit row is the lesser
 		// failure, but not a silent one.
@@ -285,13 +329,44 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID, actor string) error 
 	return s.Artifacts.Remove(v.Version)
 }
 
-// Open streams a build's bytes for download.
-func (s *Service) Open(ctx context.Context, id uuid.UUID) (io.ReadCloser, int64, error) {
+// Builds returns the builds of each of the given versions.
+func (s *Service) Builds(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID][]store.AgentVersionBuild, error) {
+	return s.Store.Q().ListAgentVersionBuilds(ctx, ids)
+}
+
+// BuildFor returns a version and the build of it that a device of platform
+// can run: its own platform's, or for a Mac a universal build. ErrNoBuild
+// means the version exists but has nothing this device can run.
+func (s *Service) BuildFor(ctx context.Context, id uuid.UUID, platform string) (store.AgentVersion, store.AgentVersionBuild, error) {
 	v, err := s.Get(ctx, id)
+	if err != nil {
+		return store.AgentVersion{}, store.AgentVersionBuild{}, err
+	}
+	for _, p := range protocol.BuildCandidates(platform) {
+		b, err := s.Store.Q().GetAgentVersionBuild(ctx, id, p)
+		if err == nil {
+			return v, b, nil
+		}
+		if !errors.Is(err, store.ErrNotFound) {
+			return store.AgentVersion{}, store.AgentVersionBuild{}, err
+		}
+	}
+	return v, store.AgentVersionBuild{}, ErrNoBuild
+}
+
+// Open streams a version's windows-amd64 build, the only platform there was
+// before builds had one.
+func (s *Service) Open(ctx context.Context, id uuid.UUID) (io.ReadCloser, int64, error) {
+	return s.OpenBuild(ctx, id, protocol.PlatformWindowsAMD64)
+}
+
+// OpenBuild streams the bytes of the build BuildFor chooses.
+func (s *Service) OpenBuild(ctx context.Context, id uuid.UUID, platform string) (io.ReadCloser, int64, error) {
+	v, b, err := s.BuildFor(ctx, id, platform)
 	if err != nil {
 		return nil, 0, err
 	}
-	return s.Artifacts.Open(v.Version)
+	return s.Artifacts.OpenBuild(v.Version, b.Platform)
 }
 
 // RecordResult stores the outcome of one device's attempt to install this

@@ -27,8 +27,18 @@ var ErrExists = errors.New("that version is already stored")
 // report each one differently.
 var ErrBadVersion = errors.New("invalid version")
 
-// binaryName is the filename every version stores its build under.
+// binaryName is the filename a version uploaded before platforms existed
+// stores its build under, directly in the version's directory. Those were all
+// Windows builds; OpenBuild still finds them there as windows-amd64.
 const binaryName = "retune-agent.exe"
+
+// buildName is the filename each platform's build is stored under, in a
+// directory per platform under the version's.
+const buildName = "retune-agent"
+
+// platformPattern is a platform's shape, GOOS-GOARCH: it becomes a directory
+// name too.
+var platformPattern = regexp.MustCompile(`^[a-z0-9]+-[a-z0-9]+$`)
 
 // versionPattern is deliberately narrow: a version becomes a directory name,
 // so anything that could be a path separator or a "." / ".." segment must be
@@ -54,9 +64,30 @@ func (s Store) Put(version string, r io.Reader, limit int64) (sha256Hex string, 
 	if err := validateVersion(version); err != nil {
 		return "", 0, err
 	}
+	return s.put(filepath.Join(s.Dir, version), binaryName, r, limit)
+}
 
-	dir := filepath.Join(s.Dir, version)
-	final := filepath.Join(dir, binaryName)
+// PutBuild is Put for one platform's build of a version. Builds of the same
+// version for other platforms are left alone, whatever happens to this one.
+func (s Store) PutBuild(version, platform string, r io.Reader, limit int64) (string, int64, error) {
+	if err := validateBuild(version, platform); err != nil {
+		return "", 0, err
+	}
+	return s.put(filepath.Join(s.Dir, version, platform), buildName, r, limit)
+}
+
+func validateBuild(version, platform string) error {
+	if err := validateVersion(version); err != nil {
+		return err
+	}
+	if !platformPattern.MatchString(platform) {
+		return fmt.Errorf("%w: platform %q", ErrBadVersion, platform)
+	}
+	return nil
+}
+
+func (s Store) put(dir, name string, r io.Reader, limit int64) (sha256Hex string, size int64, err error) {
+	final := filepath.Join(dir, name)
 	if _, err := os.Stat(final); err == nil {
 		return "", 0, ErrExists
 	} else if !errors.Is(err, fs.ErrNotExist) {
@@ -73,7 +104,10 @@ func (s Store) Put(version string, r io.Reader, limit int64) (sha256Hex string, 
 	defer func() {
 		if err != nil {
 			os.Remove(tmp)
+			// Only ever empty directories: another platform's build of the
+			// same version may share the parent.
 			os.Remove(dir)
+			os.Remove(filepath.Dir(dir))
 		}
 	}()
 
@@ -128,6 +162,43 @@ func (s Store) Open(version string) (io.ReadCloser, int64, error) {
 		return nil, 0, err
 	}
 	return f, info.Size(), nil
+}
+
+// OpenBuild returns one platform's build of a version. A windows-amd64 build
+// stored before platforms existed is found where it was put.
+func (s Store) OpenBuild(version, platform string) (io.ReadCloser, int64, error) {
+	if err := validateBuild(version, platform); err != nil {
+		return nil, 0, err
+	}
+	f, err := os.Open(filepath.Join(s.Dir, version, platform, buildName))
+	if errors.Is(err, fs.ErrNotExist) {
+		if platform == "windows-amd64" {
+			return s.Open(version)
+		}
+		return nil, 0, ErrNotFound
+	}
+	if err != nil {
+		return nil, 0, err
+	}
+	info, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, 0, err
+	}
+	return f, info.Size(), nil
+}
+
+// RemoveBuild deletes one platform's build of a version, and the version's
+// directory if nothing else is left in it.
+func (s Store) RemoveBuild(version, platform string) error {
+	if err := validateBuild(version, platform); err != nil {
+		return err
+	}
+	if err := os.RemoveAll(filepath.Join(s.Dir, version, platform)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	_ = os.Remove(filepath.Join(s.Dir, version))
+	return nil
 }
 
 // Remove deletes a stored version. Removing one that is already gone is

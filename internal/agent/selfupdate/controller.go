@@ -43,9 +43,15 @@ type ServiceController interface {
 	Close() error
 }
 
-// ErrWindowsOnly is returned by NewController on any platform other than
-// Windows, where there is no service control manager to speak to.
-var ErrWindowsOnly = errors.New("controlling a service is only available on Windows")
+// ErrWindowsOnly is returned by NewController on a platform with no service
+// manager self-update knows how to drive. The name predates macOS and Linux
+// support; what it means now is "not Windows, launchd or systemd".
+var ErrWindowsOnly = errors.New("self-update needs a Windows service, a launchd daemon or a systemd unit")
+
+// ErrNotInstalled is returned by NewController on macOS and Linux when the
+// agent is not installed as a daemon at all -- run by hand, say. There is
+// then nothing to repoint, and an update is refused with this reason.
+var ErrNotInstalled = errors.New("the agent is not installed as a service, so it cannot update itself")
 
 // ServiceName is both the Windows service name and the Event Log source.
 // It is declared here, not in cmd/retune-agent, so the runner and the
@@ -53,8 +59,10 @@ var ErrWindowsOnly = errors.New("controlling a service is only available on Wind
 // each other -- cannot drift apart on what service they mean.
 const ServiceName = "Retune"
 
-// NewController opens a handle to the named service through the Windows
-// service control manager. On any other platform it returns ErrWindowsOnly.
+// NewController opens the service the agent runs as: the named Windows
+// service, the com.retune.agent launchd daemon on macOS, or the
+// retune-agent.service systemd unit on Linux. serviceName is the Windows
+// service name; the daemon and unit names are fixed by their installers.
 func NewController(serviceName string) (ServiceController, error) {
 	return newController(serviceName)
 }

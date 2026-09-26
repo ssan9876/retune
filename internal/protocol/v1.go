@@ -52,6 +52,11 @@ type CheckinRequest struct {
 	LoggedInUser  string   `json:"logged_in_user"`
 	IPAddresses   []string `json:"ip_addresses"`
 	InventoryHash string   `json:"inventory_hash"`
+	// Platform is the agent's own operating system and processor, as
+	// "GOOS-GOARCH" (darwin-arm64, windows-amd64). The server hands each
+	// device the build of an assigned version that matches it. An older agent
+	// sends none, and the server infers windows-amd64 from a Windows OS.
+	Platform string `json:"platform,omitempty"`
 }
 
 // Item is one thing assigned to this device through its groups. An agent

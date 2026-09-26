@@ -59,10 +59,7 @@ func (q *Queries) SetDeviceStatus(ctx context.Context, tenantID, id uuid.UUID, s
 }
 
 func (q *Queries) RecordCheckin(ctx context.Context, tenantID, id uuid.UUID, agentVersion string, at time.Time) error {
-	_, err := q.db.Exec(ctx,
-		`UPDATE devices SET last_seen_at = $3, agent_version = $4 WHERE tenant_id = $1 AND id = $2`,
-		tenantID, id, at, agentVersion)
-	return err
+	return q.RecordCheckinPlatform(ctx, tenantID, id, agentVersion, "", at)
 }
 
 // ListDevices returns every device, ordered by hostname.
