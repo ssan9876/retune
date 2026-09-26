@@ -40,6 +40,30 @@ stretches; nothing failed even at 322 a second, but a device then waits
 seconds for a check-in. The database held 9,000 devices in 208 MB, about
 23 KB a device with 150 programs each.
 
+### A small server
+
+The same test against the smallest deployment we'd suggest: the Compose stack
+(server and PostgreSQL 17 together) in a Proxmox LXC container with **2 vCPU
+and 2 GB of memory**, default settings, and the simulator on a separate
+machine on the same LAN. Each step enrolled 1,500 more devices and ran for
+three minutes.
+
+| check-ins per second | fleet at the 5-minute default | check-in p50 | p95 | p99 | inventory p95 | failures |
+|---:|---:|---:|---:|---:|---:|---:|
+| 33 | 10,000 | 3 ms | 27 ms | 61 ms | 34 ms | 0 |
+| 68 | 20,000 | 3 ms | 10 ms | 26 ms | 31 ms | 0 |
+| 136 | 41,000 | 2 ms | 16 ms | 148 ms | 147 ms | 0 |
+| 212 | 64,000 | 2 ms | 41 ms | 869 ms | 1.3 s | 0 |
+| 289 | 87,000 | 2 ms | 755 ms | 2.7 s | 3.7 s | 0 |
+
+The knee is in the same place — about 200 check-ins a second — so it is set
+by the server's request path, not by the desktop's extra cores. Enrolment
+held at 125 ms a device throughout, the containers never used more than
+about 350 MB between them, and 7,500 devices took 175 MB of database, the
+same 23 KB a device. Three-minute runs over a young database are the kind
+of test that flatters a server, so the recommendations below still plan for
+half of the knee and keep their headroom on memory.
+
 ## Recommendations
 
 Plan for half of the knee, so a burst — every device coming back after a
