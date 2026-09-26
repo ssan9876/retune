@@ -3,6 +3,7 @@ package policy_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -396,6 +397,8 @@ type fakeBitLocker struct {
 	ran    []string
 	// escrowed is what reached the server.
 	escrowed map[string]string
+	// enableErr, when set, is how Enable-BitLocker fails.
+	enableErr error
 }
 
 func newBitLocker(protection, method, recovery string, tpm bool) *fakeBitLocker {
@@ -415,6 +418,9 @@ func (f *fakeBitLocker) run(_ context.Context, script string) (string, error) {
 		raw, _ := json.Marshal(f.status)
 		return string(raw), nil
 	case strings.HasPrefix(script, "Enable-BitLocker"):
+		if f.enableErr != nil {
+			return "", f.enableErr
+		}
 		f.status["protection_status"] = "On"
 		return "", nil
 	case strings.HasPrefix(script, "Add-BitLockerKeyProtector"):
@@ -460,6 +466,68 @@ func TestBitLockerEnablesAndEscrows(t *testing.T) {
 	}
 	if fake.escrowed["C:"] != "111111-222222-333333" {
 		t.Fatalf("the recovery key should have been escrowed, got %v", fake.escrowed)
+	}
+	if ok, err := h.Test(ctx, s); err != nil || !ok {
+		t.Fatalf("it should now be compliant: %v %v", ok, err)
+	}
+}
+
+// When encryption does not start, the reason reaches the server and no
+// recovery key is escrowed for a drive that is not encrypted.
+func TestBitLockerFailureToEnableIsReported(t *testing.T) {
+	ctx := context.Background()
+	fake := newBitLocker("Off", "", "", true)
+	fake.enableErr = errors.New("powershell: exit status 1: BitLocker Drive Encryption detected bootable media")
+	h := policy.BitLockerHandler{Run: fake.run, Escrow: fake}
+	s := protocol.Setting{Kind: protocol.KindBitLocker, RequireEncryption: true, EscrowRecoveryKey: true}
+
+	err := h.Set(ctx, s)
+	if err == nil || !strings.Contains(err.Error(), "bootable media") {
+		t.Fatalf("the failure should say why, got %v", err)
+	}
+	if fake.did("Add-BitLockerKeyProtector") || len(fake.escrowed) != 0 {
+		t.Fatalf("nothing should be escrowed for an unencrypted drive, got %v", fake.escrowed)
+	}
+}
+
+// The script itself decides failure by whether encryption started, since
+// Enable-BitLocker's errors do not end the process.
+func TestBitLockerEnableChecksThatEncryptionStarted(t *testing.T) {
+	ctx := context.Background()
+	fake := newBitLocker("Off", "", "", true)
+	h := policy.BitLockerHandler{Run: fake.run, Escrow: fake}
+	if err := h.Set(ctx, protocol.Setting{Kind: protocol.KindBitLocker, RequireEncryption: true}); err != nil {
+		t.Fatal(err)
+	}
+	for _, script := range fake.ran {
+		if strings.HasPrefix(script, "Enable-BitLocker") {
+			if !strings.Contains(script, "FullyDecrypted") || !strings.Contains(script, "exit 1") {
+				t.Errorf("the enable script should fail when encryption did not start:\n%s", script)
+			}
+			return
+		}
+	}
+	t.Fatal("Enable-BitLocker never ran")
+}
+
+// A key the server already holds for a volume that no longer has a recovery
+// password opens nothing, so the volume is not compliant until a new one is
+// added and escrowed.
+func TestBitLockerWithoutARecoveryPasswordIsNotCompliant(t *testing.T) {
+	ctx := context.Background()
+	fake := newBitLocker("On", "XtsAes256", "", true)
+	fake.escrowed["C:"] = "old-key-for-a-removed-protector"
+	h := policy.BitLockerHandler{Run: fake.run, Escrow: fake}
+	s := protocol.Setting{Kind: protocol.KindBitLocker, RequireEncryption: true, EscrowRecoveryKey: true}
+
+	if ok, err := h.Test(ctx, s); err != nil || ok {
+		t.Fatalf("no local recovery password should not be compliant: %v %v", ok, err)
+	}
+	if err := h.Set(ctx, s); err != nil {
+		t.Fatal(err)
+	}
+	if fake.escrowed["C:"] != "111111-222222-333333" {
+		t.Fatalf("the new recovery password should replace the stale one, got %v", fake.escrowed)
 	}
 	if ok, err := h.Test(ctx, s); err != nil || !ok {
 		t.Fatalf("it should now be compliant: %v %v", ok, err)

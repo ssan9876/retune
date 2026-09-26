@@ -3,8 +3,6 @@
 package facts
 
 import (
-	"fmt"
-
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
@@ -17,7 +15,7 @@ func osVersion() string {
 	defer k.Close()
 	name, _, _ := k.GetStringValue("ProductName")
 	build, _, _ := k.GetStringValue("CurrentBuild")
-	return fmt.Sprintf("%s (build %s)", name, build)
+	return WindowsName(name, build)
 }
 
 // x/sys/windows does not wrap GetTickCount64, so call it from kernel32.

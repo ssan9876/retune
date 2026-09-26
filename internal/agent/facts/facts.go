@@ -3,8 +3,11 @@
 package facts
 
 import (
+	"fmt"
 	"net"
 	"os"
+	"strconv"
+	"strings"
 
 	"retune/internal/agent/inventory"
 	"retune/internal/opsign"
@@ -93,4 +96,14 @@ func ipAddresses() []string {
 		}
 	}
 	return out
+}
+
+// WindowsName is the name and build a Windows machine reports, from the
+// registry's ProductName and CurrentBuild. Windows 11 kept "Windows 10" in
+// ProductName for compatibility, so build 22000 and later is renamed.
+func WindowsName(productName, build string) string {
+	if n, err := strconv.Atoi(build); err == nil && n >= 22000 {
+		productName = strings.Replace(productName, "Windows 10", "Windows 11", 1)
+	}
+	return fmt.Sprintf("%s (build %s)", productName, build)
 }
