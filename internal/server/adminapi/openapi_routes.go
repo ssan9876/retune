@@ -159,7 +159,7 @@ var routeDocs = map[string]routeDoc{
 	"DELETE /api/admin/v1/session":    {Tag: "Session", Summary: "Sign out", Status: 204},
 
 	// Devices
-	"GET /api/admin/v1/devices":                      {Tag: "Devices", Summary: "List devices", Query: with(param{Name: "search", In: "query", Description: "Hostname or serial contains."}, param{Name: "status", In: "query", Description: "active, retired or unenrolled."}), Response: listResponse[deviceJSON]{}},
+	"GET /api/admin/v1/devices":                      {Tag: "Devices", Summary: "List devices", Query: with(param{Name: "search", In: "query", Description: "Hostname or serial contains."}, param{Name: "status", In: "query", Description: "active (seen recently), stale (active but not seen recently), retired (any non-active status), or an exact status such as unenrolled."}, param{Name: "compliance", In: "query", Description: "compliant, non_compliant, unknown or not_evaluated (worst state across assigned baselines)."}), Response: listResponse[deviceJSON]{}},
 	"GET /api/admin/v1/devices/export.csv":           {Tag: "Devices", Summary: "Export devices as CSV", ResponseContent: "text/csv"},
 	"GET /api/admin/v1/devices/{id}":                 {Tag: "Devices", Summary: "A device, its inventory and recent commands", Response: deviceDetailJSON{}},
 	"GET /api/admin/v1/devices/{id}/software":        {Tag: "Devices", Summary: "A device's installed software", Response: listResponse[softwareJSON]{}},
