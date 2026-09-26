@@ -24,6 +24,11 @@ $ErrorActionPreference = "Stop"
 
 if ($ReleaseKey -ne "" -and $TrustedKeys -eq "") { throw "-TrustedKeys is required with -ReleaseKey" }
 
+# Windows Installer versions are numbers only, so a prerelease such as
+# 1.4.0-rc.1 packages as 1.4.0 while the agent inside keeps its full version.
+$msiVersion = ($Version -split '[-+]')[0]
+if ($msiVersion -notmatch '^\d+\.\d+\.\d+$') { throw "-Version must start with MAJOR.MINOR.PATCH, got $Version" }
+
 $root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 $out = Join-Path $root $OutDir
 New-Item -ItemType Directory -Force -Path $out | Out-Null
@@ -47,10 +52,10 @@ if ($ReleaseKey -ne "") {
   Write-Host "The agent is unsigned and trusts no release key (pass -ReleaseKey and -TrustedKeys)."
 }
 
-Write-Host "Building $msi (version $Version)..."
+Write-Host "Building $msi (version $msiVersion)..."
 & wix build -arch x64 `
   -ext WixToolset.Util.wixext `
-  -d Version=$Version `
+  -d Version=$msiVersion `
   -d AgentExe=$agentExe `
   (Join-Path $PSScriptRoot "Package.wxs") `
   -o $msi

@@ -51,6 +51,9 @@ type Server struct {
 	// MetricsToken turns on GET /metrics and is the bearer token a scraper
 	// must send. Empty leaves the endpoint off.
 	MetricsToken string
+	// AgentDownloadURL is where the Enrollment page sends people for the
+	// agent installers: the project's releases unless set.
+	AgentDownloadURL string
 	// OIDC is single sign-on. Its zero value is SSO off.
 	OIDC OIDCConfig
 	// AuditStream is where the audit log is copied as it is written, for a
@@ -126,6 +129,10 @@ type Retention struct {
 	ScriptRuns  time.Duration
 	AppInstalls time.Duration
 }
+
+// DefaultAgentDownloadURL is the project's latest release, which carries the
+// signed agent installers.
+const DefaultAgentDownloadURL = "https://github.com/ssan9876/retune/releases/latest"
 
 // minMetricsToken is the shortest METRICS_TOKEN accepted. The endpoint is
 // reachable by anything that can reach the server, so its token is a
@@ -252,6 +259,13 @@ func LoadServer(getenv func(string) string) (Server, error) {
 		return Server{}, err
 	}
 	c.MetricsToken = strings.TrimSpace(lookup("METRICS_TOKEN"))
+	c.AgentDownloadURL = strings.TrimSpace(lookup("AGENT_DOWNLOAD_URL"))
+	if c.AgentDownloadURL == "" {
+		c.AgentDownloadURL = DefaultAgentDownloadURL
+	}
+	if u, err := url.Parse(c.AgentDownloadURL); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+		return Server{}, fmt.Errorf("AGENT_DOWNLOAD_URL must be an http or https URL, got %q", c.AgentDownloadURL)
+	}
 	if c.MetricsToken != "" && len(c.MetricsToken) < minMetricsToken {
 		return Server{}, fmt.Errorf("METRICS_TOKEN must be at least %d characters", minMetricsToken)
 	}

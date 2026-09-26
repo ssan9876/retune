@@ -23,6 +23,7 @@ import (
 
 const usage = `usage:
   retune-sign keygen --out DIR [--name release|operations]
+  retune-sign pubkey --key FILE|env:NAME
   retune-sign sign --key FILE|env:NAME --version V BINARY
   retune-sign verify --trust KEY[,KEY...] BINARY SIGFILE
   retune-sign sign-script --key FILE|env:NAME [--detection FILE] SCRIPT
@@ -54,6 +55,23 @@ func run(args []string, getenv func(string) string, out io.Writer) error {
 			return errors.New("--name must be release or operations")
 		}
 		return keygen(*outDir, *name, out)
+	case "pubkey":
+		// Prints the public half of a key, so a build that holds only the
+		// private key (a CI secret) can stamp the matching trust list.
+		fs := flag.NewFlagSet("pubkey", flag.ContinueOnError)
+		key := fs.String("key", "", "path to a .key file, or env:NAME")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if *key == "" || fs.NArg() != 0 {
+			return errors.New(usage)
+		}
+		priv, err := loadKey(*key, getenv)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(out, priv.Public().Encode())
+		return nil
 	case "sign":
 		fs := flag.NewFlagSet("sign", flag.ContinueOnError)
 		key := fs.String("key", "", "path to release.key, or env:NAME to read the seed from the environment")

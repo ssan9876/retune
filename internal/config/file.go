@@ -40,6 +40,7 @@ type fileConfig struct {
 	SMTPPassword           string `yaml:"smtp_password"`
 	SMTPStartTLS           *bool  `yaml:"smtp_starttls"`
 	MetricsToken           string `yaml:"metrics_token"`
+	AgentDownloadURL       string `yaml:"agent_download_url"`
 	OIDCIssuer             string `yaml:"oidc_issuer"`
 	OIDCClientID           string `yaml:"oidc_client_id"`
 	OIDCClientSecret       string `yaml:"oidc_client_secret"`
@@ -172,6 +173,7 @@ func loadConfigFile(getenv func(string) string) (map[string]string, error) {
 		set("SMTP_STARTTLS", strconv.FormatBool(*f.SMTPStartTLS))
 	}
 	set("METRICS_TOKEN", f.MetricsToken)
+	set("AGENT_DOWNLOAD_URL", f.AgentDownloadURL)
 	set("AUDIT_SYSLOG_ADDRESS", f.AuditSyslogAddress)
 	set("AUDIT_WEBHOOK_URL", f.AuditWebhookURL)
 	set("AUDIT_WEBHOOK_HEADER", f.AuditWebhookHeader)

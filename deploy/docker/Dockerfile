@@ -6,20 +6,24 @@
 # The console is built first: the Go binary embeds it with go:embed, and the
 # built assets are gitignored. Skipping this stage would produce a server whose
 # console is a 503 page rather than a build failure.
-FROM node:24-alpine AS console
+# The console and the binary are built on the build machine's own platform and
+# cross-compiled, so an arm64 image doesn't run npm and the compiler emulated.
+FROM --platform=$BUILDPLATFORM node:24-alpine AS console
 WORKDIR /src
 COPY web/package.json web/package-lock.json ./web/
 RUN npm --prefix web ci
 COPY web ./web
 RUN npm --prefix web run build
 
-FROM golang:1.27 AS build
+FROM --platform=$BUILDPLATFORM golang:1.27 AS build
+ARG TARGETOS=linux
+ARG TARGETARCH
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=console /src/internal/server/console/dist ./internal/server/console/dist
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -o /out/retune-server ./cmd/retune-server
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -o /out/retune-server ./cmd/retune-server
 # Created here so a freshly created named volume inherits this ownership and
 # the non-root process can write the CA key on first start.
 RUN mkdir -p /out/data && chown 65532:65532 /out/data

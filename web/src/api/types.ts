@@ -155,6 +155,8 @@ export interface SessionResponse {
   expires_at: string;
   /** signing_required: scripts and wipes need an operations signature. */
   signing_required?: boolean;
+  /** agent_download_url: where the agent installers are published. */
+  agent_download_url?: string;
 }
 
 export interface Group {

@@ -99,6 +99,7 @@ session_ttl_hours: 12
 | `smtp_username`, `smtp_password` | — | credentials for that relay, if it wants them |
 | `smtp_starttls` | `true` | upgrade before authenticating; off only for a relay that does not offer it |
 | `metrics_token` | — | turns on `GET /metrics` and is the bearer token a scraper sends; at least 32 characters |
+| `agent_download_url` | this project's latest release | where the Enrollment page links for the agent installers: a GitHub `…/releases/latest` page, or a folder of your own holding the release files under their released names |
 | `audit_retention_days` | `365` | how long audit entries are kept; `0` keeps them forever |
 | `command_retention_days` | `90` | how long finished commands and their output are kept; `0` keeps them forever |
 | `script_run_retention_days` | `90` | how long script run history is kept; `0` keeps it forever |
@@ -135,6 +136,10 @@ cp .env.example .env        # set POSTGRES_PASSWORD and PUBLIC_URL
 docker compose up --build -d
 docker compose exec server /retune-server bootstrap-admin --email you@example.com
 ```
+
+That builds the image from source. To run a released image instead, put
+`image: ghcr.io/ssan9876/retune-server:<version>` on the `server` service and
+start it with `docker compose up -d --no-build`.
 
 The stack is the server plus PostgreSQL. Migrations run at startup, so there is
 no separate migrate step. The `ca` volume holds the internal certificate
@@ -568,6 +573,22 @@ needs the key from before it.
 
 ## Enroll a machine
 
+Every [release](https://github.com/ssan9876/retune/releases/latest) carries
+the agent for each platform, signed with the project's release key:
+
+| File | For |
+|---|---|
+| `retune-agent.msi` | Windows (x64), installs the service |
+| `retune-agent.exe` and `.sig` | Windows, the bare agent; upload both under **Agent versions** to update a fleet |
+| `retune-agent.pkg` | macOS 13 or later, Apple silicon and Intel |
+| `retune-agent-darwin-*` and `.sig` | macOS, the bare agent |
+| `retune-agent-linux-amd64`, `-arm64` and `.sig` | Linux (preview: check-in only), with `retune-agent.service` |
+| `retune-server-*`, `retune-sign-*` | the server and the signing tool, for running without Docker |
+| `SHA256SUMS` | checksums of all of the above |
+
+Create a token under **Enrollment** in the console: it shows the install
+command for the token and links to the files.
+
 A machine that enrolls with the same serial number or SMBIOS UUID as a device
 already enrolled — usually the same machine, reimaged — becomes a new device,
 and the enrollment's audit entry names the earlier one (`same_hardware_as`).
@@ -593,8 +614,9 @@ appears in that log. Windows Installer records a deferred action's data
 verbatim and ignores the package's request to hide it, so this cannot be fixed
 from the installer. `msiexec` writes no log unless asked, and the token is
 spent within seconds, but prefer `--max-uses 1` tokens and delete verbose logs.
-Build the MSI with `pwsh deploy/msi/build.ps1` (or `make msi`), which needs the
-WiX 5 CLI: `dotnet tool install --global wix`.
+To build the MSI yourself instead of downloading it, run
+`pwsh deploy/msi/build.ps1` (or `make msi`), which needs the WiX 5 CLI:
+`dotnet tool install --global wix`.
 
 Or by hand, without the installer:
 
@@ -622,8 +644,31 @@ Start-Service Retune
 ### On a Mac
 
 The macOS agent (Apple silicon or Intel, macOS 13 or later) runs as a launchd
-daemon, as root. Build it with `make agent-mac`, copy the binary for the
-Mac's processor to `/usr/local/bin/retune-agent`, then:
+daemon, as root. `retune-agent.pkg` installs it to `/usr/local/bin` and, given
+settings, enrolls the Mac and starts the daemon. A pkg cannot take
+command-line properties the way an MSI does, so it reads a property list with
+`ServerURL`, `EnrollToken` and (for a self-signed server)
+`ServerCertFingerprint` from the first of:
+
+1. `/Library/Managed Preferences/com.retune.agent.plist` — a configuration
+   profile from your MDM with a custom settings payload for the domain
+   `com.retune.agent`. This is the unattended path: push the profile, then
+   the pkg.
+2. `retune-agent.plist` in the same folder as the pkg — for installing by
+   hand. **Copy macOS settings** on the Enrollment page gives you the file.
+3. `/Library/Preferences/com.retune.agent.plist` — dropped by your own
+   imaging. The pkg deletes it once used.
+
+`deploy/macos/retune-agent.plist.example` (also in each release) shows the
+format. Without settings the pkg installs the binary and nothing else. It
+logs to `/var/log/retune-agent-install.log`, and installing a newer pkg over
+an enrolled Mac just restarts the daemon on the new binary. A release is
+code-signed and notarized only when the project has an Apple Developer ID;
+an unsigned pkg installs through MDM or `sudo installer -pkg
+retune-agent.pkg -target /`, but Gatekeeper refuses a double-click.
+
+By hand, with the bare binary for the Mac's processor in
+`/usr/local/bin/retune-agent`:
 
 ```bash
 sudo retune-agent enroll --server https://mdm.example.com --token <TOKEN> --pin <FINGERPRINT>
@@ -650,6 +695,19 @@ self-update — update the binary with your own tooling, then
 `sudo launchctl kickstart -k system/com.retune.agent`. Each of those fails on
 a Mac with a reason rather than silently. The device key is a file in the
 root-only state directory, not in the Keychain.
+
+### On Linux (preview)
+
+The Linux agent is a preview: it enrolls and checks in, but reports only its
+hostname and refuses scripts and restarts. Releases carry it so the
+enrollment path can be tried on Linux; it has no installer. Copy `retune-agent-linux-amd64` (or `-arm64`) to
+`/usr/local/bin/retune-agent`, then:
+
+```bash
+sudo retune-agent enroll --server https://mdm.example.com --token <TOKEN> --pin <FINGERPRINT>
+sudo install -m 0644 retune-agent.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now retune-agent
+```
 
 ### Zero-touch provisioning
 
@@ -1413,6 +1471,58 @@ shown on the report and tried again at its next scheduled time, not every few
 minutes until the relay recovers. A CSV over 10 MB isn't attached; the email
 says to download it from the console instead. Reports are sent by one server
 at a time, so a second replica never sends them twice.
+
+## Cutting a release
+
+Pushing a tag `vMAJOR.MINOR.PATCH` (or `vMAJOR.MINOR.PATCH-rc.1`, published as
+a prerelease) runs `.github/workflows/release.yml`. It builds the agent for
+Windows, macOS and Linux with the tag's version stamped in, signs every build
+with the release key and checks each signature, packages the MSI and the pkg,
+builds the server and `retune-sign` binaries, writes `SHA256SUMS`, and
+publishes all of it as a GitHub release with the commits since the previous
+tag as its notes. It also pushes `ghcr.io/ssan9876/retune-server:<version>`
+(and `:latest`, except for a prerelease) for amd64 and arm64.
+
+A pull request that changes the workflow, `deploy/` or `retune-sign` runs the
+same builds as a dry run, signed with a key made for that run, and publishes
+nothing; its files are kept as the run's `dry-run-release` artifact.
+
+Once, before the first release:
+
+1. Make the release key on a machine you trust, and keep `release.key` off
+   the server and out of the repository:
+
+   ```bash
+   go run ./cmd/retune-sign keygen --out ~/retune-release
+   ```
+
+2. Add its contents as the repository secret `RELEASE_KEY` (**Settings →
+   Secrets and variables → Actions**). Without it a tag fails before anything
+   is built: agents are never published unsigned.
+3. Set `AGENT_RELEASE_KEYS` on every server to the public key from
+   `release.pub`, so released builds can be uploaded under **Agent versions**.
+4. After the first release, make the `retune-server` package public under the
+   repository's **Packages** if servers should pull it without logging in.
+
+Optional:
+
+| Kind | Name | Effect |
+|---|---|---|
+| variable | `RELEASE_PUBKEYS` | the trust list agents embed, comma-separated; set it while rotating the key (it must include the current key's public key) |
+| variable | `OPERATIONS_PUBKEYS` | build released agents that refuse unsigned scripts and wipes (see [Signed scripts and wipes](#signed-scripts-and-wipes)) |
+| secrets | `WINDOWS_CERT_PFX` (base64), `WINDOWS_CERT_PASSWORD` | Authenticode-sign the MSI, so a double-click install shows no SmartScreen warning |
+| secrets | `MACOS_CERT_P12` (base64, holding both Developer ID certificates), `MACOS_CERT_PASSWORD`, `MACOS_APP_IDENTITY`, `MACOS_INSTALLER_IDENTITY` | code-sign the macOS agent and sign the pkg |
+| secrets | `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD` | notarize and staple the signed pkg |
+
+Without the optional signing secrets the release still goes out, and the run's
+summary says which installers are unsigned.
+
+Then, for each release:
+
+```bash
+git tag v1.4.0
+git push origin v1.4.0
+```
 
 ## Command-line reference
 

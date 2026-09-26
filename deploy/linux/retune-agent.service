@@ -1,0 +1,22 @@
+# The Retune agent as a systemd service. Enroll first, then:
+#
+#   sudo install -m 0644 retune-agent.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now retune-agent
+#
+# The agent keeps its identity in /var/lib/retune, readable by root only.
+[Unit]
+Description=Retune agent
+Documentation=https://github.com/ssan9876/retune
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/retune-agent run --data-dir /var/lib/retune
+Restart=always
+RestartSec=30
+StateDirectory=retune
+StateDirectoryMode=0700
+
+[Install]
+WantedBy=multi-user.target
