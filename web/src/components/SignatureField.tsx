@@ -37,6 +37,26 @@ export function parseSignedOrder(text: string): SignedOrder | null {
   return { ...sig, device: value.device, protected: value.protected, expires: value.expires };
 }
 
+/**
+ * SignedSubject shows the JSON retune-sign signs for an app or a profile, to
+ * save as the file the command names: the signature covers exactly this, so
+ * nothing has to be retyped on the machine that holds the key.
+ */
+export function SignedSubject({ fileName, value }: { fileName: string; value: unknown }) {
+  return (
+    <Field label={`What to sign (${fileName})`} hint={`Save this as ${fileName} beside the key.`}>
+      <textarea
+        aria-label={`What to sign (${fileName})`}
+        className="mono"
+        rows={6}
+        readOnly
+        spellCheck={false}
+        value={JSON.stringify(value, null, 2)}
+      />
+    </Field>
+  );
+}
+
 /** SignatureField takes a pasted operations signature, and says how to make one. */
 export function SignatureField({
   value,

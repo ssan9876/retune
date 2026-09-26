@@ -15,7 +15,7 @@ interface SessionValue {
   canWrite: boolean;
   /** canOperate: admin or helpdesk - lock, restart, collect logs, reveal keys. */
   canOperate: boolean;
-  /** signingRequired: scripts and wipes need an operations signature. */
+  /** signingRequired: scripts, apps, profiles and wipes need an operations signature. */
   signingRequired: boolean;
   /** agentDownloadUrl: where the agent installers are published. */
   agentDownloadUrl: string | null;

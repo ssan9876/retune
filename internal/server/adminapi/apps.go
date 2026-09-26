@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"retune/internal/opsign"
 	"retune/internal/protocol"
 	"retune/internal/server/apps"
 	"retune/internal/server/store"
@@ -40,12 +41,15 @@ type packageJSON struct {
 	SuccessExitCodes  []int                   `json:"success_exit_codes,omitempty"`
 	Detection         *protocol.DetectionRule `json:"detection,omitempty"`
 	UninstallPrevious bool                    `json:"uninstall_previous,omitempty"`
+	// Signed is whether the version has an operations signature.
+	Signed bool `json:"signed"`
 }
 
 func newPackageJSON(v store.AppVersion) packageJSON {
 	out := packageJSON{
 		Source: v.Source, InstallerType: v.InstallerType, FileName: v.FileName, FileSHA256: v.FileSHA256,
 		FileSize: v.FileSize, UninstallCommand: v.UninstallCommand, UninstallPrevious: v.UninstallPrevious,
+		Signed: len(v.Signature) > 0,
 	}
 	for _, c := range v.SuccessExitCodes {
 		out.SuccessExitCodes = append(out.SuccessExitCodes, int(c))
@@ -92,6 +96,9 @@ type appRequest struct {
 	SuccessExitCodes  []int                   `json:"success_exit_codes"`
 	Detection         *protocol.DetectionRule `json:"detection"`
 	UninstallPrevious bool                    `json:"uninstall_previous"`
+
+	// Signature is the operations signature from retune-sign sign-app.
+	Signature *opsign.Signature `json:"signature,omitempty"`
 }
 
 func (req appRequest) newApp(actor string) apps.NewApp {
@@ -100,7 +107,7 @@ func (req appRequest) newApp(actor string) apps.NewApp {
 		PinnedVersion: req.PinnedVersion, Scope: req.Scope, InstallArgs: req.InstallArgs, Actor: actor,
 		Source: req.Source, InstallerType: req.InstallerType, FileSHA256: req.FileSHA256, FileName: req.FileName,
 		UninstallCommand: req.UninstallCommand, SuccessExitCodes: req.SuccessExitCodes,
-		Detection: req.Detection, UninstallPrevious: req.UninstallPrevious,
+		Detection: req.Detection, UninstallPrevious: req.UninstallPrevious, Signature: req.Signature,
 	}
 }
 

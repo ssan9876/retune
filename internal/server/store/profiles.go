@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -38,6 +39,8 @@ type ProfileVersion struct {
 	Hash      string
 	CreatedAt time.Time
 	CreatedBy string
+	// Signature is the operations signature, as JSON, or nil.
+	Signature json.RawMessage
 }
 
 // SettingStatus is how one setting of one profile is faring on one device.
@@ -119,24 +122,24 @@ func (q *Queries) DeleteProfile(ctx context.Context, tenantID, id uuid.UUID) err
 
 func (q *Queries) CreateProfileVersion(ctx context.Context, v ProfileVersion) error {
 	_, err := q.db.Exec(ctx, `
-		INSERT INTO profile_versions (profile_id, version, tenant_id, settings, hash, created_at, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		v.ProfileID, v.Version, DefaultTenantID, v.Settings, v.Hash, v.CreatedAt, v.CreatedBy)
+		INSERT INTO profile_versions (profile_id, version, tenant_id, settings, hash, created_at, created_by, signature)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		v.ProfileID, v.Version, DefaultTenantID, v.Settings, v.Hash, v.CreatedAt, v.CreatedBy, nullJSON(v.Signature))
 	return err
 }
 
 func (q *Queries) GetProfileVersion(ctx context.Context, tenantID, profileID uuid.UUID, version int) (ProfileVersion, error) {
 	var v ProfileVersion
 	err := q.db.QueryRow(ctx, `
-		SELECT profile_id, version, settings, hash, created_at, created_by
+		SELECT profile_id, version, settings, hash, created_at, created_by, signature
 		FROM profile_versions WHERE tenant_id = $1 AND profile_id = $2 AND version = $3`, tenantID, profileID, version).
-		Scan(&v.ProfileID, &v.Version, &v.Settings, &v.Hash, &v.CreatedAt, &v.CreatedBy)
+		Scan(&v.ProfileID, &v.Version, &v.Settings, &v.Hash, &v.CreatedAt, &v.CreatedBy, &v.Signature)
 	return v, notFound(err)
 }
 
 func (q *Queries) ListProfileVersions(ctx context.Context, profileID uuid.UUID) ([]ProfileVersion, error) {
 	rows, err := q.db.Query(ctx, `
-		SELECT profile_id, version, settings, hash, created_at, created_by
+		SELECT profile_id, version, settings, hash, created_at, created_by, signature
 		FROM profile_versions WHERE tenant_id = $1 AND profile_id = $2 ORDER BY version DESC`, DefaultTenantID, profileID)
 	if err != nil {
 		return nil, err
@@ -145,7 +148,7 @@ func (q *Queries) ListProfileVersions(ctx context.Context, profileID uuid.UUID) 
 	var out []ProfileVersion
 	for rows.Next() {
 		var v ProfileVersion
-		if err := rows.Scan(&v.ProfileID, &v.Version, &v.Settings, &v.Hash, &v.CreatedAt, &v.CreatedBy); err != nil {
+		if err := rows.Scan(&v.ProfileID, &v.Version, &v.Settings, &v.Hash, &v.CreatedAt, &v.CreatedBy, &v.Signature); err != nil {
 			return nil, err
 		}
 		out = append(out, v)

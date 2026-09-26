@@ -74,7 +74,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, assigned []Assigned) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	actions, err := Plan(assigned)
+	active := make([]Assigned, 0, len(assigned))
+	for _, a := range assigned {
+		if a.Held == "" {
+			active = append(active, a)
+		}
+	}
+	actions, err := Plan(active)
 	if err != nil {
 		return fmt.Errorf("plan: %w", err)
 	}
@@ -84,6 +90,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, assigned []Assigned) error {
 	results := map[string][]protocol.SettingResult{}
 	for _, a := range assigned {
 		results[a.ProfileID] = nil
+		if a.Held == "" {
+			continue
+		}
+		for _, s := range a.Settings {
+			results[a.ProfileID] = append(results[a.ProfileID], protocol.SettingResult{
+				Identity: s.Identity(), Status: protocol.SettingError, Detail: a.Held,
+			})
+		}
 	}
 	for _, action := range actions {
 		status, detail := r.apply(ctx, action)
@@ -99,8 +113,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, assigned []Assigned) error {
 	}
 
 	// Remember what each profile is responsible for, and whether it asked to
-	// be undone, so both are still known once it stops applying.
-	for _, a := range assigned {
+	// be undone, so both are still known once it stops applying. A held
+	// profile keeps the record of the version that last applied: that is
+	// what would need undoing.
+	for _, a := range active {
 		identities := make([]string, 0, len(a.Settings))
 		for _, s := range a.Settings {
 			identities = append(identities, s.Identity())

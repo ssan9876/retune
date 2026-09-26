@@ -4,6 +4,7 @@ import { heldForApproval } from "../api/approvals";
 import { api } from "../api/client";
 import type { App, AppInstall, DetectionRule, Group } from "../api/types";
 import { AssignedTo, RolloutFields, rolloutBody } from "../components/Assignments";
+import { SignatureField, SignedSubject, parseSignature } from "../components/SignatureField";
 import type { Rollout } from "../components/Assignments";
 import { StatusDot } from "../components/StatusDot";
 import { Button, Dialog, EmptyState, ErrorNote, Field, HeldNote, Spinner } from "../components/ui";
@@ -61,6 +62,9 @@ function AppEditor({
   const [exitCodes, setExitCodes] = useState(DEFAULT_EXIT_CODES);
   const [detection, setDetection] = useState<DetectionRule>({ type: "msi_product_code" });
   const [uninstallPrevious, setUninstallPrevious] = useState(false);
+  const [signatureText, setSignatureText] = useState("");
+  const { signingRequired } = useSession();
+  const signature = parseSignature(signatureText);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -77,6 +81,7 @@ function AppEditor({
     setExitCodes(app?.success_exit_codes?.length ? app.success_exit_codes.join(", ") : DEFAULT_EXIT_CODES);
     setDetection(app?.detection ?? { type: "msi_product_code" });
     setUninstallPrevious(app?.uninstall_previous ?? false);
+    setSignatureText("");
     setError(null);
   }, [open, app]);
 
@@ -85,6 +90,28 @@ function AppEditor({
   const codes = parseExitCodes(exitCodes);
   const packageReady = fileName !== "" && installerType !== "" && codes !== null;
   const ready = name.trim() !== "" && (source === "winget" ? packageID.trim() !== "" : packageReady);
+
+  // What an operations signature covers: everything but the name and
+  // description. A package's hash comes from the file when one is chosen,
+  // which retune-sign --file reads for itself.
+  const definition: Record<string, unknown> =
+    source === "winget"
+      ? { package_id: packageID, pinned_version: pinnedVersion, install_args: installArgs }
+      : {
+          source: "package",
+          installer_type: installerType,
+          file_name: fileName,
+          ...(file ? {} : { file_sha256: app?.file_sha256 ?? "" }),
+          install_args: installArgs,
+          uninstall_command: uninstallCommand,
+          success_exit_codes: codes ?? [],
+          detection: cleanRule(detection),
+          uninstall_previous: uninstallPrevious,
+        };
+  // Renaming a signed app keeps its signature; changing what it installs
+  // needs a new one.
+  const definitionChanged = !app || file !== null || JSON.stringify(definition) !== JSON.stringify(definitionOf(app));
+  const needsSignature = signingRequired && (definitionChanged || !app?.signed);
 
   function setRule(patch: Partial<DetectionRule>) {
     setDetection((d) => ({ ...d, ...patch }));
@@ -126,6 +153,7 @@ function AppEditor({
           uninstall_previous: uninstallPrevious,
         };
       }
+      if (signature) payload.signature = signature;
       if (app) {
         await api.post(`/apps/${app.id}`, payload);
       } else {
@@ -324,9 +352,24 @@ function AppEditor({
           ) : null}
         </>
       )}
+      {needsSignature ? (
+        <>
+          <SignedSubject fileName="app.json" value={definition} />
+          <SignatureField
+            value={signatureText}
+            onChange={setSignatureText}
+            valid={signature !== null}
+            command={
+              source === "package" && file
+                ? `retune-sign sign-app --key operations.key --file ${file.name} app.json`
+                : "retune-sign sign-app --key operations.key app.json"
+            }
+          />
+        </>
+      ) : null}
       <ErrorNote error={error} />
       <div className="actions">
-        <Button onClick={() => void save()} disabled={busy || !ready}>
+        <Button onClick={() => void save()} disabled={busy || !ready || (needsSignature && signature === null)}>
           {busy && file ? "Uploading…" : app ? "Save changes" : "Create app"}
         </Button>
         <Button variant="quiet" onClick={onClose}>
@@ -335,6 +378,24 @@ function AppEditor({
       </div>
     </Dialog>
   );
+}
+
+/** definitionOf is what the editor would sign for an app as it is saved now. */
+function definitionOf(app: App): Record<string, unknown> {
+  if (app.source !== "package") {
+    return { package_id: app.package_id, pinned_version: app.pinned_version ?? "", install_args: app.install_args ?? "" };
+  }
+  return {
+    source: "package",
+    installer_type: app.installer_type ?? "",
+    file_name: app.file_name ?? "",
+    file_sha256: app.file_sha256 ?? "",
+    install_args: app.install_args ?? "",
+    uninstall_command: app.uninstall_command ?? "",
+    success_exit_codes: app.success_exit_codes ?? [],
+    detection: cleanRule(app.detection ?? { type: "msi_product_code" }),
+    uninstall_previous: app.uninstall_previous ?? false,
+  };
 }
 
 /** cleanRule drops the fields a rule's type doesn't use, which the server refuses. */

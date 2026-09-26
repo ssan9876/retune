@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"retune/internal/opsign"
 	"retune/internal/protocol"
 )
 
@@ -27,6 +28,10 @@ type Syncer struct {
 	Fetcher    Fetcher
 	Cache      Cache
 	Log        *slog.Logger
+	// Operations is what this agent was built to require. Enforced, a
+	// profile version not signed by a trusted operations key is held: not
+	// applied, not undone, and reported as refused.
+	Operations opsign.Policy
 }
 
 func (s *Syncer) log() *slog.Logger {
@@ -60,10 +65,18 @@ func (s *Syncer) Sync(ctx context.Context, items []protocol.Item) error {
 				s.log().Warn("reading a profile's options failed", "profile_id", item.ID, "error", err)
 			}
 		}
-		assigned = append(assigned, Assigned{
+		a := Assigned{
 			ProfileID: item.ID, Version: item.Version,
 			Settings: version.Settings, Options: opts,
-		})
+		}
+		// Checked on every cycle, cached or not.
+		if s.Operations.Enforced {
+			if err := opsign.Verify(s.Operations.Keys, protocol.ProfileManifest(version.Settings), version.Signature); err != nil {
+				a.Held = "refused: " + err.Error()
+				s.log().Warn("not applying a profile", "profile_id", item.ID, "version", item.Version, "error", err)
+			}
+		}
+		assigned = append(assigned, a)
 	}
 	return s.Reconciler.Reconcile(ctx, assigned)
 }
