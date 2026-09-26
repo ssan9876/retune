@@ -322,7 +322,7 @@ func (q *Queries) DevicesByIDs(ctx context.Context, ids []uuid.UUID, page Page) 
 	rows, err := q.db.Query(ctx, `
 		SELECT `+deviceCols+` FROM devices
 		WHERE tenant_id = $4 AND id = ANY($1::uuid[])
-		ORDER BY lower(hostname), enrolled_at
+		ORDER BY lower(hostname), enrolled_at, id
 		LIMIT $2 OFFSET $3`, ids, p.Limit, p.Offset, DefaultTenantID)
 	if err != nil {
 		return nil, err
