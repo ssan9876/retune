@@ -75,13 +75,20 @@ func (s *Store) Q() *Queries { return &Queries{db: s.pool} }
 // of queueing behind the first and repeating the work.
 //
 // The lock is session-scoped, so it is taken and released on one dedicated
-// connection; releasing it from a different pooled connection would do nothing.
+// connection, and that connection is opened outside the pool. A job holding a
+// pooled connection for its lock while its work asks the pool for another
+// deadlocks once as many jobs run at once as the pool has connections - four,
+// on a two-core server - and then nothing that needs the database answers.
 func (s *Store) WithAdvisoryLock(ctx context.Context, id int64, fn func(q *Queries) error) (bool, error) {
-	conn, err := s.pool.Acquire(ctx)
+	conn, err := pgx.ConnectConfig(ctx, s.pool.Config().ConnConfig.Copy())
 	if err != nil {
 		return false, err
 	}
-	defer conn.Release()
+	defer func() {
+		closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		_ = conn.Close(closeCtx)
+	}()
 
 	var got bool
 	if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, id).Scan(&got); err != nil {
@@ -91,8 +98,9 @@ func (s *Store) WithAdvisoryLock(ctx context.Context, id int64, fn func(q *Queri
 		return false, nil
 	}
 	defer func() {
-		// A fresh context: the caller's may already be cancelled, and the lock
-		// must be released on this connection before it returns to the pool.
+		// A fresh context: the caller's may already be cancelled. Closing the
+		// connection would release the lock too, but only once the backend
+		// exits, after Close returns; unlocking first frees it at once.
 		unlockCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
 		_, _ = conn.Exec(unlockCtx, `SELECT pg_advisory_unlock($1)`, id)
