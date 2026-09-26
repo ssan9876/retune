@@ -184,9 +184,18 @@ server {
     location / {
         proxy_pass http://retune:8443;
         proxy_set_header X-Forwarded-Client-Cert $ssl_client_escaped_cert;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 }
 ```
+
+`X-Forwarded-For` tells the server who is really signing in: failed sign-ins
+are limited per account (10 in 15 minutes) and per address (50 in 15 minutes,
+across every account), and the address is also what the sessions list
+shows. It is read only from `trusted_proxies`, right to left past any further
+trusted proxies, so a client can't choose its own address by sending the
+header itself. Without it, everyone behind the proxy shares one address and
+one allowance.
 
 Agents reaching a proxy with a publicly trusted certificate need no pin;
 `--pin` and `SERVER_CERT_FINGERPRINT` are for self-signed servers.

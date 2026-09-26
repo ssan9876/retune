@@ -85,6 +85,10 @@ type Service struct {
 	// behind a load balancer. When it is nil, Limiter counts them in this
 	// server's memory instead.
 	Throttle Throttle
+	// IPThrottle counts failed sign-ins per client address, across every
+	// account, so one address cannot try a common password against each
+	// account in turn. Nil turns it off.
+	IPThrottle Throttle
 	// LocalLoginDisabled refuses every password sign-in.
 	LocalLoginDisabled bool
 	// SSOScopesManaged says the identity provider sets SSO accounts'
@@ -121,6 +125,12 @@ var dummyHash = sync.OnceValue(func() string {
 
 // Authenticate checks an email, password and (when enabled) TOTP code.
 func (s *Service) Authenticate(ctx context.Context, email, password, totpCode string) (store.Admin, error) {
+	return s.AuthenticateFrom(ctx, "", email, password, totpCode)
+}
+
+// AuthenticateFrom is Authenticate for a request from ip, which IPThrottle
+// also counts. An empty ip is counted against the account alone.
+func (s *Service) AuthenticateFrom(ctx context.Context, ip, email, password, totpCode string) (store.Admin, error) {
 	if s.LocalLoginDisabled {
 		return store.Admin{}, ErrLocalLoginDisabled
 	}
@@ -137,12 +147,21 @@ func (s *Service) Authenticate(ctx context.Context, email, password, totpCode st
 			return store.Admin{}, ErrTooManyAttempts
 		}
 	}
+	if s.IPThrottle != nil && ip != "" {
+		allowed, err := s.IPThrottle.Allowed(ctx, ipKey(ip))
+		if err != nil {
+			return store.Admin{}, err
+		}
+		if !allowed {
+			return store.Admin{}, ErrTooManyAttempts
+		}
+	}
 	admin, err := s.Store.Q().GetAdminByEmail(ctx, store.DefaultTenantID, key)
 	if errors.Is(err, store.ErrNotFound) {
 		if _, err := verifyPassword(ctx, dummyHash(), password); err != nil { // keep the timing similar
 			return store.Admin{}, err
 		}
-		s.fail(ctx, key)
+		s.fail(ctx, key, ip)
 		return store.Admin{}, ErrInvalidCredentials
 	}
 	if err != nil {
@@ -155,7 +174,7 @@ func (s *Service) Authenticate(ctx context.Context, email, password, totpCode st
 		if _, err := verifyPassword(ctx, dummyHash(), password); err != nil {
 			return store.Admin{}, err
 		}
-		s.fail(ctx, key)
+		s.fail(ctx, key, ip)
 		return store.Admin{}, ErrInvalidCredentials
 	}
 	ok, err := verifyPassword(ctx, admin.PasswordHash, password)
@@ -163,7 +182,7 @@ func (s *Service) Authenticate(ctx context.Context, email, password, totpCode st
 		return store.Admin{}, err
 	}
 	if !ok {
-		s.fail(ctx, key)
+		s.fail(ctx, key, ip)
 		return store.Admin{}, ErrInvalidCredentials
 	}
 	if admin.DisabledAt != nil {
@@ -179,7 +198,7 @@ func (s *Service) Authenticate(ctx context.Context, email, password, totpCode st
 		}
 		step, ok := matchTOTP(secret, totpCode, s.Now())
 		if !ok {
-			s.fail(ctx, key)
+			s.fail(ctx, key, ip)
 			return store.Admin{}, ErrTOTPInvalid
 		}
 		// A code is good for a minute or so; whoever watched it being typed
@@ -189,7 +208,7 @@ func (s *Service) Authenticate(ctx context.Context, email, password, totpCode st
 			return store.Admin{}, err
 		}
 		if !fresh {
-			s.fail(ctx, key)
+			s.fail(ctx, key, ip)
 			return store.Admin{}, ErrTOTPInvalid
 		}
 	}
@@ -227,13 +246,22 @@ func (s *Service) throttle() Throttle {
 	return nil
 }
 
-func (s *Service) fail(ctx context.Context, key string) {
+func (s *Service) fail(ctx context.Context, key, ip string) {
+	// Best effort, like Reset: if the database can't be written, the
+	// sign-in fails anyway.
 	if t := s.throttle(); t != nil {
-		// Best effort, like Reset: if the database can't be written, the
-		// sign-in fails anyway.
 		_ = t.Fail(ctx, key)
 	}
+	// An address's failures are not cleared by a sign-in that works: one
+	// account of the attacker's own would otherwise reset the count.
+	if s.IPThrottle != nil && ip != "" {
+		_ = s.IPThrottle.Fail(ctx, ipKey(ip))
+	}
 }
+
+// ipKey keeps address keys apart from account keys, which are email
+// addresses and so never contain a space.
+func ipKey(ip string) string { return "ip " + ip }
 
 // CreateSession issues a session token and its CSRF token.
 func (s *Service) CreateSession(ctx context.Context, adminID uuid.UUID, userAgent, ip string) (SessionInfo, error) {

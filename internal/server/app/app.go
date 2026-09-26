@@ -177,7 +177,10 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	authSvc := &auth.Service{
 		Store: st, Now: time.Now, SessionTTL: cfg.SessionTTL, MaxSessionLifetime: cfg.SessionMaxLifetime,
 		Throttle: &auth.StoreThrottle{Store: st, Max: 10, Window: 15 * time.Minute, Now: time.Now},
-		Issuer:   "Retune", Key: secretKey,
+		// Generous enough for an office behind one NAT address, tight enough
+		// that spraying a password across accounts gets nowhere.
+		IPThrottle: &auth.StoreThrottle{Store: st, Max: 50, Window: 15 * time.Minute, Now: time.Now},
+		Issuer:     "Retune", Key: secretKey,
 	}
 	if n, err := authSvc.SealTOTPSecrets(ctx); err != nil {
 		return nil, fmt.Errorf("seal authenticator secrets: %w", err)
@@ -205,6 +208,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		SSO: sso, SSOName: cfg.OIDC.DisplayName, SigningRequired: len(cfg.OperationsKeys) > 0, AgentDownloadURL: cfg.AgentDownloadURL,
 		ApprovalsRequired: cfg.Approvals.Required, ApprovalThreshold: cfg.Approvals.DeviceThreshold,
 		Now: time.Now, Log: log, Reports: reporter, Attest: attester, Remote: remoteSvc,
+		TrustedProxies: cfg.TrustedProxies,
 	}
 	root := http.NewServeMux()
 	mountHealth(root, st, log)
