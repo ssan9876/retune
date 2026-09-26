@@ -5,9 +5,12 @@
 }
 
 .policy__actions {
-  display: flex;
-  gap: var(--space-2);
-  justify-content: flex-end;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.policy__actions .button + .button {
+  margin-left: var(--space-2);
 }
 
 .policy__rollup {
@@ -23,7 +26,7 @@
      room inside it the way every other box has. */
   margin-top: var(--space-6);
   padding: var(--pane-padding);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--pane-border);
   border-radius: var(--radius-pane);
   box-shadow: var(--shadow-card);
   background: var(--surface);
@@ -42,10 +45,11 @@
 /* Each rule is its own bordered block, so a policy with several rules stays
    readable, the same idiom Profiles uses for settings. */
 .rule {
-  border: 1px solid var(--rule);
-  border-radius: var(--radius);
   padding: var(--space-3);
   margin: var(--space-3) 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
 }
 
 .rule legend {

@@ -20,10 +20,12 @@
 .audit__filters input {
   min-width: 0;
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--rule);
-  border-radius: var(--radius);
   background: var(--surface);
   color: var(--ink);
   font: inherit;
   font-size: var(--text-sm);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  min-height: 36px;
+  transition: border-color var(--transition), box-shadow var(--transition);
 }

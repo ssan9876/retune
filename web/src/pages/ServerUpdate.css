@@ -5,8 +5,13 @@
 .server-update__versions {
   display: grid;
   grid-template-columns: max-content 1fr;
-  gap: 0.35rem 1.25rem;
-  margin: 0 0 1rem;
+  gap: var(--space-2) var(--space-5);
+  margin: 0 0 var(--space-4);
+  padding: var(--pane-padding);
+  border: 1px solid var(--pane-border);
+  border-radius: var(--radius-pane);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
 }
 
 .server-update__versions dt {
@@ -27,10 +32,12 @@
 
 .server-update__available,
 .server-update__progress {
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-pane);
-  padding: 1rem 1.25rem;
+  padding: var(--pane-padding);
   margin: 0 0 1rem;
+  border: 1px solid var(--pane-border);
+  border-radius: var(--radius-pane);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
 }
 
 .server-update__available h2 {

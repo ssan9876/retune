@@ -129,14 +129,16 @@ export type BarRow = { label: string; value: number; to?: string };
 /** BarList ranks things against each other: bars are drawn against the
  * largest row, not the total, because the question is "which is biggest",
  * not "what share of the whole is this". */
-export function BarList({ rows, empty }: { rows: BarRow[]; empty: string }) {
+/** mono sets the labels in the monospace, for identifiers such as versions and
+ * builds; words stay in the UI face. */
+export function BarList({ rows, empty, mono = false }: { rows: BarRow[]; empty: string; mono?: boolean }) {
   if (rows.length === 0) return <p className="chart__empty">{empty}</p>;
   const max = Math.max(...rows.map((r) => r.value), 1);
   return (
     <ul className="barlist">
       {rows.map((row) => (
         <li key={row.label}>
-          <span className="barlist__label mono">
+          <span className={mono ? "barlist__label mono" : "barlist__label"}>
             {row.to ? <Link to={row.to}>{row.label}</Link> : row.label}
           </span>
           <span className="barlist__track">

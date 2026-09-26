@@ -282,7 +282,7 @@ export function Shell({ children }: { children: ReactNode }) {
         {offerUpdate && server?.latest ? (
           <div className="update-banner" role="status">
             <span>
-              Retune {server.latest.version} is available — you run {server.version}.
+              Retune {server.latest.version} is available â€” you run {server.version}.
             </span>
             <RouterLink to="/server-update">Review and update</RouterLink>
           </div>

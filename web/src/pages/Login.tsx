@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 
 import { ApiError } from "../api/client";
+import { Icon } from "../components/Icon";
 import { Button, ErrorNote, Field } from "../components/ui";
 import { useSession } from "../session/SessionContext";
 import "./Login.css";
@@ -67,7 +68,10 @@ export default function Login() {
   return (
     <main className="login">
       <div className="login__panel">
-        <h1 className="login__mark">Retune</h1>
+        <h1 className="login__mark">
+          <Icon name="mark" />
+          Retune
+        </h1>
         <p className="login__lede">Manage the machines you have enrolled.</p>
 
         <ErrorNote error={ssoError !== null ? ssoErrorMessage(ssoError) : null} />
