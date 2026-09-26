@@ -30,10 +30,9 @@ import (
 const templateDB = "retune_template"
 
 var (
-	serverOnce sync.Once
-	serverURL  string // the container's maintenance database, "postgres"
-	serverErr  error
-	admin      *pgxpool.Pool
+	serverMu  sync.Mutex
+	serverURL string // the container's maintenance database, "postgres"; empty until started
+	admin     *pgxpool.Pool
 
 	templateOnce sync.Once
 	templateErr  error
@@ -79,10 +78,26 @@ func start(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping Postgres test in -short mode")
 	}
-	serverOnce.Do(func() { serverErr = startServer() })
-	if serverErr != nil {
-		t.Fatalf("start postgres (is Docker running?): %v", serverErr)
+	serverMu.Lock()
+	defer serverMu.Unlock()
+	if serverURL != "" {
+		return
 	}
+	// Starting pulls images, and a registry that drops one connection must not
+	// fail every test in the package: try again a few times before giving up.
+	var err error
+	for attempt := 1; attempt <= 4; attempt++ {
+		if err = startServer(); err == nil {
+			return
+		}
+		serverURL = ""
+		if admin != nil {
+			admin.Close()
+			admin = nil
+		}
+		time.Sleep(time.Duration(attempt) * 5 * time.Second)
+	}
+	t.Fatalf("start postgres (is Docker running?): %v", err)
 }
 
 func startServer() error {
@@ -104,13 +119,14 @@ func startServer() error {
 	if err != nil {
 		return err
 	}
-	if serverURL, err = ctr.ConnectionString(ctx, "sslmode=disable"); err != nil {
-		return err
-	}
-	admin, err = pgxpool.New(ctx, serverURL)
+	url, err := ctr.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
 		return err
 	}
+	if admin, err = pgxpool.New(ctx, url); err != nil {
+		return err
+	}
+	serverURL = url
 	// Durability buys nothing in a container thrown away at exit.
 	_, err = admin.Exec(ctx, `ALTER SYSTEM SET fsync = off`)
 	if err == nil {
