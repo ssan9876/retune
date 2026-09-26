@@ -53,6 +53,8 @@ func (h *Handler) writeGroupError(w http.ResponseWriter, what string, err error)
 		writeJSON(w, http.StatusBadRequest, map[string]any{
 			"code": "invalid_rule", "message": pe.Message, "offset": pe.Offset,
 		})
+	case errors.Is(err, groups.ErrBadGroup):
+		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
 	case errors.Is(err, store.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not_found", "no such group")
 	case errors.Is(err, groups.ErrNameTaken):

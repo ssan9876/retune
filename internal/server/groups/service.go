@@ -21,6 +21,10 @@ var ErrDerivedMembership = errors.New("this group's membership is derived from i
 // built-in group.
 var ErrBuiltinGroup = errors.New("the built-in group cannot be changed")
 
+// ErrBadGroup is returned for a group the caller can fix: no name, or a kind
+// that is neither static nor dynamic.
+var ErrBadGroup = errors.New("invalid group")
+
 // ErrNameTaken is returned when a group name is already in use.
 var ErrNameTaken = errors.New("a group with that name already exists")
 
@@ -59,7 +63,7 @@ type NewGroup struct {
 func (s *Service) Create(ctx context.Context, in NewGroup) (store.Group, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
-		return store.Group{}, errors.New("a group needs a name")
+		return store.Group{}, fmt.Errorf("%w: a group needs a name", ErrBadGroup)
 	}
 	switch in.Kind {
 	case store.GroupStatic:
@@ -69,7 +73,7 @@ func (s *Service) Create(ctx context.Context, in NewGroup) (store.Group, error) 
 			return store.Group{}, err
 		}
 	default:
-		return store.Group{}, fmt.Errorf("a group is static or dynamic, not %q", in.Kind)
+		return store.Group{}, fmt.Errorf("%w: a group is static or dynamic, not %q", ErrBadGroup, in.Kind)
 	}
 
 	g := store.Group{
@@ -113,7 +117,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewGroup) (store.
 	}
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
-		return store.Group{}, errors.New("a group needs a name")
+		return store.Group{}, fmt.Errorf("%w: a group needs a name", ErrBadGroup)
 	}
 	ruleChanged := false
 	if g.Kind == store.GroupDynamic {
