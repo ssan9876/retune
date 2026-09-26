@@ -221,10 +221,12 @@ else they are refused and nothing is created.
 **Accounts are created on first sign-in**, and the role is worked out again
 every time someone signs in: move a person between groups at the provider
 and it takes effect the next time they sign in; take them out of every group
-and they are refused, and the sessions they already had end there. Somebody
-removed from the provider altogether simply never signs in again — their open
-session lasts until it expires (`session_ttl_hours`) unless an admin disables
-the account here, which always wins.
+and they are refused, and the sessions and API tokens they already had end
+there. A demotion takes their API tokens down to the new role at once.
+Somebody removed from the provider altogether simply never signs in again —
+their open session lasts until it expires (`session_ttl_hours`), and their API
+tokens until they expire, unless an admin disables the account here, which
+always wins and stops both.
 
 An SSO account is identified by the provider's own ID for the person, never
 by email address, because not every provider checks that an address belongs
@@ -284,8 +286,8 @@ SSO account's devices are set from the groups it is in now:
 
 - in any `OIDC_FLEET_GROUPS` group: the whole fleet;
 - otherwise, every device group its groups map to;
-- in none of them: sign-in is refused, and its open sessions end — never the
-  whole fleet by default.
+- in none of them: sign-in is refused, its open sessions end and its API
+  tokens are revoked — never the whole fleet by default.
 
 A change is written to the audit log as `admin.scope_changed`. A mapped device
 group that doesn't exist is skipped and named there (`unknown_groups`), so a
@@ -309,7 +311,10 @@ curl -H "Authorization: Bearer rtk_…" https://mdm.example.com/api/admin/v1/dev
 A token needs no CSRF header. It stops working when it expires, when it is
 revoked, or when the admin who made it is disabled — so someone who leaves does
 not leave working credentials behind — and it never has more access than that
-admin. The audit log records what each token did as `api-token:<name>`.
+admin has now: an admin demoted to helpdesk, at the console or by the identity
+provider, holds only helpdesk tokens from then on. An SSO account refused at
+sign-in, because it is no longer in any mapped group, has its tokens revoked.
+The audit log records what each token did as `api-token:<name>`.
 
 A few things stay with a person at the console, and a token is refused them:
 managing admins and API tokens, and revealing a BitLocker recovery key. A token
