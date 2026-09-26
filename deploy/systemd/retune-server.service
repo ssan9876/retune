@@ -1,0 +1,29 @@
+# The Retune server as a plain binary. Install the binary to
+# /usr/local/bin/retune-server and the config to
+# /etc/retune/retune-server.yaml, create the user
+# (useradd --system --home /var/lib/retune retune), then:
+#   systemctl enable --now retune-server
+[Unit]
+Description=Retune server
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+User=retune
+Group=retune
+Environment=RETUNE_CONFIG=/etc/retune/retune-server.yaml
+ExecStart=/usr/local/bin/retune-server serve
+Restart=on-failure
+RestartSec=5
+StateDirectory=retune
+WorkingDirectory=/var/lib/retune
+# Only needed to bind a port below 1024 directly; the default is 8443.
+# AmbientCapabilities=CAP_NET_BIND_SERVICE
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/retune
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

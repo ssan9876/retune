@@ -1,0 +1,13 @@
+# Starts retune-server-update.service when the server stages an update -
+# when an administrator clicks Update in the console. The path is the
+# server's SERVER_UPDATE_DIR (default DATA_DIR/updates) plus request.json.
+#   systemctl enable --now retune-server-update.path
+[Unit]
+Description=Watch for a Retune server update request
+
+[Path]
+PathExists=/var/lib/retune/updates/request.json
+Unit=retune-server-update.service
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+# Applies a staged update, as root: verifies the release against
+# AGENT_RELEASE_KEYS itself, dumps the database with pg_dump (install the
+# PostgreSQL client), swaps the binary, restarts retune-server and puts the
+# old binary back if /readyz does not answer. Started by
+# retune-server-update.path; run by hand it does nothing unless an update is
+# waiting.
+[Unit]
+Description=Apply a Retune server update
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=RETUNE_CONFIG=/etc/retune/retune-server.yaml
+ExecStart=/usr/local/bin/retune-server update-apply --binary /usr/local/bin/retune-server --unit retune-server --backup-dir /var/lib/retune/backups

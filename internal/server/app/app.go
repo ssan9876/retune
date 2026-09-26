@@ -228,6 +228,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 		Now: time.Now, Log: log, Reports: reporter, Attest: attester, Remote: remoteSvc,
 		TrustedProxies: cfg.TrustedProxies,
 		ReleaseFeed:    feed, ReleaseFeedConfig: cfg.ReleaseFeed, AgentRollout: rollout,
+		ServerUpdateConfig: cfg.ServerUpdate,
 	}
 	root := http.NewServeMux()
 	mountHealth(root, st, log)

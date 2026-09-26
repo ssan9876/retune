@@ -45,6 +45,10 @@ type fileConfig struct {
 	ReleaseFeedURL         string `yaml:"release_feed_url"`
 	ReleaseFeedInterval    int    `yaml:"release_feed_interval_hours"`
 	ReleaseFeedPrereleases *bool  `yaml:"release_feed_prereleases"`
+	ServerUpdateMode       string `yaml:"server_update_mode"`
+	UpdaterSocket          string `yaml:"updater_socket"`
+	UpdaterToken           string `yaml:"updater_token"`
+	ServerUpdateDir        string `yaml:"server_update_dir"`
 	OIDCIssuer             string `yaml:"oidc_issuer"`
 	OIDCClientID           string `yaml:"oidc_client_id"`
 	OIDCClientSecret       string `yaml:"oidc_client_secret"`
@@ -188,6 +192,10 @@ func loadConfigFile(getenv func(string) string) (map[string]string, error) {
 	if f.ReleaseFeedPrereleases != nil {
 		set("RELEASE_FEED_PRERELEASES", strconv.FormatBool(*f.ReleaseFeedPrereleases))
 	}
+	set("SERVER_UPDATE_MODE", f.ServerUpdateMode)
+	set("UPDATER_SOCKET", f.UpdaterSocket)
+	set("UPDATER_TOKEN", f.UpdaterToken)
+	set("SERVER_UPDATE_DIR", f.ServerUpdateDir)
 	set("AUDIT_SYSLOG_ADDRESS", f.AuditSyslogAddress)
 	set("AUDIT_WEBHOOK_URL", f.AuditWebhookURL)
 	set("AUDIT_WEBHOOK_HEADER", f.AuditWebhookHeader)

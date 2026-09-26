@@ -273,6 +273,16 @@ func (h *Handler) replayApproval(ctx context.Context, a store.Approval) (result 
 			return fail(nil, err)
 		}
 		return out, false
+	case store.ApprovalServerUpdate:
+		var req serverUpdateRequest
+		if err := json.Unmarshal(a.Request, &req); err != nil {
+			return fail(nil, err)
+		}
+		st, err := h.startServerUpdate(ctx, req.Version, a.RequestedBy)
+		if err != nil {
+			return fail(map[string]any{"version": req.Version}, err)
+		}
+		return map[string]any{"version": req.Version, "state": st}, false
 	default:
 		return fail(nil, errors.New("unknown approval kind "+a.Kind))
 	}

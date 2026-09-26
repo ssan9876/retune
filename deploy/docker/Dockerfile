@@ -18,17 +18,25 @@ RUN npm --prefix web run build
 FROM --platform=$BUILDPLATFORM golang:1.27 AS build
 ARG TARGETOS=linux
 ARG TARGETARCH
+# The release stamps its version; a build from source reports 0.0.0-dev,
+# which every release is newer than.
+ARG VERSION=0.0.0-dev
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=console /src/internal/server/console/dist ./internal/server/console/dist
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -o /out/retune-server ./cmd/retune-server
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
+    -ldflags "-X retune/internal/version.Version=$VERSION" -o /out/retune-server ./cmd/retune-server
 # Created here so a freshly created named volume inherits this ownership and
 # the non-root process can write the CA key on first start.
 RUN mkdir -p /out/data && chown 65532:65532 /out/data
 
 FROM gcr.io/distroless/static-debian12:nonroot
+ARG VERSION=0.0.0-dev
+# The updater reads the running version from this label.
+LABEL org.opencontainers.image.version=$VERSION \
+      org.opencontainers.image.title="retune-server"
 COPY --from=build /out/retune-server /retune-server
 COPY --from=build --chown=65532:65532 /out/data /var/lib/retune
 USER nonroot

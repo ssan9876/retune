@@ -117,7 +117,16 @@ jobs:
 
       # Builds the console and the binary the same way a deployment does.
       - name: Build the server image
-        run: docker build -f deploy/docker/Dockerfile -t retune-server:ci .
+        run: docker build -f deploy/docker/Dockerfile --build-arg VERSION=0.0.0-ci.${{ github.run_number }} -t retune-server:ci .
+
+      - name: Build the updater image
+        run: docker build -f deploy/docker/Dockerfile.updater --build-arg VERSION=0.0.0-ci.${{ github.run_number }} -t retune-updater:ci .
+
+      - name: Check the images report their version
+        run: |
+          [ "$(docker run --rm retune-server:ci version)" = "0.0.0-ci.${{ github.run_number }}" ]
+          [ "$(docker run --rm retune-updater:ci version)" = "0.0.0-ci.${{ github.run_number }}" ]
+          [ "$(docker inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' retune-server:ci)" = "0.0.0-ci.${{ github.run_number }}" ]
 
   # The console in a real browser against a real server: test/console starts
   # Postgres through testcontainers, seeds simulated agents and serves the

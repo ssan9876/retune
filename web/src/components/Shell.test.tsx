@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Shell } from "./Shell";
 
@@ -100,5 +100,46 @@ describe("Shell", () => {
     } finally {
       scope = null;
     }
+  });
+
+  describe("with a newer release out", () => {
+    const server = {
+      version: "1.1.0",
+      stamped: true,
+      mode: "docker",
+      update_available: true,
+      approvals_required: false,
+      latest: { version: "1.2.0", prerelease: false, published_at: "", notes: "" },
+    };
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      role = "admin";
+    });
+    function serve() {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(() =>
+          Promise.resolve(
+            new Response(JSON.stringify(server), { status: 200, headers: { "Content-Type": "application/json" } }),
+          ),
+        ),
+      );
+    }
+
+    it("tells an administrator, and shows the running version", async () => {
+      serve();
+      renderShell();
+      expect(await screen.findByText(/Retune 1.2.0 is available/)).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Review and update" })).toHaveAttribute("href", "/server-update");
+      expect(screen.getByText("Retune 1.1.0")).toBeInTheDocument();
+    });
+
+    it("does not nag read-only admins", async () => {
+      role = "read_only";
+      serve();
+      renderShell();
+      expect(await screen.findByText("Retune 1.1.0")).toBeInTheDocument();
+      expect(screen.queryByText(/is available/)).not.toBeInTheDocument();
+    });
   });
 });

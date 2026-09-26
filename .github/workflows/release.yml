@@ -141,7 +141,8 @@ jobs:
           for target in linux/amd64 linux/arm64 windows/amd64; do
             os=${target%/*}; arch=${target#*/}; ext=""
             [ "$os" = windows ] && ext=.exe
-            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -o "dist/retune-server-$os-$arch$ext" ./cmd/retune-server
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-X retune/internal/version.Version=$VERSION" \
+              -o "dist/retune-server-$os-$arch$ext" ./cmd/retune-server
           done
           for target in linux/amd64 linux/arm64 windows/amd64 darwin/amd64 darwin/arm64; do
             os=${target%/*}; arch=${target#*/}; ext=""
@@ -149,6 +150,7 @@ jobs:
             CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -o "dist/retune-sign-$os-$arch$ext" ./cmd/retune-sign
           done
           cp deploy/linux/retune-agent.service deploy/macos/retune-agent.plist.example dist/
+          cp deploy/systemd/retune-server.service deploy/systemd/retune-server-update.service deploy/systemd/retune-server-update.path dist/
           ls -l dist
 
       - uses: actions/upload-artifact@v7
@@ -349,13 +351,21 @@ jobs:
           [ "$PRERELEASE" = false ] && tags="$tags -t $image:latest"
           docker buildx create --use --name release
           meta="$RUNNER_TEMP/image-metadata.json"
+          # The updater image goes with every release too; it is not in
+          # release.json because nothing updates the updater automatically.
+          updater=${image%/retune-server}/retune-updater
+          updater_tags="-t $updater:$VERSION"
+          [ "$PRERELEASE" = false ] && updater_tags="$updater_tags -t $updater:latest"
+          build="docker buildx build --platform linux/amd64,linux/arm64 --build-arg VERSION=$VERSION"
           if [ "$RELEASE" = true ]; then
             printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-            docker buildx build --platform linux/amd64,linux/arm64 -f deploy/docker/Dockerfile $tags --metadata-file "$meta" --push .
-            echo "Pushed $image:$VERSION" >> "$GITHUB_STEP_SUMMARY"
+            $build -f deploy/docker/Dockerfile $tags --metadata-file "$meta" --push .
+            $build -f deploy/docker/Dockerfile.updater $updater_tags --push .
+            echo "Pushed $image:$VERSION and $updater:$VERSION" >> "$GITHUB_STEP_SUMMARY"
           else
-            docker buildx build --platform linux/amd64,linux/arm64 -f deploy/docker/Dockerfile $tags --metadata-file "$meta" .
-            echo "Built $image:$VERSION for amd64 and arm64 (dry run: not pushed)" >> "$GITHUB_STEP_SUMMARY"
+            $build -f deploy/docker/Dockerfile $tags --metadata-file "$meta" .
+            $build -f deploy/docker/Dockerfile.updater $updater_tags .
+            echo "Built $image:$VERSION and $updater:$VERSION for amd64 and arm64 (dry run: not pushed)" >> "$GITHUB_STEP_SUMMARY"
           fi
           digest=$(jq -r '."containerimage.digest" // empty' "$meta")
           if [ -z "$digest" ] && [ "$RELEASE" = true ]; then

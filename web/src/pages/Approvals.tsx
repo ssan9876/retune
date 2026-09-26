@@ -61,8 +61,8 @@ export default function Approvals() {
         With two-person approval on, these wait here until an administrator other than the one who asked approves
         them: every wipe; a script, app or profile sent to more devices than the threshold, and any new version of
         one already sent that far; PowerShell once someone has sent it to more devices than that within an hour; and
-        a group with something assigned growing past the threshold, or a dynamic group&apos;s rule changing. Requests
-        lapse after a day.
+        a group with something assigned growing past the threshold, or a dynamic group&apos;s rule changing; and an
+        update of the server itself. Requests lapse after a day.
       </p>
 
       <ErrorNote error={error ?? actionError} />

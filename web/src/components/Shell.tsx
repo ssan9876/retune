@@ -2,6 +2,8 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link as RouterLink, NavLink, useLocation, useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
 
+import { api } from "../api/client";
+import type { ServerInfo } from "../api/serverupdate";
 import { useSession } from "../session/SessionContext";
 import { Icon } from "./Icon";
 import "./Shell.css";
@@ -52,6 +54,7 @@ const SECTIONS: Section[] = [
       { to: "/api-tokens", label: "API tokens", icon: "key", fleet: true },
       { to: "/reports", label: "Scheduled reports", icon: "mail", fleet: true },
       { to: "/audit", label: "Audit log", icon: "list", fleet: true },
+      { to: "/server-update", label: "Server update", icon: "update", fleet: true },
     ],
   },
 ];
@@ -210,6 +213,21 @@ export function Shell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const crumbs = breadcrumbFor(pathname);
+  const [server, setServer] = useState<ServerInfo | null>(null);
+  useEffect(() => {
+    // The version in the rail and, for an administrator, the banner when a
+    // newer release is out. Neither is worth an error if it cannot be read.
+    api
+      .get<ServerInfo>("/server")
+      .then(setServer)
+      .catch(() => undefined);
+  }, []);
+  const offerUpdate =
+    admin?.role === "admin" &&
+    admin.scope == null &&
+    server?.update_available &&
+    server.latest &&
+    pathname !== "/server-update";
 
   return (
     <div className={`shell${collapsed ? " shell--collapsed" : ""}`}>
@@ -249,6 +267,7 @@ export function Shell({ children }: { children: ReactNode }) {
             </div>
           ))}
         </nav>
+        {server ? <div className="rail__version">Retune {server.version}</div> : null}
       </aside>
 
       <main className="content">
@@ -260,6 +279,14 @@ export function Shell({ children }: { children: ReactNode }) {
             </span>
           ))}
         </nav>
+        {offerUpdate && server?.latest ? (
+          <div className="update-banner" role="status">
+            <span>
+              Retune {server.latest.version} is available — you run {server.version}.
+            </span>
+            <RouterLink to="/server-update">Review and update</RouterLink>
+          </div>
+        ) : null}
         {children}
       </main>
     </div>
