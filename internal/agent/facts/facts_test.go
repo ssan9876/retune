@@ -50,3 +50,20 @@ func TestTrustedKeysParsesTheStampedList(t *testing.T) {
 		t.Error("a malformed list trusts nothing")
 	}
 }
+
+// Windows 11 still says "Windows 10" in the registry's ProductName; only the
+// build tells them apart.
+func TestWindowsName(t *testing.T) {
+	for _, c := range []struct{ name, build, want string }{
+		{"Windows 10 Enterprise Evaluation", "22631", "Windows 11 Enterprise Evaluation (build 22631)"},
+		{"Windows 10 Pro", "22000", "Windows 11 Pro (build 22000)"},
+		{"Windows 10 Pro", "19045", "Windows 10 Pro (build 19045)"},
+		{"Windows Server 2022 Standard", "20348", "Windows Server 2022 Standard (build 20348)"},
+		{"Windows Server 2025 Datacenter", "26100", "Windows Server 2025 Datacenter (build 26100)"},
+		{"Windows 10 Pro", "", "Windows 10 Pro (build )"},
+	} {
+		if got := facts.WindowsName(c.name, c.build); got != c.want {
+			t.Errorf("WindowsName(%q, %q) = %q, want %q", c.name, c.build, got, c.want)
+		}
+	}
+}

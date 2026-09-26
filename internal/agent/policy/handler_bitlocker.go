@@ -37,6 +37,16 @@ func (h BitLockerHandler) run(ctx context.Context, script string) (string, error
 	return h.Run(ctx, script)
 }
 
+// enableCheck follows Enable-BitLocker: when the volume is still fully
+// decrypted, encryption never started, so it fails with the reason.
+const enableCheck = `
+if ((Get-BitLockerVolume -MountPoint $env:SystemDrive).VolumeStatus -eq 'FullyDecrypted') {
+  $why = ($blErr | Where-Object { $_.FullyQualifiedErrorId -notlike 'PathNotFound*' } | ForEach-Object { $_.Exception.Message }) -join ' '
+  if (-not $why) { $why = 'encryption did not start' }
+  [Console]::Error.WriteLine($why)
+  exit 1
+}`
+
 // volumeStatus is what the BitLocker cmdlets report about the OS volume.
 type volumeStatus struct {
 	MountPoint       string `json:"mount_point"`
@@ -118,6 +128,11 @@ func (h BitLockerHandler) Test(ctx context.Context, s protocol.Setting) (bool, e
 	if h.Escrow == nil {
 		return false, errors.New("this agent cannot escrow a recovery key")
 	}
+	// A key the server holds is only worth anything while the volume still
+	// has a recovery password; without one, Set adds one and escrows it.
+	if status.RecoveryPassword == "" {
+		return false, nil
+	}
 	return h.Escrow.HasRecoveryKey(ctx, status.MountPoint)
 }
 
@@ -143,8 +158,13 @@ func (h BitLockerHandler) Set(ctx context.Context, s protocol.Setting) error {
 		if method == "" {
 			method = protocol.XtsAes256
 		}
+		// Enable-BitLocker reports most failures (bootable media in a drive,
+		// a policy forbidding the method) as non-terminating errors, so the
+		// process would exit 0 and the drive stay unencrypted. Whether
+		// encryption started is what decides; the cmdlet's own errors say why
+		// not, less the path-not-found noise its module makes on every run.
 		script := "Enable-BitLocker -MountPoint $env:SystemDrive -EncryptionMethod " + method +
-			" -TpmProtector -UsedSpaceOnly -SkipHardwareTest | Out-Null"
+			" -TpmProtector -UsedSpaceOnly -SkipHardwareTest -ErrorVariable blErr -ErrorAction SilentlyContinue | Out-Null" + enableCheck
 		if _, err := h.run(ctx, script); err != nil {
 			return fmt.Errorf("enable BitLocker: %w", err)
 		}
