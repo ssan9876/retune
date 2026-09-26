@@ -9,7 +9,14 @@ export default defineConfig({
   // directory is not emptied because it holds a tracked .gitkeep that keeps
   // go:embed working before the console has ever been built; the prebuild
   // script clears the old hashed assets instead.
-  build: { outDir: "../internal/server/console/dist", emptyOutDir: false },
+  build: {
+    outDir: "../internal/server/console/dist",
+    emptyOutDir: false,
+    // Fonts always ship as files. Vite inlines small assets as data: URLs, and
+    // the server's Content-Security-Policy (default-src 'self') blocks data:
+    // fonts, so a tiny subset file would silently fail to load.
+    assetsInlineLimit: (file) => (/\.(woff2?|ttf|otf)$/.test(file) ? false : undefined),
+  },
   server: {
     proxy: {
       // `npm run dev` talks to a locally running retune-server.
