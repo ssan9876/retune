@@ -55,6 +55,18 @@ func TestRemoteSession(t *testing.T) {
 	if status, body := admin.do(http.MethodPost, "/remote-sessions/"+session.ID+"/input", map[string]any{"data": "Get-Service Spooler\n"}); status != http.StatusNoContent {
 		t.Fatalf("input: %d %s", status, body)
 	}
+	// Another admin can watch the session, but not type in it.
+	seedAdmin(t, a, "second@example.com", testPassword, store.RoleAdmin)
+	other := newAdminClient(t, a, srv)
+	if status, body := other.login("second@example.com", testPassword, ""); status != http.StatusOK {
+		t.Fatalf("login: %d %s", status, body)
+	}
+	if status, _ := other.do(http.MethodGet, "/remote-sessions/"+session.ID, nil); status != http.StatusOK {
+		t.Fatalf("another admin watching: %d", status)
+	}
+	if status, body := other.do(http.MethodPost, "/remote-sessions/"+session.ID+"/input", map[string]any{"data": "whoami\n"}); status != http.StatusForbidden {
+		t.Fatalf("another admin typing: %d %s, want 403", status, body)
+	}
 	status, body = send(t, agent, http.MethodGet, agentBase+"/input?after=0", nil)
 	in := decodeJSON[protocol.RemoteInputResponse](t, body)
 	if status != http.StatusOK || len(in.Chunks) != 1 || in.Chunks[0].Data != "Get-Service Spooler\n" || in.Ended {

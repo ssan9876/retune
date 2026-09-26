@@ -60,7 +60,7 @@ func (h *Handler) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		h.ssoFailed(w, r, err)
 		return
 	}
-	info, err := h.Auth.CreateSession(r.Context(), admin.ID, r.UserAgent(), clientIP(r))
+	info, err := h.Auth.CreateSession(r.Context(), admin.ID, r.UserAgent(), h.clientIP(r))
 	if err != nil {
 		h.log().Error("create session after SSO", "error", err)
 		redirectToLogin(w, r, auth.SSOUnavailable)

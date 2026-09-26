@@ -202,7 +202,7 @@ func (q *Queries) ListPolicyCompliance(ctx context.Context, policyID uuid.UUID, 
 		JOIN devices d ON d.id = dc.device_id
 		WHERE dc.tenant_id = $1 AND dc.policy_id = $2
 		  AND ($3 = '' OR dc.state = $3) AND `+scopeSQL("dc.device_id", 6)+`
-		ORDER BY lower(d.hostname)
+		ORDER BY lower(d.hostname), dc.device_id
 		LIMIT $4 OFFSET $5`, DefaultTenantID, policyID, state, p.Limit, p.Offset, scope.arg())
 	if err != nil {
 		return nil, 0, err

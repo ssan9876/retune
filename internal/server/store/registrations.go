@@ -50,11 +50,18 @@ func (q *Queries) GetRegistration(ctx context.Context, id uuid.UUID) (DeviceRegi
 }
 
 // RegistrationForSerial finds the registration for a serial, ignoring case,
-// locking it for the enrollment that found it.
+// locking it for the enrollment that found it. A registration whose device
+// is still active is spent and not found: the serial is the enrolling
+// machine's own claim, so otherwise anyone who knew one could enroll rogue
+// machines into its groups again and again. Once that device is retired or
+// unenrolled - after a reimage, say - the registration is found again.
 func (q *Queries) RegistrationForSerial(ctx context.Context, serial string) (DeviceRegistration, error) {
 	return scanRegistration(q.db.QueryRow(ctx, `
-		SELECT `+registrationCols+` FROM device_registrations
-		WHERE tenant_id = $1 AND upper(serial) = upper($2) FOR UPDATE`, DefaultTenantID, serial))
+		SELECT `+registrationCols+` FROM device_registrations r
+		WHERE r.tenant_id = $1 AND upper(r.serial) = upper($2)
+		  AND NOT EXISTS (SELECT 1 FROM devices d
+		                  WHERE d.tenant_id = r.tenant_id AND d.id = r.device_id AND d.status = $3)
+		FOR UPDATE OF r`, DefaultTenantID, serial, DeviceActive))
 }
 
 // ListRegistrations returns one page of registrations, newest first.

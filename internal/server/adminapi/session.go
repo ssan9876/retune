@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"net/netip"
+	"strings"
 	"time"
 
 	"retune/internal/server/auth"
@@ -92,7 +94,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	admin, err := h.Auth.Authenticate(r.Context(), req.Email, req.Password, req.TOTPCode)
+	admin, err := h.Auth.AuthenticateFrom(r.Context(), h.clientIP(r), req.Email, req.Password, req.TOTPCode)
 	switch {
 	case err == nil:
 	case errors.Is(err, auth.ErrInvalidCredentials):
@@ -118,7 +120,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	info, err := h.Auth.CreateSession(r.Context(), admin.ID, r.UserAgent(), clientIP(r))
+	info, err := h.Auth.CreateSession(r.Context(), admin.ID, r.UserAgent(), h.clientIP(r))
 	if err != nil {
 		h.internal(w, "create session", err)
 		return
@@ -159,10 +161,41 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 	writeNoContent(w)
 }
 
-func clientIP(r *http.Request) string {
+// clientIP is the address a request came from. X-Forwarded-For is believed
+// only from a trusted proxy, and then read from the right, past any further
+// trusted proxies: whatever is left of the first untrusted address was
+// written by the client, and could say anything.
+func (h *Handler) clientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		host = r.RemoteAddr
+	}
+	if !h.trustedProxy(host) {
+		return host
+	}
+	hops := strings.Split(strings.Join(r.Header.Values("X-Forwarded-For"), ","), ",")
+	for i := len(hops) - 1; i >= 0; i-- {
+		addr, err := netip.ParseAddr(strings.TrimSpace(hops[i]))
+		if err != nil {
+			break
+		}
+		if !h.trustedProxy(addr.String()) {
+			return addr.Unmap().String()
+		}
 	}
 	return host
+}
+
+func (h *Handler) trustedProxy(host string) bool {
+	addr, err := netip.ParseAddr(host)
+	if err != nil {
+		return false
+	}
+	addr = addr.Unmap()
+	for _, p := range h.TrustedProxies {
+		if p.Contains(addr) {
+			return true
+		}
+	}
+	return false
 }

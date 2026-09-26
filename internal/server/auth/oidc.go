@@ -319,22 +319,34 @@ func (o *OIDC) signIn(ctx context.Context, issuer, subject, email, role string, 
 			target = existing.ID.String()
 		}
 
+		// Their open sessions and API tokens go too: someone removed from
+		// every mapped group has been told no, and should not keep a console
+		// open, or a script running, on the strength of an earlier yes.
+		cutOff := func() error {
+			if !found {
+				return nil
+			}
+			if err := q.DeleteSessionsForAdmin(ctx, existing.ID); err != nil {
+				return err
+			}
+			n, err := q.RevokeAPITokensForAdmin(ctx, store.DefaultTenantID, existing.ID, now)
+			if err != nil || n == 0 {
+				return err
+			}
+			return q.InsertAudit(ctx, store.AuditEntry{
+				Actor: email, Action: "api_token.revoked", TargetKind: "admin", TargetID: target,
+				Details: map[string]any{"count": n, "reason": "refused by single sign-on"},
+			})
+		}
 		if role == "" {
-			if found {
-				// Their open sessions go too: someone removed from every
-				// mapped group has been told no, and should not keep a
-				// console open on the strength of an earlier yes.
-				if err := q.DeleteSessionsForAdmin(ctx, existing.ID); err != nil {
-					return err
-				}
+			if err := cutOff(); err != nil {
+				return err
 			}
 			return refused(q, SSOUnauthorized, "not in any group mapped to a Retune role", target)
 		}
 		if scope.managed && !scope.fleet && len(scope.groups) == 0 {
-			if found {
-				if err := q.DeleteSessionsForAdmin(ctx, existing.ID); err != nil {
-					return err
-				}
+			if err := cutOff(); err != nil {
+				return err
 			}
 			return refused(q, SSOUnauthorized, "not in any group mapped to devices", target)
 		}

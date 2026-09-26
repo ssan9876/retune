@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -69,6 +70,8 @@ type Handler struct {
 	ApprovalsRequired bool
 	ApprovalThreshold int
 	Now               func() time.Time
+	// TrustedProxies may say, in X-Forwarded-For, where a request came from.
+	TrustedProxies []netip.Prefix
 
 	routes map[string]guarded
 	Log     *slog.Logger

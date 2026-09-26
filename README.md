@@ -184,9 +184,18 @@ server {
     location / {
         proxy_pass http://retune:8443;
         proxy_set_header X-Forwarded-Client-Cert $ssl_client_escaped_cert;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 }
 ```
+
+`X-Forwarded-For` tells the server who is really signing in: failed sign-ins
+are limited per account (10 in 15 minutes) and per address (50 in 15 minutes,
+across every account), and the address is also what the sessions list
+shows. It is read only from `trusted_proxies`, right to left past any further
+trusted proxies, so a client can't choose its own address by sending the
+header itself. Without it, everyone behind the proxy shares one address and
+one allowance.
 
 Agents reaching a proxy with a publicly trusted certificate need no pin;
 `--pin` and `SERVER_CERT_FINGERPRINT` are for self-signed servers.
@@ -221,10 +230,12 @@ else they are refused and nothing is created.
 **Accounts are created on first sign-in**, and the role is worked out again
 every time someone signs in: move a person between groups at the provider
 and it takes effect the next time they sign in; take them out of every group
-and they are refused, and the sessions they already had end there. Somebody
-removed from the provider altogether simply never signs in again — their open
-session lasts until it expires (`session_ttl_hours`) unless an admin disables
-the account here, which always wins.
+and they are refused, and the sessions and API tokens they already had end
+there. A demotion takes their API tokens down to the new role at once.
+Somebody removed from the provider altogether simply never signs in again —
+their open session lasts until it expires (`session_ttl_hours`), and their API
+tokens until they expire, unless an admin disables the account here, which
+always wins and stops both.
 
 An SSO account is identified by the provider's own ID for the person, never
 by email address, because not every provider checks that an address belongs
@@ -243,7 +254,7 @@ the option is the way back in.
 | Role | Can |
 |---|---|
 | **admin** | everything |
-| **helpdesk** | read everything an admin can; lock, restart and refresh a device, collect its logs, rotate its local admin password; reveal a BitLocker recovery key or a local admin password (signed in, with a reason) |
+| **helpdesk** | read everything an admin can; lock, restart and refresh a device, collect its logs, rotate its built-in Administrator's password; reveal a BitLocker recovery key or a local admin password (signed in, with a reason) |
 | **read-only** | read |
 
 Helpdesk runs no code and changes no policy: no scripts or ad-hoc PowerShell,
@@ -284,8 +295,8 @@ SSO account's devices are set from the groups it is in now:
 
 - in any `OIDC_FLEET_GROUPS` group: the whole fleet;
 - otherwise, every device group its groups map to;
-- in none of them: sign-in is refused, and its open sessions end — never the
-  whole fleet by default.
+- in none of them: sign-in is refused, its open sessions end and its API
+  tokens are revoked — never the whole fleet by default.
 
 A change is written to the audit log as `admin.scope_changed`. A mapped device
 group that doesn't exist is skipped and named there (`unknown_groups`), so a
@@ -309,7 +320,10 @@ curl -H "Authorization: Bearer rtk_…" https://mdm.example.com/api/admin/v1/dev
 A token needs no CSRF header. It stops working when it expires, when it is
 revoked, or when the admin who made it is disabled — so someone who leaves does
 not leave working credentials behind — and it never has more access than that
-admin. The audit log records what each token did as `api-token:<name>`.
+admin has now: an admin demoted to helpdesk, at the console or by the identity
+provider, holds only helpdesk tokens from then on. An SSO account refused at
+sign-in, because it is no longer in any mapped group, has its tokens revoked.
+The audit log records what each token did as `api-token:<name>`.
 
 A few things stay with a person at the console, and a token is refused them:
 managing admins and API tokens, and revealing a BitLocker recovery key. A token
@@ -736,6 +750,12 @@ shows into your imaging, a provisioning package or your supplier's
 pre-install. Such a token enrolls only registered serial numbers, so one that
 leaks doesn't enroll strangers' machines. The serial is the device's own
 claim, though, so it isn't a secret: treat the token as the credential it is.
+
+A registration is used once: while the device it became is active, the same
+serial doesn't match it again, so nobody quoting a known serial can enroll
+more machines into its groups. To reimage a registered machine, retire its old
+record first; the registration then applies to the machine enrolling anew.
+
 This is Retune's equivalent of Windows Autopilot, which itself needs
 Microsoft's service.
 
@@ -1423,7 +1443,10 @@ as it comes. It starts only with a reason, only for an administrator signed
 in to the console (not helpdesk, not an API token), and every line typed and
 everything written back is kept with the session, in order — the device's page
 lists its recent sessions, each with its full transcript, and starting and
-ending one is in the audit log. A session ends when you end it, when the
+ending one is in the audit log. Only the admin who started a session can type
+in it, so everything it ran is on one name; another admin who can see the
+device can open it to watch, or end it, and an attempt to type is refused and
+audited as `remote_session.input_refused`. A session ends when you end it, when the
 shell exits, after fifteen minutes with nothing typed, after an hour however
 busy, or if the device doesn't join within ten minutes. Agents built to run
 only signed code refuse remote shells outright: a live shell would run
@@ -1452,7 +1475,9 @@ resets. It won't report again, and will need enrolling anew.
 found by its well-known ID, so renaming it doesn't matter — a new random
 password of 20–64 characters (24 by default) that avoids look-alike
 characters and meets any complexity policy. Name another local account with
-`account` on the API or `--account` on the CLI.
+`account` on the API or `--account` on the CLI; that takes the admin role,
+since whoever rotates a password can reveal it, and helpdesk should not be able
+to take over any user or service account on a machine.
 
 The agent **escrows the password with the server before it sets it**: if
 the server can't take it, the old password stays and the command fails. A

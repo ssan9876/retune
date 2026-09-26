@@ -73,7 +73,7 @@ func (q *Queries) ListDevicesPage(ctx context.Context, f DeviceFilter) ([]Device
 			FROM device_compliance dc
 			WHERE dc.tenant_id = devices.tenant_id AND dc.device_id = devices.id
 		  ), 'not_evaluated'))
-		ORDER BY lower(hostname), enrolled_at
+		ORDER BY lower(hostname), enrolled_at, id
 		LIMIT $3 OFFSET $4`, f.Status, f.Search, p.Limit, p.Offset, DefaultTenantID, f.Scope.arg(),
 		f.Bucket, f.StaleCutoff, f.Compliance)
 	if err != nil {
