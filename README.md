@@ -1398,7 +1398,10 @@ as it comes. It starts only with a reason, only for an administrator signed
 in to the console (not helpdesk, not an API token), and every line typed and
 everything written back is kept with the session, in order — the device's page
 lists its recent sessions, each with its full transcript, and starting and
-ending one is in the audit log. A session ends when you end it, when the
+ending one is in the audit log. Only the admin who started a session can type
+in it, so everything it ran is on one name; another admin who can see the
+device can open it to watch, or end it, and an attempt to type is refused and
+audited as `remote_session.input_refused`. A session ends when you end it, when the
 shell exits, after fifteen minutes with nothing typed, after an hour however
 busy, or if the device doesn't join within ten minutes. Agents built to run
 only signed code refuse remote shells outright: a live shell would run

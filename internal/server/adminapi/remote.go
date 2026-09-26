@@ -54,6 +54,8 @@ func (h *Handler) writeRemoteError(w http.ResponseWriter, what string, err error
 		writeError(w, http.StatusConflict, "device_not_active", err.Error())
 	case errors.Is(err, remote.ErrBadRequest):
 		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
+	case errors.Is(err, remote.ErrNotYours):
+		writeError(w, http.StatusForbidden, "not_session_owner", err.Error())
 	default:
 		h.internal(w, what, err)
 	}
@@ -147,7 +149,7 @@ func (h *Handler) remoteSessionInput(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	if err := h.Remote.Input(r.Context(), s.ID, req.Data); err != nil {
+	if err := h.Remote.Input(r.Context(), s.ID, caller(r).Admin.Email, req.Data); err != nil {
 		h.writeRemoteError(w, "remote session input", err)
 		return
 	}
