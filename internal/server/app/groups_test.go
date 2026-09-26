@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -262,6 +263,37 @@ func TestAssignmentRejectsAnUnknownItemKind(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "widget") {
 		t.Errorf("the error should name the kind, got %s", body)
+	}
+}
+
+// A group without a name or with an unknown kind is the caller's mistake, so
+// it is a 400 that says what is wrong, not a 500.
+func TestGroupEndpointsRefuseBadGroups(t *testing.T) {
+	a, srv := newTestApp(t)
+	admin := signedIn(t, a, srv, store.RoleAdmin)
+
+	status, body := admin.do(http.MethodPost, "/groups", map[string]any{"name": "Laptops", "kind": "John Doe"})
+	if status != http.StatusBadRequest || !strings.Contains(string(body), "John Doe") {
+		t.Errorf("unknown kind = %d %s, want 400 naming the kind", status, body)
+	}
+	status, body = admin.do(http.MethodPost, "/groups", map[string]any{"name": "  ", "kind": "static"})
+	if status != http.StatusBadRequest {
+		t.Errorf("blank name = %d %s, want 400", status, body)
+	}
+
+	status, body = admin.do(http.MethodPost, "/groups", map[string]any{"name": "Laptops", "kind": "static"})
+	if status != http.StatusCreated && status != http.StatusOK {
+		t.Fatalf("create = %d %s", status, body)
+	}
+	var g struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(body, &g); err != nil {
+		t.Fatal(err)
+	}
+	status, body = admin.do(http.MethodPost, "/groups/"+g.ID, map[string]any{"name": "", "kind": "static"})
+	if status != http.StatusBadRequest {
+		t.Errorf("rename to blank = %d %s, want 400", status, body)
 	}
 }
 

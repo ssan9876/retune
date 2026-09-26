@@ -211,7 +211,7 @@ func New(ctx context.Context, cfg config.Server, log *slog.Logger) (*App, error)
 	sweeps := sweeper.NewStats()
 	mountMetrics(root, st, cfg.MetricsToken, sweeps, time.Now, log)
 	root.Handle("/api/agent/v1/", agent.Routes())
-	root.Handle("/api/admin/v1/", admin.Routes())
+	root.Handle("/api/admin/v1/", adminHeaders(admin.Routes()))
 	root.Handle("/", console.Handler())
 
 	built = true
@@ -294,4 +294,17 @@ func serverSecret(cfg config.Server) (*secrets.Key, error) {
 		return secrets.FromHex(os.Getenv("SECRET_KEY"))
 	}
 	return secrets.LoadOrCreateFile(cfg.DataDir)
+}
+
+// adminHeaders sets the headers every admin API response needs. Responses
+// carry recovery keys, local admin passwords and session tokens, so nothing
+// may cache them; like the console, the API is only served over TLS.
+func adminHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Cache-Control", "no-store")
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Strict-Transport-Security", "max-age=31536000")
+		next.ServeHTTP(w, r)
+	})
 }
