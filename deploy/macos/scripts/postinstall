@@ -1,0 +1,89 @@
+#!/bin/sh
+# Retune agent pkg: runs as root after the binary is in /usr/local/bin.
+#
+# A pkg takes no command-line properties the way an MSI does, so the settings
+# come from the first of these that exists:
+#
+#   1. /Library/Managed Preferences/com.retune.agent.plist
+#        a configuration profile pushed by an MDM (payload type
+#        com.retune.agent), the unattended path
+#   2. retune-agent.plist in the same folder as the pkg
+#        for installing by hand: download both, then open the pkg
+#   3. /Library/Preferences/com.retune.agent.plist
+#        dropped by your own imaging or script before the install
+#
+# Each is a property list with ServerURL, EnrollToken and, for a server with a
+# self-signed certificate, ServerCertFingerprint. See retune-agent.plist.example.
+#
+# On an upgrade (the daemon is already installed) the settings are not read
+# again: the new binary is restarted and keeps its identity.
+set -u
+
+AGENT=/usr/local/bin/retune-agent
+DAEMON=/Library/LaunchDaemons/com.retune.agent.plist
+LOG=/var/log/retune-agent-install.log
+
+exec >>"$LOG" 2>&1
+echo "== $(date -u '+%Y-%m-%dT%H:%M:%SZ') postinstall"
+
+# A daemon can only be started on the running system.
+if [ "${3:-/}" != "/" ]; then
+  echo "installed onto $3, not the boot volume; not configuring"
+  exit 0
+fi
+
+if [ -f "$DAEMON" ]; then
+  echo "upgrade: restarting the daemon"
+  /bin/launchctl kickstart -k system/com.retune.agent || true
+  exit 0
+fi
+
+CONFIG=""
+PKGDIR=$(dirname "${1:-/nonexistent}")
+for candidate in \
+  "/Library/Managed Preferences/com.retune.agent.plist" \
+  "$PKGDIR/retune-agent.plist" \
+  "/Library/Preferences/com.retune.agent.plist"; do
+  if [ -f "$candidate" ]; then
+    CONFIG=$candidate
+    break
+  fi
+done
+
+if [ -z "$CONFIG" ]; then
+  echo "no settings found; the agent is installed but not enrolled."
+  echo "enroll it with: sudo retune-agent enroll --server URL --token TOKEN && sudo retune-agent install"
+  exit 0
+fi
+
+key() { /usr/libexec/PlistBuddy -c "Print :$1" "$CONFIG" 2>/dev/null || true; }
+SERVER=$(key ServerURL)
+TOKEN=$(key EnrollToken)
+PIN=$(key ServerCertFingerprint)
+echo "settings from $CONFIG (server $SERVER)"
+
+if [ -z "$SERVER" ] || [ -z "$TOKEN" ]; then
+  echo "$CONFIG has no ServerURL or EnrollToken; not enrolling"
+  exit 0
+fi
+
+# configure writes the settings; the daemon enrolls on its first start and
+# launchd restarts it until the server is reachable, so a Mac that is offline
+# during the install still enrolls later. The token never appears in this log.
+if ! "$AGENT" configure --server "$SERVER" --token "$TOKEN" --pin "$PIN"; then
+  echo "configure failed"
+  exit 1
+fi
+if ! "$AGENT" install; then
+  echo "install failed"
+  exit 1
+fi
+
+# A settings file left beside a hand-installed pkg holds a token that is now
+# spent or about to be; managed preferences belong to the MDM and stay.
+case "$CONFIG" in
+  "/Library/Managed Preferences/"*) ;;
+  "/Library/Preferences/"*) rm -f "$CONFIG" ;;
+esac
+echo "done"
+exit 0

@@ -62,6 +62,8 @@ type Handler struct {
 	SSOName string
 	// SigningRequired is whether OPERATIONS_KEYS is set.
 	SigningRequired bool
+	// AgentDownloadURL is AGENT_DOWNLOAD_URL, shown on the Enrollment page.
+	AgentDownloadURL string
 	// ApprovalsRequired holds wipes, and code sent to more than
 	// ApprovalThreshold devices, for a second administrator.
 	ApprovalsRequired bool

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Settings for an unattended install of retune-agent.pkg. Save it as
+  retune-agent.plist beside the pkg, or at /Library/Preferences/com.retune.agent.plist,
+  or deliver the same keys from an MDM as a custom settings payload for the
+  domain com.retune.agent. The pkg enrolls the Mac with them.
+
+  ServerCertFingerprint is needed only for a server with a self-signed
+  certificate: retune-server ca fingerprint prints it.
+-->
+<plist version="1.0">
+<dict>
+	<key>ServerURL</key>
+	<string>https://mdm.example.com</string>
+	<key>EnrollToken</key>
+	<string>PASTE-A-TOKEN-FROM-THE-ENROLLMENT-PAGE</string>
+	<key>ServerCertFingerprint</key>
+	<string></string>
+</dict>
+</plist>

@@ -12,6 +12,42 @@ import (
 	"retune/internal/release"
 )
 
+// pubkey prints the same public key keygen wrote, from a file or from the
+// environment, which is how a release build derives its trust list.
+func TestPubkeyMatchesKeygen(t *testing.T) {
+	dir := t.TempDir()
+	var out bytes.Buffer
+	if err := run([]string{"keygen", "--out", dir}, os.Getenv, &out); err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile(filepath.Join(dir, "release.pub"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed, err := os.ReadFile(filepath.Join(dir, "release.key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	getenv := func(name string) string {
+		if name == "RELEASE_KEY" {
+			return strings.TrimSpace(string(seed))
+		}
+		return ""
+	}
+	for _, spec := range []string{filepath.Join(dir, "release.key"), "env:RELEASE_KEY"} {
+		out.Reset()
+		if err := run([]string{"pubkey", "--key", spec}, getenv, &out); err != nil {
+			t.Fatalf("%s: %v", spec, err)
+		}
+		if strings.TrimSpace(out.String()) != strings.TrimSpace(string(want)) {
+			t.Errorf("%s: pubkey = %q, want %q", spec, out.String(), want)
+		}
+	}
+	if err := run([]string{"pubkey", "--key", "env:MISSING"}, getenv, &out); err == nil {
+		t.Error("pubkey with an unset variable should fail")
+	}
+}
+
 func TestKeygenSignVerify(t *testing.T) {
 	dir := t.TempDir()
 	var out bytes.Buffer

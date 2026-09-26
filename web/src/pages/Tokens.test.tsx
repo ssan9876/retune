@@ -2,12 +2,14 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import Tokens from "./Tokens";
+import Tokens, { downloadLink, macSettings } from "./Tokens";
 
 const fetchMock = vi.fn();
 
+const session = { agentDownloadUrl: "https://github.com/ssan9876/retune/releases/latest" as string | null };
+
 vi.mock("../session/SessionContext", () => ({
-  useSession: () => ({ admin: { role: "admin" }, canWrite: true }),
+  useSession: () => ({ admin: { role: "admin" }, canWrite: true, agentDownloadUrl: session.agentDownloadUrl }),
 }));
 
 function json(body: unknown, status = 200) {
@@ -31,6 +33,7 @@ function mockTokens(items: unknown[]) {
 beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
+  session.agentDownloadUrl = "https://github.com/ssan9876/retune/releases/latest";
 });
 
 describe("Tokens", () => {
@@ -45,6 +48,39 @@ describe("Tokens", () => {
 
     expect(await screen.findByText("rt_secret")).toBeInTheDocument();
     expect(screen.getByText(/msiexec/)).toHaveTextContent("rt_secret");
+    expect(screen.getByRole("link", { name: "retune-agent.msi" })).toHaveAttribute(
+      "href",
+      "https://github.com/ssan9876/retune/releases/latest/download/retune-agent.msi",
+    );
+    expect(screen.getByRole("link", { name: "retune-agent.pkg" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy macOS settings" })).toBeInTheDocument();
+  });
+
+  it("leaves out download guidance when the server names no download URL", async () => {
+    session.agentDownloadUrl = null;
+    mockTokens([]);
+    render(<Tokens />);
+    await screen.findByText("No enrollment tokens yet.");
+    await userEvent.click(screen.getByRole("button", { name: "Create token" }));
+    await userEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    expect(await screen.findByText("rt_secret")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "retune-agent.msi" })).not.toBeInTheDocument();
+  });
+
+  it("builds download links for GitHub releases and for a plain folder", () => {
+    expect(downloadLink("https://github.com/o/r/releases/latest/", "retune-agent.pkg")).toBe(
+      "https://github.com/o/r/releases/latest/download/retune-agent.pkg",
+    );
+    expect(downloadLink("https://files.example.com/retune/", "retune-agent.msi")).toBe(
+      "https://files.example.com/retune/retune-agent.msi",
+    );
+  });
+
+  it("escapes the Mac settings it writes", () => {
+    const plist = macSettings("https://mdm.example.com", "a<b&c");
+    expect(plist).toContain("<string>https://mdm.example.com</string>");
+    expect(plist).toContain("<string>a&lt;b&amp;c</string>");
   });
 
   it("lists tokens without any plaintext", async () => {

@@ -13,6 +13,65 @@ interface CreatedToken {
   label: string;
 }
 
+/**
+ * downloadLink is where one release file can be fetched. A GitHub "latest
+ * release" page has a matching direct-download path; any other download URL is
+ * taken to be a folder holding the release files under their released names.
+ */
+export function downloadLink(base: string, file: string): string {
+  const trimmed = base.replace(/\/+$/, "");
+  if (trimmed.endsWith("/releases/latest")) return `${trimmed}/download/${file}`;
+  return `${trimmed}/${file}`;
+}
+
+/** macSettings is the property list the macOS pkg reads to enroll a Mac. */
+export function macSettings(serverUrl: string, token: string): string {
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>ServerURL</key>
+	<string>${esc(serverUrl)}</string>
+	<key>EnrollToken</key>
+	<string>${esc(token)}</string>
+</dict>
+</plist>
+`;
+}
+
+function AgentDownloads({ base, serverUrl, token }: { base: string; serverUrl: string; token: string }) {
+  return (
+    <div className="agent-downloads">
+      <h3>Install the agent</h3>
+      <ul style={{ fontSize: "var(--text-sm)", paddingLeft: "var(--space-4)" }}>
+        <li>
+          <strong>Windows:</strong> download{" "}
+          <a href={downloadLink(base, "retune-agent.msi")}>retune-agent.msi</a> and run the command above,
+          or deploy it with the same properties through Intune or Group Policy.
+        </li>
+        <li>
+          <strong>macOS:</strong> download <a href={downloadLink(base, "retune-agent.pkg")}>retune-agent.pkg</a>{" "}
+          and save the settings below as <span className="mono">retune-agent.plist</span> in the same folder
+          before opening it, or push the same keys from your MDM for the domain{" "}
+          <span className="mono">com.retune.agent</span>.
+        </li>
+      </ul>
+      <p style={{ fontSize: "var(--text-sm)", color: "var(--ink-muted)" }}>
+        A server with a self-signed certificate also needs its fingerprint (
+        <span className="mono">retune-server ca fingerprint</span>): add{" "}
+        <span className="mono">SERVER_CERT_FINGERPRINT=</span> to the MSI, or{" "}
+        <span className="mono">ServerCertFingerprint</span> to the Mac settings. <a href={base}>All downloads</a>
+      </p>
+      <div className="actions">
+        <Button onClick={() => void navigator.clipboard?.writeText(macSettings(serverUrl, token))}>
+          Copy macOS settings
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function tokenState(token: Token): string {
   if (token.revoked_at) return "revoked";
   if (token.expires_at && new Date(token.expires_at) <= new Date()) return "expired";
@@ -21,7 +80,7 @@ function tokenState(token: Token): string {
 }
 
 export default function Tokens() {
-  const { canWrite } = useSession();
+  const { canWrite, agentDownloadUrl } = useSession();
   const { items, loading, error, reload } = useList<Token>("/tokens");
   const [open, setOpen] = useState(false);
   const [label, setLabel] = useState("");
@@ -106,6 +165,9 @@ export default function Tokens() {
               Done
             </Button>
           </div>
+          {agentDownloadUrl ? (
+            <AgentDownloads base={agentDownloadUrl} serverUrl={window.location.origin} token={created.token} />
+          ) : null}
         </section>
       ) : null}
 
@@ -113,6 +175,11 @@ export default function Tokens() {
       {!loading && items.length === 0 ? (
         <EmptyState title="No enrollment tokens yet.">
           <p>A token lets one or more machines enroll. Create one, then install the agent with it.</p>
+          {agentDownloadUrl ? (
+            <p>
+              <a href={agentDownloadUrl}>Download the agent</a>
+            </p>
+          ) : null}
         </EmptyState>
       ) : null}
 

@@ -17,6 +17,8 @@ interface SessionValue {
   canOperate: boolean;
   /** signingRequired: scripts and wipes need an operations signature. */
   signingRequired: boolean;
+  /** agentDownloadUrl: where the agent installers are published. */
+  agentDownloadUrl: string | null;
   startupError: unknown;
   retryStartup: () => void;
   signIn: (email: string, password: string, totpCode?: string) => Promise<void>;
@@ -33,6 +35,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [sso, setSso] = useState<string | null>(null);
   const [localLogin, setLocalLogin] = useState(true);
   const [signingRequired, setSigningRequired] = useState(false);
+  const [agentDownloadUrl, setAgentDownloadUrl] = useState<string | null>(null);
   const [startupError, setStartupError] = useState<unknown>(null);
   const [retryToken, setRetryToken] = useState(0);
 
@@ -55,6 +58,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setCsrfToken(session.csrf_token);
         setAdmin(session.admin);
         setSigningRequired(session.signing_required ?? false);
+        setAgentDownloadUrl(session.agent_download_url ?? null);
         setStartupError(null);
       } catch (error) {
         if (!cancelled) {
@@ -94,6 +98,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setCsrfToken(session.csrf_token);
     setAdmin(session.admin);
     setSigningRequired(session.signing_required ?? false);
+    setAgentDownloadUrl(session.agent_download_url ?? null);
     setNeedsSetup(false);
   }, []);
 
@@ -117,12 +122,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       canWrite: admin?.role === "admin",
       canOperate: admin?.role === "admin" || admin?.role === "helpdesk",
       signingRequired,
+      agentDownloadUrl,
       startupError,
       retryStartup,
       signIn,
       signOut,
     }),
-    [admin, loading, needsSetup, sso, localLogin, signingRequired, startupError, retryStartup, signIn, signOut],
+    [
+      admin,
+      loading,
+      needsSetup,
+      sso,
+      localLogin,
+      signingRequired,
+      agentDownloadUrl,
+      startupError,
+      retryStartup,
+      signIn,
+      signOut,
+    ],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

@@ -1,0 +1,4 @@
+# Shell scripts run under bash and sh, including on the Windows release
+# runner, whose checkout would otherwise turn their line endings into CRLF.
+*.sh                      text eol=lf
+deploy/macos/scripts/*    text eol=lf

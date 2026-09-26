@@ -56,6 +56,8 @@ type sessionResponse struct {
 	ExpiresAt time.Time `json:"expires_at"`
 	// SigningRequired says scripts and wipes need an operations signature.
 	SigningRequired bool `json:"signing_required"`
+	// AgentDownloadURL is where the agent installers can be downloaded.
+	AgentDownloadURL string `json:"agent_download_url,omitempty"`
 }
 
 type ssoSetup struct {
@@ -124,7 +126,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	h.setSessionCookie(w, info)
 	writeJSON(w, http.StatusOK, sessionResponse{
 		Admin: newAdminJSON(admin), CSRFToken: info.CSRFToken, ExpiresAt: info.ExpiresAt,
-		SigningRequired: h.SigningRequired,
+		SigningRequired: h.SigningRequired, AgentDownloadURL: h.AgentDownloadURL,
 	})
 }
 
@@ -141,7 +143,7 @@ func (h *Handler) currentSession(w http.ResponseWriter, r *http.Request) {
 	c := caller(r)
 	writeJSON(w, http.StatusOK, sessionResponse{
 		Admin: newAdminJSON(c.Admin).withScope(c.Scope), CSRFToken: c.Session.CSRFToken, ExpiresAt: c.Session.ExpiresAt,
-		SigningRequired: h.SigningRequired,
+		SigningRequired: h.SigningRequired, AgentDownloadURL: h.AgentDownloadURL,
 	})
 }
 

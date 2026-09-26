@@ -172,6 +172,29 @@ func TestSweepInterval(t *testing.T) {
 	}
 }
 
+func TestAgentDownloadURL(t *testing.T) {
+	env := map[string]string{"DATABASE_URL": "postgres://x", "PUBLIC_URL": "https://mdm.example.com"}
+	load := func() (Server, error) { return LoadServer(func(k string) string { return env[k] }) }
+
+	cfg, err := load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AgentDownloadURL != DefaultAgentDownloadURL {
+		t.Errorf("unset = %q, want the project's releases", cfg.AgentDownloadURL)
+	}
+	env["AGENT_DOWNLOAD_URL"] = " https://files.example.com/retune/ "
+	if cfg, err = load(); err != nil || cfg.AgentDownloadURL != "https://files.example.com/retune/" {
+		t.Errorf("set = %q, %v", cfg.AgentDownloadURL, err)
+	}
+	for _, bad := range []string{"javascript:alert(1)", "files.example.com", "ftp://files.example.com"} {
+		env["AGENT_DOWNLOAD_URL"] = bad
+		if _, err := load(); err == nil {
+			t.Errorf("%q must refuse to start the server", bad)
+		}
+	}
+}
+
 func TestAgentReleaseKeysParse(t *testing.T) {
 	priv, _ := release.GenerateKey()
 	env := map[string]string{
