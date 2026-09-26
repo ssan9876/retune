@@ -160,7 +160,12 @@ func (h *Handler) queueCommand(w http.ResponseWriter, r *http.Request) {
 		ids = append(ids, deviceID)
 	}
 	actor := caller(r).Admin.Email
-	if h.commandNeedsApproval(req.Type, len(ids)) {
+	hold, reach, err := h.commandNeedsApproval(r.Context(), actor, req.Type, ids)
+	if err != nil {
+		h.internal(w, "count recent commands", err)
+		return
+	}
+	if hold {
 		// Held requests are checked in full now, so nobody is asked to
 		// approve something that could never run.
 		for _, deviceID := range ids {
@@ -169,7 +174,7 @@ func (h *Handler) queueCommand(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		h.holdForApproval(w, r, store.ApprovalCommand, req, commandSummary(req, len(ids)))
+		h.holdForApproval(w, r, store.ApprovalCommand, req, commandSummary(req, len(ids), reach))
 		return
 	}
 	out, err := h.queueCommands(r.Context(), req, payload, ids, actor)
@@ -220,23 +225,41 @@ func (h *Handler) writeQueueError(w http.ResponseWriter, err error) {
 	}
 }
 
-// commandNeedsApproval: with approvals on, every wipe, and ad-hoc PowerShell
-// to more devices than the threshold, waits for a second administrator.
-func (h *Handler) commandNeedsApproval(typ string, devices int) bool {
+// commandNeedsApproval: with approvals on, every wipe waits for a second
+// administrator, and so does ad-hoc PowerShell once the person sending it
+// would have reached more devices than the threshold within the last hour.
+// Counting per person rather than per request is what stops a thousand
+// devices being sent fifty at a time; commands a second administrator
+// already approved don't count. reach is the devices counted.
+func (h *Handler) commandNeedsApproval(ctx context.Context, actor, typ string, ids []uuid.UUID) (hold bool, reach int, err error) {
 	if !h.ApprovalsRequired {
-		return false
+		return false, len(ids), nil
 	}
-	return typ == protocol.CommandWipe || (typ == protocol.CommandRunPowerShell && devices > h.ApprovalThreshold)
+	switch typ {
+	case protocol.CommandWipe:
+		return true, len(ids), nil
+	case protocol.CommandRunPowerShell:
+		reach, err := h.Store.Q().RecentCommandReach(ctx, actor, typ, h.Now().Add(-powerShellWindow), ids)
+		if err != nil {
+			return false, 0, err
+		}
+		return reach > h.ApprovalThreshold, reach, nil
+	}
+	return false, len(ids), nil
 }
 
-func commandSummary(req queueRequest, devices int) string {
+func commandSummary(req queueRequest, devices, reach int) string {
 	if req.Type == protocol.CommandWipe {
 		return fmt.Sprintf("wipe %s: %s", req.ConfirmHostname, req.Reason)
 	}
+	summary := fmt.Sprintf("%s on %d devices", req.Type, devices)
 	if devices == 1 {
-		return req.Type + " on 1 device"
+		summary = req.Type + " on 1 device"
 	}
-	return fmt.Sprintf("%s on %d devices", req.Type, devices)
+	if reach > devices {
+		summary += fmt.Sprintf(" (%d in the last hour)", reach)
+	}
+	return summary
 }
 
 // payloadFor builds the typed payload the command service expects.

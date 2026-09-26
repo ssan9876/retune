@@ -65,6 +65,9 @@ function AppEditor({
   const [signatureText, setSignatureText] = useState("");
   const { signingRequired } = useSession();
   const signature = parseSignature(signatureText);
+  // An edit to something already sent to many devices can be held for a
+  // second administrator; the dialog stays open to say so.
+  const [held, setHeld] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -83,6 +86,7 @@ function AppEditor({
     setUninstallPrevious(app?.uninstall_previous ?? false);
     setSignatureText("");
     setError(null);
+    setHeld(false);
   }, [open, app]);
 
   const fileName = file?.name ?? (app?.source === "package" ? (app.file_name ?? "") : "");
@@ -155,7 +159,12 @@ function AppEditor({
       }
       if (signature) payload.signature = signature;
       if (app) {
-        await api.post(`/apps/${app.id}`, payload);
+        const res = await api.post(`/apps/${app.id}`, payload);
+        if (heldForApproval(res)) {
+          onSaved();
+          setHeld(true);
+          return;
+        }
       } else {
         await api.post("/apps", payload);
       }
@@ -368,6 +377,7 @@ function AppEditor({
         </>
       ) : null}
       <ErrorNote error={error} />
+      {held ? <HeldNote /> : null}
       <div className="actions">
         <Button onClick={() => void save()} disabled={busy || !ready || (needsSignature && signature === null)}>
           {busy && file ? "Uploading…" : app ? "Save changes" : "Create app"}

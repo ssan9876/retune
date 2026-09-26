@@ -243,6 +243,36 @@ func (h *Handler) replayApproval(ctx context.Context, a store.Approval) (result 
 			return fail(nil, err)
 		}
 		return map[string]any{"assignment": out}, false
+	case store.ApprovalVersion:
+		var req versionApproval
+		if err := json.Unmarshal(a.Request, &req); err != nil {
+			return fail(nil, err)
+		}
+		out, err := h.replayVersion(ctx, a, req)
+		if err != nil {
+			return fail(nil, err)
+		}
+		return out, false
+	case store.ApprovalGroupMember:
+		var req groupMemberApproval
+		if err := json.Unmarshal(a.Request, &req); err != nil {
+			return fail(nil, err)
+		}
+		out, err := h.replayGroupMember(ctx, a, req)
+		if err != nil {
+			return fail(nil, err)
+		}
+		return out, false
+	case store.ApprovalGroupRule:
+		var req groupRuleApproval
+		if err := json.Unmarshal(a.Request, &req); err != nil {
+			return fail(nil, err)
+		}
+		out, err := h.replayGroupRule(ctx, a, req)
+		if err != nil {
+			return fail(nil, err)
+		}
+		return out, false
 	default:
 		return fail(nil, errors.New("unknown approval kind "+a.Kind))
 	}

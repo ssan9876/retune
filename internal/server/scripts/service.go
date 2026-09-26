@@ -25,6 +25,8 @@ var (
 	ErrNameTaken = errors.New("a script with that name already exists")
 	// ErrBadRequest is returned for input the caller can fix.
 	ErrBadRequest = errors.New("bad request")
+	// ErrSuperseded is approving a held version when a newer one is current.
+	ErrSuperseded = errors.New("a newer version of this script is already current")
 )
 
 // MaxBodyBytes caps one script body. PowerShell that long is a program, and
@@ -147,11 +149,63 @@ func (s *Service) Create(ctx context.Context, in NewScript) (store.Script, error
 // detection script actually changed, so renaming does not make every device
 // run it again.
 func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewScript) (store.Script, error) {
-	if err := in.validate(); err != nil {
+	sc, _, err := s.update(ctx, id, in, false)
+	return sc, err
+}
+
+// UpdateHeld is Update for a script already sent to more devices than one
+// administrator may reach alone. The name and description change at once, but
+// a new version is only stored: devices keep the current one until Promote
+// makes it current. held is the new version's number, or 0 when the code did
+// not change and there is nothing to approve.
+func (s *Service) UpdateHeld(ctx context.Context, id uuid.UUID, in NewScript) (sc store.Script, held int, err error) {
+	return s.update(ctx, id, in, true)
+}
+
+// Promote makes a held version the one devices run. A version older than the
+// current one is ErrSuperseded: approving it would roll devices back.
+func (s *Service) Promote(ctx context.Context, id uuid.UUID, version int, actor string) (store.Script, error) {
+	var out store.Script
+	err := s.Store.InTx(ctx, func(q *store.Queries) error {
+		sc, err := q.GetScript(ctx, store.DefaultTenantID, id)
+		if errors.Is(err, store.ErrNotFound) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if _, err := q.GetScriptVersion(ctx, store.DefaultTenantID, id, version); errors.Is(err, store.ErrNotFound) {
+			return ErrNotFound
+		} else if err != nil {
+			return err
+		}
+		if version <= sc.CurrentVersion {
+			return ErrSuperseded
+		}
+		previous := sc.CurrentVersion
+		sc.CurrentVersion, sc.UpdatedAt = version, s.now()
+		if err := q.UpdateScript(ctx, store.DefaultTenantID, sc); err != nil {
+			return err
+		}
+		out = sc
+		return q.InsertAudit(ctx, store.AuditEntry{
+			Actor: actor, Action: "script.version_promoted", TargetKind: "script", TargetID: id.String(),
+			Details: map[string]any{"name": sc.Name, "version": version, "previous_version": previous},
+		})
+	})
+	if err != nil {
 		return store.Script{}, err
+	}
+	return out, nil
+}
+
+func (s *Service) update(ctx context.Context, id uuid.UUID, in NewScript, hold bool) (store.Script, int, error) {
+	if err := in.validate(); err != nil {
+		return store.Script{}, 0, err
 	}
 	now := s.now()
 	var out store.Script
+	held := 0
 	err := s.Store.InTx(ctx, func(q *store.Queries) error {
 		sc, err := q.GetScript(ctx, store.DefaultTenantID, id)
 		if errors.Is(err, store.ErrNotFound) {
@@ -186,12 +240,22 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewScript) (store
 		hash, sig := versionHash(in)
 		newVersion := current.Hash != hash
 		if newVersion {
-			sc.CurrentVersion++
+			// Numbered after any version still waiting for approval, which
+			// may be past the current one.
+			latest, err := q.LatestScriptVersion(ctx, id)
+			if err != nil {
+				return err
+			}
 			if err := q.CreateScriptVersion(ctx, store.ScriptVersion{
-				ScriptID: id, Version: sc.CurrentVersion, Body: in.Body, DetectionBody: in.DetectionBody,
+				ScriptID: id, Version: latest + 1, Body: in.Body, DetectionBody: in.DetectionBody,
 				Hash: hash, Signature: sig, CreatedAt: now, CreatedBy: in.Actor,
 			}); err != nil {
 				return err
+			}
+			if hold {
+				held = latest + 1
+			} else {
+				sc.CurrentVersion = latest + 1
 			}
 		}
 		sc.Name, sc.Description, sc.UpdatedAt = name, in.Description, now
@@ -199,15 +263,19 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewScript) (store
 			return err
 		}
 		out = sc
+		details := map[string]any{"name": sc.Name, "new_version": newVersion, "version": sc.CurrentVersion}
+		if held > 0 {
+			details["held_version"] = held
+		}
 		return q.InsertAudit(ctx, store.AuditEntry{
 			Actor: in.Actor, Action: "script.updated", TargetKind: "script", TargetID: id.String(),
-			Details: map[string]any{"name": sc.Name, "new_version": newVersion, "version": sc.CurrentVersion},
+			Details: details,
 		})
 	})
 	if err != nil {
-		return store.Script{}, err
+		return store.Script{}, 0, err
 	}
-	return out, nil
+	return out, held, nil
 }
 
 // Delete removes a script, its versions and its assignments. Runs are kept.

@@ -907,9 +907,13 @@ function ProfileEditor({
   const signature = parseSignature(signatureText);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  // An edit to something already sent to many devices can be held for a
+  // second administrator; the dialog stays open to say so.
+  const [held, setHeld] = useState(false);
 
   useEffect(() => {
     if (!open) return;
+    setHeld(false);
     setName(profile?.name ?? "");
     setDescription(profile?.description ?? "");
     setSettings(profile?.settings ?? []);
@@ -931,7 +935,12 @@ function ProfileEditor({
     try {
       const payload = { name, description, settings, ...(signature ? { signature } : {}) };
       if (profile) {
-        await api.post(`/profiles/${profile.id}`, payload);
+        const res = await api.post(`/profiles/${profile.id}`, payload);
+        if (heldForApproval(res)) {
+          onSaved();
+          setHeld(true);
+          return;
+        }
       } else {
         await api.post("/profiles", payload);
       }
@@ -1006,6 +1015,7 @@ function ProfileEditor({
         </>
       ) : null}
       <ErrorNote error={error} />
+      {held ? <HeldNote /> : null}
       <div className="actions">
         <Button
           onClick={() => void save()}

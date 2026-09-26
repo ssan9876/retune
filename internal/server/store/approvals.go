@@ -13,6 +13,15 @@ import (
 const (
 	ApprovalCommand    = "command"
 	ApprovalAssignment = "assignment"
+	// ApprovalVersion makes a held version of a script, profile or app the
+	// one devices receive.
+	ApprovalVersion = "version"
+	// ApprovalGroupMember adds a device to a static group that has code
+	// assigned to it.
+	ApprovalGroupMember = "group_member"
+	// ApprovalGroupRule changes the rule of a dynamic group that has code
+	// assigned to it.
+	ApprovalGroupRule = "group_rule"
 )
 
 // Approval states.
@@ -138,5 +147,86 @@ func (q *Queries) GroupMemberCount(ctx context.Context, groupID uuid.UUID) (int,
 	var n int
 	err := q.db.QueryRow(ctx,
 		`SELECT count(*) FROM group_members WHERE tenant_id = $1 AND group_id = $2`, DefaultTenantID, groupID).Scan(&n)
+	return n, err
+}
+
+// LatestScriptVersion, LatestProfileVersion and LatestAppVersion are the
+// highest version stored, which is past the current one while a newer
+// version waits for approval. A new version is numbered after it.
+func (q *Queries) LatestScriptVersion(ctx context.Context, id uuid.UUID) (int, error) {
+	return q.latestVersion(ctx, `SELECT COALESCE(max(version), 0) FROM script_versions WHERE tenant_id = $1 AND script_id = $2`, id)
+}
+
+func (q *Queries) LatestProfileVersion(ctx context.Context, id uuid.UUID) (int, error) {
+	return q.latestVersion(ctx, `SELECT COALESCE(max(version), 0) FROM profile_versions WHERE tenant_id = $1 AND profile_id = $2`, id)
+}
+
+func (q *Queries) LatestAppVersion(ctx context.Context, id uuid.UUID) (int, error) {
+	return q.latestVersion(ctx, `SELECT COALESCE(max(version), 0) FROM app_versions WHERE tenant_id = $1 AND app_id = $2`, id)
+}
+
+func (q *Queries) latestVersion(ctx context.Context, query string, id uuid.UUID) (int, error) {
+	var n int
+	err := q.db.QueryRow(ctx, query, DefaultTenantID, id).Scan(&n)
+	return n, err
+}
+
+// IsGroupMember reports whether a device is in a group now.
+func (q *Queries) IsGroupMember(ctx context.Context, groupID, deviceID uuid.UUID) (bool, error) {
+	var in bool
+	err := q.db.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM group_members WHERE tenant_id = $1 AND group_id = $2 AND device_id = $3)`,
+		DefaultTenantID, groupID, deviceID).Scan(&in)
+	return in, err
+}
+
+// ItemReach is how far an item's include assignments reach: the distinct
+// devices in the static groups it is included in, and whether any of them is
+// a dynamic group or All devices, which can grow to any size. Exclusions are
+// not subtracted, so the count is never an underestimate.
+func (q *Queries) ItemReach(ctx context.Context, itemKind string, itemID uuid.UUID) (devices int, unbounded bool, err error) {
+	err = q.db.QueryRow(ctx, `
+		SELECT
+			COALESCE((SELECT bool_or(g.kind <> 'static')
+				FROM assignments a JOIN device_groups g ON g.id = a.group_id
+				WHERE a.tenant_id = $1 AND a.item_kind = $2 AND a.item_id = $3 AND a.mode = 'include'), false),
+			(SELECT count(DISTINCT m.device_id)
+				FROM assignments a JOIN group_members m ON m.group_id = a.group_id
+				WHERE a.tenant_id = $1 AND a.item_kind = $2 AND a.item_id = $3 AND a.mode = 'include')`,
+		DefaultTenantID, itemKind, itemID).Scan(&unbounded, &devices)
+	return devices, unbounded, err
+}
+
+// GroupIncludesAnyOf reports whether a group has an include assignment of
+// something other than the given kinds - code, in practice, rather than a
+// policy that only reports or a window that only holds changes back.
+func (q *Queries) GroupIncludesAnyOf(ctx context.Context, groupID uuid.UUID, exceptKinds []string) (bool, error) {
+	var found bool
+	err := q.db.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM assignments
+			WHERE tenant_id = $1 AND group_id = $2 AND mode = 'include' AND NOT (item_kind = ANY($3)))`,
+		DefaultTenantID, groupID, exceptKinds).Scan(&found)
+	return found, err
+}
+
+// RecentCommandReach is how many distinct devices an administrator has sent
+// commands of one type to since a moment, counting the devices of a request
+// not yet made. Commands queued by approving a held request don't count:
+// someone else has already looked at those.
+func (q *Queries) RecentCommandReach(ctx context.Context, createdBy, typ string, since time.Time, adding []uuid.UUID) (int, error) {
+	var n int
+	err := q.db.QueryRow(ctx, `
+		SELECT count(DISTINCT device_id) FROM (
+			SELECT c.device_id FROM commands c
+			WHERE c.tenant_id = $1 AND c.created_by = $2 AND c.type = $3 AND c.created_at >= $4
+			  AND NOT EXISTS (
+				SELECT 1 FROM approvals a,
+					jsonb_array_elements(CASE WHEN jsonb_typeof(a.result->'commands') = 'array'
+						THEN a.result->'commands' ELSE '[]'::jsonb END) e
+				WHERE a.tenant_id = $1 AND a.kind = 'command' AND a.decided_at >= $4
+				  AND e->>'id' = c.id::text)
+			UNION ALL
+			SELECT unnest($5::uuid[])
+		) reached`, DefaultTenantID, createdBy, typ, since, adding).Scan(&n)
 	return n, err
 }

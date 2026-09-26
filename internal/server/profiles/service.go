@@ -30,6 +30,8 @@ var (
 	ErrNameTaken = errors.New("a profile with that name already exists")
 	// ErrBadRequest is returned for input the caller can fix.
 	ErrBadRequest = errors.New("bad request")
+	// ErrSuperseded is approving a held version when a newer one is current.
+	ErrSuperseded = errors.New("a newer version of this profile is already current")
 )
 
 // MaxSettings caps one profile. A profile longer than this is really several.
@@ -281,11 +283,63 @@ func (s *Service) Create(ctx context.Context, in NewProfile) (store.Profile, err
 // Update changes a profile. A new version is written only when the settings
 // actually changed, so renaming does not make every device reconcile again.
 func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewProfile) (store.Profile, error) {
+	out, _, err := s.update(ctx, id, in, false)
+	return out, err
+}
+
+// UpdateHeld is Update for a profile already sent to more devices than one
+// administrator may reach alone. The name and description change at once, but
+// a new version is only stored: devices keep the current one until Promote
+// makes it current. held is the new version's number, or 0 when the settings
+// did not change and there is nothing to approve.
+func (s *Service) UpdateHeld(ctx context.Context, id uuid.UUID, in NewProfile) (out store.Profile, held int, err error) {
+	return s.update(ctx, id, in, true)
+}
+
+// Promote makes a held version the one devices receive. A version older than
+// the current one is ErrSuperseded: approving it would roll devices back.
+func (s *Service) Promote(ctx context.Context, id uuid.UUID, version int, actor string) (store.Profile, error) {
+	var out store.Profile
+	err := s.Store.InTx(ctx, func(q *store.Queries) error {
+		p, err := q.GetProfile(ctx, store.DefaultTenantID, id)
+		if errors.Is(err, store.ErrNotFound) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if _, err := q.GetProfileVersion(ctx, store.DefaultTenantID, id, version); errors.Is(err, store.ErrNotFound) {
+			return ErrNotFound
+		} else if err != nil {
+			return err
+		}
+		if version <= p.CurrentVersion {
+			return ErrSuperseded
+		}
+		previous := p.CurrentVersion
+		p.CurrentVersion, p.UpdatedAt = version, s.now()
+		if err := q.UpdateProfile(ctx, store.DefaultTenantID, p); err != nil {
+			return err
+		}
+		out = p
+		return q.InsertAudit(ctx, store.AuditEntry{
+			Actor: actor, Action: "profile.version_promoted", TargetKind: "profile", TargetID: id.String(),
+			Details: map[string]any{"name": p.Name, "version": version, "previous_version": previous},
+		})
+	})
+	if err != nil {
+		return store.Profile{}, err
+	}
+	return out, nil
+}
+
+func (s *Service) update(ctx context.Context, id uuid.UUID, in NewProfile, hold bool) (store.Profile, int, error) {
 	if strings.TrimSpace(in.Name) == "" {
-		return store.Profile{}, fmt.Errorf("%w: a profile needs a name", ErrBadRequest)
+		return store.Profile{}, 0, fmt.Errorf("%w: a profile needs a name", ErrBadRequest)
 	}
 	now := s.now()
 	var out store.Profile
+	held := 0
 	err := s.Store.InTx(ctx, func(q *store.Queries) error {
 		p, err := q.GetProfile(ctx, store.DefaultTenantID, id)
 		if errors.Is(err, store.ErrNotFound) {
@@ -341,12 +395,22 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewProfile) (stor
 		// signature with it.
 		newVersion := currentHash != hash || !sameSignature(current.Signature, stored)
 		if newVersion {
-			p.CurrentVersion++
+			// Numbered after any version still waiting for approval, which
+			// may be past the current one.
+			latest, err := q.LatestProfileVersion(ctx, id)
+			if err != nil {
+				return err
+			}
 			if err := q.CreateProfileVersion(ctx, store.ProfileVersion{
-				ProfileID: id, Version: p.CurrentVersion, Settings: settings, Hash: hash,
+				ProfileID: id, Version: latest + 1, Settings: settings, Hash: hash,
 				CreatedAt: now, CreatedBy: in.Actor, Signature: stored,
 			}); err != nil {
 				return err
+			}
+			if hold {
+				held = latest + 1
+			} else {
+				p.CurrentVersion = latest + 1
 			}
 		}
 		p.Name, p.Description, p.UpdatedAt = name, in.Description, now
@@ -354,15 +418,19 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewProfile) (stor
 			return err
 		}
 		out = p
+		details := map[string]any{"name": p.Name, "new_version": newVersion, "version": p.CurrentVersion}
+		if held > 0 {
+			details["held_version"] = held
+		}
 		return q.InsertAudit(ctx, store.AuditEntry{
 			Actor: in.Actor, Action: "profile.updated", TargetKind: "profile", TargetID: id.String(),
-			Details: map[string]any{"name": p.Name, "new_version": newVersion, "version": p.CurrentVersion},
+			Details: details,
 		})
 	})
 	if err != nil {
-		return store.Profile{}, err
+		return store.Profile{}, 0, err
 	}
-	return out, nil
+	return out, held, nil
 }
 
 // Delete removes a profile, its versions and its assignments.

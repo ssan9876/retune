@@ -79,6 +79,33 @@ describe("Scripts", () => {
     expect(posted[0]).toMatchObject({ name: "Fix printers", body: "Restart-Service Spooler" });
   });
 
+  it("says an edit is waiting for approval rather than closing as saved", async () => {
+    fetchMock.mockImplementation((url: string, init?: { method?: string }) => {
+      if (init?.method === "POST") {
+        return Promise.resolve(
+          json({ approval: { id: "a1", kind: "version", status: "pending", summary: "make version 3 current" } }, 202),
+        );
+      }
+      if (String(url).endsWith("/scripts/s1")) {
+        return Promise.resolve(json({ ...script, body: "Get-Date" }));
+      }
+      if (String(url).includes("/scripts?")) {
+        return Promise.resolve(json({ items: [script], total: 1, limit: 50, offset: 0 }));
+      }
+      return Promise.resolve(json({ items: [], total: 0, limit: 50, offset: 0 }));
+    });
+    render(<Scripts />);
+    await screen.findByText("Install 7-Zip");
+
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const body = await screen.findByLabelText("PowerShell script");
+    await userEvent.type(body, " # changed");
+    await userEvent.click(screen.getByRole("button", { name: "Save new version" }));
+
+    expect(await screen.findByText(/Sent for approval/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save new version" })).toBeInTheDocument();
+  });
+
   it("explains what the detection script does", async () => {
     listOnly();
     render(<Scripts />);

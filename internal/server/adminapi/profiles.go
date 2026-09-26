@@ -115,12 +115,29 @@ func (h *Handler) updateProfile(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	p, err := h.Profiles.Update(r.Context(), id, profiles.NewProfile{
+	ctx := r.Context()
+	in := profiles.NewProfile{
 		Name: req.Name, Description: req.Description, Settings: req.Settings,
 		Actor: caller(r).Admin.Email, Signature: req.Signature,
-	})
+	}
+	hold, err := h.itemNeedsApproval(ctx, protocol.ItemKindProfile, id)
+	if err != nil {
+		h.internal(w, "check profile reach", err)
+		return
+	}
+	var p store.Profile
+	held := 0
+	if hold {
+		p, held, err = h.Profiles.UpdateHeld(ctx, id, in)
+	} else {
+		p, err = h.Profiles.Update(ctx, id, in)
+	}
 	if err != nil {
 		h.writeProfileError(w, "update profile", err)
+		return
+	}
+	if held > 0 {
+		h.holdVersion(w, r, protocol.ItemKindProfile, id, p.Name, held)
 		return
 	}
 	out := newProfileJSON(p)

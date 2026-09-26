@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -127,6 +128,33 @@ func (h *Handler) updateGroup(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
+	if h.ApprovalsRequired {
+		existing, err := h.Groups.Get(r.Context(), id)
+		if err != nil {
+			h.writeGroupError(w, "get group", err)
+			return
+		}
+		hold, err := h.ruleNeedsApproval(r.Context(), existing, req.Rule)
+		if err != nil {
+			h.internal(w, "check group assignments", err)
+			return
+		}
+		if hold {
+			// Checked now, so nobody is asked to approve a rule that
+			// could never be applied.
+			if strings.TrimSpace(req.Name) == "" {
+				writeError(w, http.StatusBadRequest, "bad_request", "a group needs a name")
+				return
+			}
+			if _, err := groups.Parse(req.Rule); err != nil {
+				h.writeGroupError(w, "parse rule", err)
+				return
+			}
+			h.holdForApproval(w, r, store.ApprovalGroupRule, groupRuleApproval{GroupID: id.String(), groupRequest: req},
+				fmt.Sprintf("change the rule of group %q to: %s", existing.Name, req.Rule))
+			return
+		}
+	}
 	g, err := h.Groups.Update(r.Context(), id, groups.NewGroup{
 		Name: req.Name, Description: req.Description, Rule: req.Rule,
 		Actor: caller(r).Admin.Email,
@@ -191,6 +219,33 @@ func (h *Handler) addGroupMember(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request", "device_id must be a UUID")
 		return
+	}
+	if h.ApprovalsRequired {
+		ctx := r.Context()
+		g, err := h.Groups.Get(ctx, id)
+		if err != nil {
+			h.writeGroupError(w, "get group", err)
+			return
+		}
+		d, err := h.Store.Q().GetDevice(ctx, store.DefaultTenantID, deviceID)
+		if errors.Is(err, store.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "not_found", "no such device")
+			return
+		} else if err != nil {
+			h.internal(w, "get device", err)
+			return
+		}
+		hold, size, err := h.memberNeedsApproval(ctx, g, deviceID)
+		if err != nil {
+			h.internal(w, "check group assignments", err)
+			return
+		}
+		if hold {
+			h.holdForApproval(w, r, store.ApprovalGroupMember,
+				groupMemberApproval{GroupID: id.String(), DeviceID: deviceID.String()},
+				fmt.Sprintf("add %s to group %q, making it %d devices", d.Hostname, g.Name, size))
+			return
+		}
 	}
 	if err := h.Groups.AddMember(r.Context(), id, deviceID, caller(r).Admin.Email); err != nil {
 		h.writeGroupError(w, "add group member", err)

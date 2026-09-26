@@ -1022,17 +1022,30 @@ nothing to build: set `APPROVALS_REQUIRED=true`, and these wait on the
 **Approvals** page until another administrator approves them:
 
 - **every wipe;**
-- **ad-hoc PowerShell** sent to more devices than `APPROVAL_DEVICE_THRESHOLD`
-  (50 unless set);
+- **ad-hoc PowerShell**, once the administrator sending it would have reached
+  more devices than `APPROVAL_DEVICE_THRESHOLD` (50 unless set) within the
+  last hour. It is counted per person, API tokens included, not per request,
+  so a thousand devices can't be sent fifty at a time. Commands someone else
+  already approved don't count;
 - **assigning** a script, app, configuration profile or agent build to a
   static group of more devices than that, or to any dynamic group or All
   devices, which can grow to any size once approved. Excluding something, and
-  assigning a compliance policy, which only reports, never wait.
+  assigning a compliance policy, which only reports, never wait;
+- **a new version** of a script, app or profile whose assignments already
+  reach more devices than that, or any dynamic group or All devices. The
+  version is stored, secrets sealed, but devices keep the current one — and
+  can't fetch the new one — until it is approved. Renaming, which changes no
+  code, doesn't wait. Approving an older held version once a newer one is
+  current fails, rather than rolling devices back;
+- **adding a device to a static group** with something assigned to it, once
+  the group would hold more devices than the threshold, and **changing the
+  rule of a dynamic group** with something assigned to it. Otherwise an
+  assignment approved for a small group could be grown to the whole fleet.
 
 The request is checked in full when it is made — hostname, reason, signature,
-that the device is still enrolled — so nobody is asked to approve something
-that could never run. It answers `202 Accepted` with the held request rather
-than `201 Created`. Approving carries it out at once, as the person who asked:
+that the device is still enrolled, that the rule parses — so nobody is asked
+to approve something that could never run. It answers `202 Accepted` with the
+held request rather than `201 Created`. Approving carries it out at once, as the person who asked:
 the command or assignment is theirs in the audit log, and `approval.approved`
 says who let it through. If it can no longer be done — the device was retired
 in the meantime — the approval is marked `failed`, with why.
