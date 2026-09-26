@@ -116,6 +116,34 @@ func TestDockerPullsByDigestAndSwapsThroughCompose(t *testing.T) {
 	}
 }
 
+// After the first update .env pins a digest. Rolling back goes to that digest
+// rather than the local rollback tag, which an image prune would delete.
+func TestDockerRollsBackToThePinnedDigest(t *testing.T) {
+	r := &fakeRunner{answers: map[string]string{
+		"docker compose": "abc123", "docker inspect --format {{.Image}}": "sha256:previd",
+		"docker inspect --format {{index .Config.Labels": "1.1.0",
+	}}
+	d := newDocker(t, r)
+	pinned := "ghcr.io/example/retune-server@sha256:1111111111111111111111111111111111111111111111111111111111111111"
+	if err := os.WriteFile(filepath.Join(d.ProjectDir, ".env"), []byte("RETUNE_IMAGE="+pinned+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	previous, err := d.Swap(context.Background(), "ghcr.io/example/retune-server@sha256:2222222222222222222222222222222222222222222222222222222222222222")
+	if err != nil || previous != pinned {
+		t.Fatalf("Swap = %q, %v; want the pinned digest %q", previous, err, pinned)
+	}
+	if !r.ranLine("docker tag sha256:previd retune-server-rollback:1.1.0") {
+		t.Fatalf("the running image should still be tagged: %v", r.ran)
+	}
+	if err := d.Restore(context.Background(), previous); err != nil {
+		t.Fatal(err)
+	}
+	env, _ := os.ReadFile(filepath.Join(d.ProjectDir, ".env"))
+	if string(env) != "RETUNE_IMAGE="+pinned+"\n" {
+		t.Fatalf("Restore should pin the previous digest again: %q", env)
+	}
+}
+
 func TestDockerBacksUpThroughTheDatabaseContainerAndPrunes(t *testing.T) {
 	r := &fakeRunner{answers: map[string]string{"docker compose": "PGDMP dump bytes"}}
 	d := newDocker(t, r)

@@ -138,9 +138,17 @@ func (d *Docker) Swap(ctx context.Context, ref string) (string, error) {
 		return "", err
 	}
 	current, _ := d.Current(ctx)
-	previous := "retune-server-rollback:" + safe(current)
-	if _, err := d.run(ctx, Cmd{Name: "docker", Args: []string{"tag", imageID, previous}}); err != nil {
+	tag := "retune-server-rollback:" + safe(current)
+	if _, err := d.run(ctx, Cmd{Name: "docker", Args: []string{"tag", imageID, tag}}); err != nil {
 		return "", err
+	}
+	// Go back to what .env pinned when that was a digest: it names the same
+	// image, and unlike the local tag it survives an image prune or a move to
+	// another host. A mutable reference such as :latest may have moved since,
+	// so then only the tag of the image actually running will do.
+	previous := tag
+	if pinned := getEnv(filepath.Join(d.ProjectDir, ".env"), ImageVar); strings.Contains(pinned, "@sha256:") {
+		previous = pinned
 	}
 	if err := setEnv(filepath.Join(d.ProjectDir, ".env"), ImageVar, ref); err != nil {
 		return "", err
@@ -197,6 +205,21 @@ func (d *Docker) Restore(ctx context.Context, previous string) error {
 	}
 	_, err := d.run(ctx, d.compose("up", "-d", "--no-deps", "--no-build", d.Service))
 	return err
+}
+
+// getEnv reads one variable from a .env file, or "" when it is not set.
+func getEnv(path, key string) string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	value := ""
+	for _, l := range strings.Split(strings.ReplaceAll(string(b), "\r\n", "\n"), "\n") {
+		if l = strings.TrimSpace(l); strings.HasPrefix(l, key+"=") {
+			value = strings.Trim(strings.TrimPrefix(l, key+"="), `"'`)
+		}
+	}
+	return value
 }
 
 // setEnv sets one variable in a .env file, keeping every other line as it
