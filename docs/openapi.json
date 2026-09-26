@@ -741,6 +741,9 @@
             "format": "date-time",
             "type": "string"
           },
+          "hostname": {
+            "type": "string"
+          },
           "id": {
             "type": "string"
           },
@@ -5804,9 +5807,17 @@
             }
           },
           {
-            "description": "active, retired or unenrolled.",
+            "description": "active (seen recently), stale (active but not seen recently), retired (any non-active status), or an exact status such as unenrolled.",
             "in": "query",
             "name": "status",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "compliant, non_compliant, unknown or not_evaluated (worst state across assigned baselines).",
+            "in": "query",
+            "name": "compliance",
             "schema": {
               "type": "string"
             }
