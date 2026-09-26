@@ -41,7 +41,7 @@ func TestTokenQueriesAreScopedByTenant(t *testing.T) {
 
 func TestStore(t *testing.T) {
 	ctx := context.Background()
-	url := storetest.DatabaseURL(t)
+	url := storetest.EmptyDatabaseURL(t)
 	if err := store.Migrate(url); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}

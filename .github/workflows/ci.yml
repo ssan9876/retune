@@ -9,11 +9,11 @@ permissions:
   contents: read
 
 jobs:
-  # The Linux job runs everything: the console build, the full Go suite (whose
-  # store tests start a throwaway Postgres through testcontainers), and the
-  # console's own tests.
-  linux:
-    name: Linux â€” build and test
+  # Linux is split three ways so nothing waits on anything else: the Go suite
+  # (whose database tests share one throwaway Postgres per package through
+  # testcontainers), the console's own tests, and the builds.
+  go-test:
+    name: Linux — Go tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -29,22 +29,58 @@ jobs:
           go-version: "1.27"
           cache-dependency-path: go.sum
 
+      # The server embeds the console build, so the tests run against one.
+      - name: Build the console
+        run: npm --prefix web ci && npm --prefix web run build
+
+      # The race detector runs here and only here: it needs CGO, which the Windows job does not have.
+      - name: Test
+        run: go test -race ./...
+
+  console:
+    name: Linux — console tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
       - name: Install console dependencies
         run: npm --prefix web ci
 
       - name: Test the console
         run: npm --prefix web run test
 
-      # The Go binary embeds this build, so it must happen before the Go tests.
       - name: Build the console
         run: npm --prefix web run build
 
+  build:
+    name: Linux — vet and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+          cache-dependency-path: go.sum
+
+      # The Go binary embeds this build.
+      - name: Build the console
+        run: npm --prefix web ci && npm --prefix web run build
+
       - name: Vet
         run: go vet ./...
-
-      # The race detector runs here and only here: it needs CGO, which the Windows job does not have.
-      - name: Test
-        run: go test -race ./...
 
       # A throwaway key per run: CI artefacts are for tests, not release, but
       # the signing path itself is exercised every time.
