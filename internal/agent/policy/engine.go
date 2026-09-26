@@ -40,6 +40,11 @@ type Assigned struct {
 	Version   int
 	Settings  []protocol.Setting
 	Options   protocol.ProfileOptions
+	// Held, when set, is why this agent won't apply this version, such as a
+	// missing operations signature. A held profile is still assigned: it is
+	// neither applied nor undone, and each of its settings is reported as an
+	// error saying why.
+	Held string
 }
 
 // claim is one profile's wish for one setting identity.

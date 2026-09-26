@@ -4,6 +4,7 @@ import { heldForApproval } from "../api/approvals";
 import { api } from "../api/client";
 import type { Group, Profile, Setting, SettingStatus } from "../api/types";
 import { AssignedTo, RolloutFields, rolloutBody } from "../components/Assignments";
+import { SignatureField, SignedSubject, parseSignature } from "../components/SignatureField";
 import type { Rollout } from "../components/Assignments";
 import { StatusDot } from "../components/StatusDot";
 import { Button, Dialog, EmptyState, ErrorNote, Field, HeldNote, Spinner } from "../components/ui";
@@ -901,6 +902,9 @@ function ProfileEditor({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [settings, setSettings] = useState<Setting[]>([]);
+  const [signatureText, setSignatureText] = useState("");
+  const { signingRequired } = useSession();
+  const signature = parseSignature(signatureText);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -909,14 +913,23 @@ function ProfileEditor({
     setName(profile?.name ?? "");
     setDescription(profile?.description ?? "");
     setSettings(profile?.settings ?? []);
+    setSignatureText("");
     setError(null);
   }, [open, profile]);
+
+  // Renaming a signed profile keeps its signature; changing a setting needs
+  // a new one.
+  const settingsChanged = !profile || JSON.stringify(settings) !== JSON.stringify(profile.settings ?? []);
+  const needsSignature = signingRequired && (settingsChanged || !profile?.signed);
+  // A kept secret isn't in the editor, but devices receive it, so the
+  // signature has to cover it: whoever signs fills it in.
+  const keptSecret = settings.some((s) => s.secret_set && !s.passphrase);
 
   async function save() {
     setBusy(true);
     setError(null);
     try {
-      const payload = { name, description, settings };
+      const payload = { name, description, settings, ...(signature ? { signature } : {}) };
       if (profile) {
         await api.post(`/profiles/${profile.id}`, payload);
       } else {
@@ -975,9 +988,29 @@ function ProfileEditor({
         </Button>
       </div>
 
+      {needsSignature ? (
+        <>
+          <SignedSubject fileName="profile.json" value={{ settings }} />
+          {keptSecret ? (
+            <p className="hint">
+              A passphrase kept from the last version isn't shown here. Put it into profile.json before signing: devices
+              receive it, so the signature covers it.
+            </p>
+          ) : null}
+          <SignatureField
+            value={signatureText}
+            onChange={setSignatureText}
+            valid={signature !== null}
+            command="retune-sign sign-profile --key operations.key profile.json"
+          />
+        </>
+      ) : null}
       <ErrorNote error={error} />
       <div className="actions">
-        <Button onClick={() => void save()} disabled={busy || name.trim() === "" || settings.length === 0}>
+        <Button
+          onClick={() => void save()}
+          disabled={busy || name.trim() === "" || settings.length === 0 || (needsSignature && signature === null)}
+        >
           {profile ? "Save new version" : "Create profile"}
         </Button>
         <Button variant="quiet" onClick={onClose}>

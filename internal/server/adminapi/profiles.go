@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"retune/internal/opsign"
 	"retune/internal/protocol"
 	"retune/internal/server/profiles"
 	"retune/internal/server/store"
@@ -16,6 +17,7 @@ type profileJSON struct {
 	Description    string             `json:"description"`
 	CurrentVersion int                `json:"current_version"`
 	Settings       []protocol.Setting `json:"settings,omitempty"`
+	Signed         bool               `json:"signed"` // the current version has an operations signature
 	CreatedAt      time.Time          `json:"created_at"`
 	UpdatedAt      time.Time          `json:"updated_at"`
 	CreatedBy      string             `json:"created_by"`
@@ -33,6 +35,8 @@ type profileRequest struct {
 	Name        string             `json:"name"`
 	Description string             `json:"description"`
 	Settings    []protocol.Setting `json:"settings"`
+	// Signature is the operations signature from retune-sign sign-profile.
+	Signature *opsign.Signature `json:"signature,omitempty"`
 }
 
 func (h *Handler) writeProfileError(w http.ResponseWriter, what string, err error) {
@@ -71,14 +75,14 @@ func (h *Handler) createProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	p, err := h.Profiles.Create(r.Context(), profiles.NewProfile{
 		Name: req.Name, Description: req.Description, Settings: req.Settings,
-		Actor: caller(r).Admin.Email,
+		Actor: caller(r).Admin.Email, Signature: req.Signature,
 	})
 	if err != nil {
 		h.writeProfileError(w, "create profile", err)
 		return
 	}
 	out := newProfileJSON(p)
-	out.Settings = profiles.Redact(req.Settings)
+	out.Settings, out.Signed = profiles.Redact(req.Settings), req.Signature != nil
 	writeJSON(w, http.StatusCreated, out)
 }
 
@@ -96,8 +100,8 @@ func (h *Handler) getProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := newProfileJSON(p)
-	if _, settings, err := h.Profiles.Version(ctx, id, p.CurrentVersion); err == nil {
-		out.Settings = profiles.Redact(settings)
+	if v, settings, err := h.Profiles.Version(ctx, id, p.CurrentVersion); err == nil {
+		out.Settings, out.Signed = profiles.Redact(settings), len(v.Signature) > 0
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -113,7 +117,7 @@ func (h *Handler) updateProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	p, err := h.Profiles.Update(r.Context(), id, profiles.NewProfile{
 		Name: req.Name, Description: req.Description, Settings: req.Settings,
-		Actor: caller(r).Admin.Email,
+		Actor: caller(r).Admin.Email, Signature: req.Signature,
 	})
 	if err != nil {
 		h.writeProfileError(w, "update profile", err)
@@ -121,6 +125,10 @@ func (h *Handler) updateProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	out := newProfileJSON(p)
 	out.Settings = profiles.Redact(req.Settings)
+	// A rename keeps the signature without resending it, so ask the version.
+	if v, _, err := h.Profiles.Version(r.Context(), id, p.CurrentVersion); err == nil {
+		out.Signed = len(v.Signature) > 0
+	}
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -140,6 +148,7 @@ type profileVersionJSON struct {
 	Version   int                `json:"version"`
 	Settings  []protocol.Setting `json:"settings"`
 	Hash      string             `json:"hash"`
+	Signed    bool               `json:"signed"`
 	CreatedAt time.Time          `json:"created_at"`
 	CreatedBy string             `json:"created_by"`
 }
@@ -158,7 +167,8 @@ func (h *Handler) listProfileVersions(w http.ResponseWriter, r *http.Request) {
 	items := make([]profileVersionJSON, 0, len(rows))
 	for _, v := range rows {
 		entry := profileVersionJSON{
-			Version: v.Version, Hash: v.Hash, CreatedAt: v.CreatedAt, CreatedBy: v.CreatedBy,
+			Version: v.Version, Hash: v.Hash, Signed: len(v.Signature) > 0,
+			CreatedAt: v.CreatedAt, CreatedBy: v.CreatedBy,
 		}
 		if _, settings, err := h.Profiles.Version(ctx, id, v.Version); err == nil {
 			entry.Settings = profiles.Redact(settings)

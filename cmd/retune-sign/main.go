@@ -1,6 +1,6 @@
-// retune-sign signs agent builds with an offline release key, and scripts
-// and wipe orders with an offline operations key, and verifies release
-// signatures. It is what a release or change process runs; the server never
+// retune-sign signs agent builds with an offline release key, and scripts,
+// apps, profiles and wipe orders with an offline operations key, and verifies
+// release signatures. It is what a release or change process runs; the server never
 // holds either private key.
 package main
 
@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"retune/internal/opsign"
+	"retune/internal/protocol"
 	"retune/internal/release"
 )
 
@@ -27,6 +28,8 @@ const usage = `usage:
   retune-sign sign --key FILE|env:NAME --version V BINARY
   retune-sign verify --trust KEY[,KEY...] BINARY SIGFILE
   retune-sign sign-script --key FILE|env:NAME [--detection FILE] SCRIPT
+  retune-sign sign-app --key FILE|env:NAME [--file INSTALLER] APP.json
+  retune-sign sign-profile --key FILE|env:NAME PROFILE.json
   retune-sign sign-wipe --key FILE|env:NAME --device ID [--protected] [--valid-for 4h]`
 
 func main() {
@@ -44,7 +47,7 @@ func run(args []string, getenv func(string) string, out io.Writer) error {
 	case "keygen":
 		fs := flag.NewFlagSet("keygen", flag.ContinueOnError)
 		outDir := fs.String("out", "", "directory to write NAME.key and NAME.pub into")
-		name := fs.String("name", "release", "release, or operations for a key that signs scripts and wipes")
+		name := fs.String("name", "release", "release, or operations for a key that signs scripts, apps, profiles and wipes")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
@@ -116,6 +119,35 @@ func run(args []string, getenv func(string) string, out io.Writer) error {
 			return err
 		}
 		return signScript(priv, fs.Arg(0), *detection, out)
+	case "sign-app":
+		fs := flag.NewFlagSet("sign-app", flag.ContinueOnError)
+		key := fs.String("key", "", "path to operations.key, or env:NAME")
+		file := fs.String("file", "", "the installer an uploaded package installs, to take its hash from")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if *key == "" || fs.NArg() != 1 {
+			return errors.New(usage)
+		}
+		priv, err := loadKey(*key, getenv)
+		if err != nil {
+			return err
+		}
+		return signApp(priv, fs.Arg(0), *file, out)
+	case "sign-profile":
+		fs := flag.NewFlagSet("sign-profile", flag.ContinueOnError)
+		key := fs.String("key", "", "path to operations.key, or env:NAME")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if *key == "" || fs.NArg() != 1 {
+			return errors.New(usage)
+		}
+		priv, err := loadKey(*key, getenv)
+		if err != nil {
+			return err
+		}
+		return signProfile(priv, fs.Arg(0), out)
 	case "sign-wipe":
 		fs := flag.NewFlagSet("sign-wipe", flag.ContinueOnError)
 		key := fs.String("key", "", "path to operations.key, or env:NAME")
@@ -155,6 +187,73 @@ func signScript(priv release.PrivateKey, script, detection string, out io.Writer
 		}
 	}
 	sig := opsign.Sign(priv, opsign.ScriptManifest(string(body), string(det)))
+	return json.NewEncoder(out).Encode(sig)
+}
+
+// signApp prints the signature for an app version. APP.json is the body the
+// console or API sends to create or edit the app; with --file, the
+// installer's hash is taken from the file itself, so what is signed is the
+// file in hand rather than a hash copied from somewhere.
+func signApp(priv release.PrivateKey, appFile, installer string, out io.Writer) error {
+	raw, err := os.ReadFile(appFile)
+	if err != nil {
+		return err
+	}
+	var def protocol.AppDefinition
+	if err := json.Unmarshal(raw, &def); err != nil {
+		return fmt.Errorf("read %s: %w", appFile, err)
+	}
+	if installer != "" {
+		sum, err := hashFile(installer)
+		if err != nil {
+			return err
+		}
+		if def.FileSHA256 != "" && !strings.EqualFold(strings.TrimSpace(def.FileSHA256), sum) {
+			return fmt.Errorf("%s says file_sha256 %s, but %s hashes to %s", appFile, def.FileSHA256, installer, sum)
+		}
+		def.FileSHA256 = sum
+		if def.FileName == "" {
+			def.FileName = filepath.Base(installer)
+		}
+	}
+	if def.Source == protocol.AppSourcePackage && def.FileSHA256 == "" {
+		return errors.New("an uploaded package's signature covers its hash: pass --file or set file_sha256")
+	}
+	sig := opsign.Sign(priv, def.Manifest())
+	return json.NewEncoder(out).Encode(sig)
+}
+
+// signProfile prints the signature for a profile's settings. PROFILE.json is
+// the body the console or API sends — an object with "settings" — or just the
+// settings array. A secret, such as a Wi-Fi passphrase, must be in it in the
+// clear: the signature covers what devices receive.
+func signProfile(priv release.PrivateKey, profileFile string, out io.Writer) error {
+	raw, err := os.ReadFile(profileFile)
+	if err != nil {
+		return err
+	}
+	var settings []protocol.Setting
+	if trimmed := strings.TrimSpace(string(raw)); strings.HasPrefix(trimmed, "[") {
+		err = json.Unmarshal(raw, &settings)
+	} else {
+		var body struct {
+			Settings []protocol.Setting `json:"settings"`
+		}
+		err = json.Unmarshal(raw, &body)
+		settings = body.Settings
+	}
+	if err != nil {
+		return fmt.Errorf("read %s: %w", profileFile, err)
+	}
+	if err := protocol.ValidateSettings(settings); err != nil {
+		return err
+	}
+	for _, s := range settings {
+		if s.HasSecret() && s.NeedsSecret() && s.Passphrase == "" {
+			return fmt.Errorf("%s has no passphrase in %s: sign the settings with their secrets in the clear", s.Identity(), profileFile)
+		}
+	}
+	sig := opsign.Sign(priv, protocol.ProfileManifest(settings))
 	return json.NewEncoder(out).Encode(sig)
 }
 

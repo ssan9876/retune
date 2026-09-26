@@ -153,7 +153,7 @@ export interface SessionResponse {
   admin: Admin;
   csrf_token: string;
   expires_at: string;
-  /** signing_required: scripts and wipes need an operations signature. */
+  /** signing_required: scripts, apps, profiles and wipes need an operations signature. */
   signing_required?: boolean;
   /** agent_download_url: where the agent installers are published. */
   agent_download_url?: string;
@@ -228,6 +228,8 @@ export interface App {
   success_exit_codes?: number[];
   detection?: DetectionRule;
   uninstall_previous?: boolean;
+  /** signed: the current version has an operations signature. */
+  signed?: boolean;
   current_version: number;
   created_at: string;
   updated_at: string;
@@ -350,6 +352,8 @@ export interface Profile {
   description: string;
   current_version: number;
   settings?: Setting[];
+  /** signed: the current version has an operations signature. */
+  signed?: boolean;
   created_at: string;
   updated_at: string;
   created_by: string;

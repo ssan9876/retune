@@ -12,7 +12,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"retune/internal/opsign"
 	"retune/internal/protocol"
+	"retune/internal/release"
 	"retune/internal/server/artifacts"
 	"retune/internal/server/store"
 )
@@ -33,6 +35,8 @@ type Service struct {
 	// Packages holds uploaded installers. Left empty, only winget apps can
 	// be created.
 	Packages artifacts.Blobs
+	// OperationsKeys, when set, are what every app version must be signed by.
+	OperationsKeys []release.PublicKey
 }
 
 func (s *Service) now() time.Time {
@@ -62,6 +66,10 @@ type NewApp struct {
 	SuccessExitCodes  []int
 	Detection         *protocol.DetectionRule
 	UninstallPrevious bool
+
+	// Signature is an operations signature over the version's definition,
+	// from retune-sign sign-app.
+	Signature *opsign.Signature
 }
 
 // Hash identifies a version's definition. Name and description are not part of
@@ -145,6 +153,10 @@ func (s *Service) Create(ctx context.Context, in NewApp) (store.App, error) {
 	if err != nil {
 		return store.App{}, err
 	}
+	if err := s.checkSignature(first, in.Signature); err != nil {
+		return store.App{}, err
+	}
+	first.Signature = encodeSignature(in.Signature)
 	err = s.Store.InTx(ctx, func(q *store.Queries) error {
 		if _, err := q.GetAppByName(ctx, a.Name); err == nil {
 			return ErrNameTaken
@@ -206,7 +218,19 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in NewApp) (store.Ap
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return err
 		}
-		newVersion := current.Hash != candidate.Hash
+		// Renaming or re-describing a signed app keeps its signature: what it
+		// covers hasn't changed, and the editor doesn't resend it.
+		sig := in.Signature
+		if sig == nil && current.Hash == candidate.Hash {
+			sig = decodeSignature(current.Signature)
+		}
+		if err := s.checkSignature(candidate, sig); err != nil {
+			return err
+		}
+		candidate.Signature = encodeSignature(sig)
+		// Signing an existing version makes a new one, so devices fetch the
+		// signature with it.
+		newVersion := current.Hash != candidate.Hash || !sameSignature(current.Signature, candidate.Signature)
 		if newVersion {
 			a.CurrentVersion++
 			candidate.Version = a.CurrentVersion
