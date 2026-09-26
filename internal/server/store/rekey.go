@@ -33,9 +33,12 @@ func (s *Store) HoldRunningLock(ctx context.Context) (release func(), err error)
 		return nil, err
 	}
 	return func() {
-		// Closing the session releases every lock it holds.
 		closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
+		// Unlock explicitly before closing: closing the session releases the
+		// lock too, but only once the backend has exited, which is after Close
+		// returns, so a rekey started straight after would still see it held.
+		_, _ = conn.Exec(closeCtx, `SELECT pg_advisory_unlock_shared($1)`, ServerRunningLock)
 		_ = conn.Close(closeCtx)
 	}, nil
 }
