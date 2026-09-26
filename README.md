@@ -1442,6 +1442,20 @@ npm --prefix web run test
 
 CI runs the Linux suite under `-race`.
 
+The console also has browser tests, which drive Chromium through the built
+console against a real server and database. `test/console` starts Postgres
+(or uses `DATABASE_URL`), seeds admins and simulated agents through the agent
+API, and serves on `https://127.0.0.1:18443`:
+
+```bash
+npm --prefix web run build            # the server embeds this build
+npx --prefix web playwright install chromium   # once
+npm --prefix web run e2e              # needs Docker unless DATABASE_URL is set
+```
+
+Locally a server already listening on that port is reused, so a failing run can
+be repeated quickly; stop it to start from a fresh database.
+
 ## Design and plans
 
 `docs/superpowers/specs` holds the design; `docs/superpowers/plans` holds the
