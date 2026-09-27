@@ -2,6 +2,7 @@ package agentapi
 
 import (
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"errors"
 	"net"
@@ -83,12 +84,14 @@ func peerTrusted(remoteAddr string, trusted []netip.Prefix) bool {
 
 // parseCertHeader accepts a PEM certificate, URL-encoded (nginx's
 // ssl_client_escaped_cert, and what Caddy is usually configured to send) or
-// literal.
+// literal, or a base64 DER certificate (Cloudflare's Cf-Client-Cert-Der-Base64).
 func parseCertHeader(raw string) (*x509.Certificate, error) {
 	if !strings.Contains(raw, "BEGIN CERTIFICATE") {
 		decoded, err := url.QueryUnescape(raw)
-		if err != nil {
-			return nil, errors.New("client certificate header is not valid URL encoding")
+		if err != nil || !strings.Contains(decoded, "BEGIN CERTIFICATE") {
+			// Not PEM in any encoding. Decode the original, not the
+			// unescaped form: unescaping turns base64's '+' into a space.
+			return parseDERHeader(raw)
 		}
 		raw = decoded
 	}
@@ -97,6 +100,18 @@ func parseCertHeader(raw string) (*x509.Certificate, error) {
 		return nil, errors.New("client certificate header is not a PEM certificate")
 	}
 	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, errors.New("client certificate header is not a valid certificate")
+	}
+	return cert, nil
+}
+
+func parseDERHeader(raw string) (*x509.Certificate, error) {
+	der, err := base64.StdEncoding.DecodeString(strings.TrimSpace(raw))
+	if err != nil {
+		return nil, errors.New("client certificate header is neither a PEM nor a base64 DER certificate")
+	}
+	cert, err := x509.ParseCertificate(der)
 	if err != nil {
 		return nil, errors.New("client certificate header is not a valid certificate")
 	}

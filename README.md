@@ -203,6 +203,14 @@ trusted proxies, so a client can't choose its own address by sending the
 header itself. Without it, everyone behind the proxy shares one address and
 one allowance.
 
+The header may carry the certificate as PEM, URL-encoded PEM, or base64 DER.
+Base64 DER is what Cloudflare forwards, so to sit behind Cloudflare set
+`client_cert_header: Cf-Client-Cert-Der-Base64`. That only helps where
+Cloudflare will validate client certificates from Retune's own CA, which
+needs its bring-your-own-CA mTLS (an Enterprise feature). A plain Cloudflare
+Tunnel is fine for the console; without that feature, agents need another
+route to the server.
+
 Agents reaching a proxy with a publicly trusted certificate need no pin;
 `--pin` and `SERVER_CERT_FINGERPRINT` are for self-signed servers.
 
@@ -1699,7 +1707,7 @@ git push origin v1.4.0
 ## Updating the server
 
 When the release feed finds a newer verified release, every administrator sees
-**Retune X is available — you run Y** above each page, and **Server update**
+**Retune X is available ï¿½ you run Y** above each page, and **Server update**
 (under Tenant administration) shows the release notes and an **Update** button.
 The running version is at the bottom of the navigation, and
 `retune-server version` prints it.
@@ -1796,7 +1804,7 @@ the first one now has and `docker compose up -d server`, or start it and click
 |---|---|---|
 | `server_update_mode` | `auto` | `auto` offers **Update** when the updater's socket is there; `docker`, `binary`, or `off` |
 | `updater_socket` | `/run/retune-updater/updater.sock` | where the updater listens |
-| `updater_token` | — | shared with the updater; at least 16 characters |
+| `updater_token` | ï¿½ | shared with the updater; at least 16 characters |
 | `server_update_dir` | `DATA_DIR/updates` | where a binary install stages updates |
 
 ## Command-line reference
