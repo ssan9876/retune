@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/pem"
 	"errors"
 	"math/big"
@@ -114,6 +115,34 @@ func TestHeaderClientCert(t *testing.T) {
 	t.Run("accepts unescaped PEM", func(t *testing.T) {
 		if _, err := get(newReq("10.1.2.3:4567", encodePEM(leaf))); err != nil {
 			t.Fatal(err)
+		}
+	})
+
+	t.Run("accepts base64 DER", func(t *testing.T) {
+		got, err := get(newReq("10.1.2.3:4567", base64.StdEncoding.EncodeToString(leaf.Raw)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got == nil || got.SerialNumber.Cmp(leaf.SerialNumber) != 0 {
+			t.Fatal("wrong certificate returned")
+		}
+	})
+
+	t.Run("base64 DER from another CA", func(t *testing.T) {
+		otherCA, otherKey := testCA(t)
+		foreign := testLeaf(t, otherCA, otherKey, uuid.New().String())
+		_, err := get(newReq("10.1.2.3:4567", base64.StdEncoding.EncodeToString(foreign.Raw)))
+		var ce agentapi.CertError
+		if !errors.As(err, &ce) || ce.Status != http.StatusUnauthorized {
+			t.Fatalf("want 401 CertError, got %v", err)
+		}
+	})
+
+	t.Run("base64 that is not a certificate", func(t *testing.T) {
+		_, err := get(newReq("10.1.2.3:4567", base64.StdEncoding.EncodeToString([]byte("hello"))))
+		var ce agentapi.CertError
+		if !errors.As(err, &ce) || ce.Status != http.StatusUnauthorized {
+			t.Fatalf("want 401 CertError, got %v", err)
 		}
 	})
 
